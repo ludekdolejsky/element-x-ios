@@ -115,6 +115,11 @@ extension ClientProxyMock {
         resetIdentityReturnValue = .success(IdentityResetHandleSDKMock(.init()))
         
         spaceService = SpaceServiceProxyMock(configuration.spaceServiceConfiguration)
+        let searchService = SearchServiceProxyMock()
+        searchService.resultsPublisher = CurrentValueSubject<[SearchServiceResult], Never>([]).asCurrentValuePublisher()
+        searchService.paginationStatePublisher = CurrentValueSubject(.idle(endReached: true)).asCurrentValuePublisher()
+        searchService.setQueryReturnValue = .success(())
+        self.searchService = searchService
         linkNewDeviceServiceReturnValue = LinkNewDeviceServiceMock(.init())
         
         let capabilities = HomeserverCapabilitiesProxyMock()
