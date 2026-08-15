@@ -106,6 +106,25 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     
     private var timelineController: TimelineControllerProtocol?
     
+    private lazy var emojiProvider: EmojiProviderProtocol = {
+        guard let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol else {
+            return flowParameters.emojiProvider
+        }
+        
+        return RoomScopedEmojiProvider(roomID: roomID,
+                                       userID: userSession.clientProxy.userID,
+                                       baseProvider: flowParameters.emojiProvider,
+                                       accountDataProvider: { eventType in
+                                           await clientProxy.rawAccountData(eventType: eventType)
+                                       },
+                                       accountDataWriter: { eventType, content in
+                                           await clientProxy.setRawAccountData(eventType: eventType, content: content)
+                                       },
+                                       roomStateProvider: { roomID in
+                                           await clientProxy.rawRoomStateEvents(roomID: roomID)
+                                       })
+    }()
+    
     init(roomID: String,
          isChildFlow: Bool,
          navigationStackCoordinator: NavigationStackCoordinator,
@@ -665,7 +684,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
         self.timelineController = timelineController
         
         let completionSuggestionService = CompletionSuggestionService(roomProxy: roomProxy,
-                                                                      roomListPublisher: userSession.clientProxy.staticRoomSummaryProvider.roomListPublisher.eraseToAnyPublisher())
+                                                                      roomListPublisher: userSession.clientProxy.staticRoomSummaryProvider.roomListPublisher.eraseToAnyPublisher(),
+                                                                      emojiProvider: emojiProvider)
         let composerDraftService = ComposerDraftService(roomProxy: roomProxy,
                                                         timelineItemfactory: timelineItemFactory,
                                                         threadRootEventID: nil)
@@ -676,7 +696,7 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                                                          sharedText: presentationAction?.sharedText,
                                                          timelineController: timelineController,
                                                          mediaPlayerProvider: MediaPlayerProvider(),
-                                                         emojiProvider: flowParameters.emojiProvider,
+                                                         emojiProvider: emojiProvider,
                                                          linkMetadataProvider: flowParameters.linkMetadataProvider,
                                                          completionSuggestionService: completionSuggestionService,
                                                          ongoingCallRoomIDPublisher: flowParameters.ongoingCallRoomIDPublisher,
@@ -785,7 +805,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
         }
         
         let completionSuggestionService = CompletionSuggestionService(roomProxy: roomProxy,
-                                                                      roomListPublisher: userSession.clientProxy.staticRoomSummaryProvider.roomListPublisher.eraseToAnyPublisher())
+                                                                      roomListPublisher: userSession.clientProxy.staticRoomSummaryProvider.roomListPublisher.eraseToAnyPublisher(),
+                                                                      emojiProvider: emojiProvider)
         let composerDraftService = ComposerDraftService(roomProxy: roomProxy,
                                                         timelineItemfactory: timelineItemFactory,
                                                         threadRootEventID: threadRootEventID)
@@ -795,7 +816,7 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                                                                             focussedEventID: focusEventID,
                                                                             timelineController: timelineController,
                                                                             mediaPlayerProvider: MediaPlayerProvider(),
-                                                                            emojiProvider: flowParameters.emojiProvider,
+                                                                            emojiProvider: emojiProvider,
                                                                             linkMetadataProvider: flowParameters.linkMetadataProvider,
                                                                             completionSuggestionService: completionSuggestionService,
                                                                             appMediator: flowParameters.appMediator,
@@ -1150,7 +1171,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                                     emojiPickerContinuation: EmojiPickerScreenContinuation,
                                     animated: Bool) {
         let params = EmojiPickerScreenCoordinatorParameters(selectedEmojis: selectedEmojis,
-                                                            emojiProvider: flowParameters.emojiProvider,
+                                                            emojiProvider: emojiProvider,
+                                                            mediaProvider: userSession.mediaProvider,
                                                             continuation: emojiPickerContinuation)
         let coordinator = EmojiPickerScreenCoordinator(parameters: params)
         

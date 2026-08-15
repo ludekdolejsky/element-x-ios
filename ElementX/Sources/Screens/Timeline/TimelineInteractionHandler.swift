@@ -580,12 +580,12 @@ class TimelineInteractionHandler {
         }
         let selectedEmojis = Set(eventTimelineItem.properties.reactions.compactMap { $0.isHighlighted ? $0.key : nil })
         
-        let (stream, continuation) = AsyncStream<String>.makeStream()
+        let (stream, continuation) = AsyncStream<EmojiPickerEmojiViewData>.makeStream()
         actionsSubject.send(.displayEmojiPicker(selectedEmojis: selectedEmojis, continuation: continuation))
         
         emojiPickerCancellable = Task { [weak self] in
             for await emoji in stream {
-                await self?.timelineController.toggleReaction(emoji, to: eventOrTransactionID)
+                await self?.timelineController.toggleReaction(emoji.reactionKey, to: eventOrTransactionID)
             }
         }
         .asCancellable()

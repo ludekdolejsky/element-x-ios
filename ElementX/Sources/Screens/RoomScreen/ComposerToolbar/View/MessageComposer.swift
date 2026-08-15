@@ -14,21 +14,12 @@ typealias GenericKeyHandler = (_ key: UIKeyboardHIDUsage) -> Void
 typealias PasteHandler = ([NSItemProvider]) -> Void
 
 struct MessageComposer: View {
-    @Binding var plainComposerText: NSAttributedString
-    @Binding var presendCallback: (() -> Void)?
-    @Binding var selectedRange: NSRange
-    
     let composerView: WysiwygComposerView
     let mode: ComposerMode
-    let placeholder: String
     
-    let composerFormattingEnabled: Bool
     let showResizeGrabber: Bool
     @Binding var isExpanded: Bool
     
-    let sendAction: () -> Void
-    let editAction: () -> Void
-    let pasteAction: PasteHandler
     let cancellationAction: () -> Void
     let onAppearAction: () -> Void
     
@@ -53,29 +44,18 @@ struct MessageComposer: View {
     
     @State private var composerFrame = CGRect.zero
     
-    @ViewBuilder
     private var composerTextField: some View {
-        if composerFormattingEnabled {
-            Color.clear
-                .overlay(alignment: .top) {
-                    composerView
-                        .clipped()
-                        .readFrame($composerFrame)
-                }
-                .frame(minHeight: ComposerConstant.minHeight, maxHeight: max(composerHeight, composerFrame.height),
-                       alignment: .top)
-                .onAppear {
-                    onAppearAction()
-                }
-        } else {
-            MessageComposerTextField(placeholder: placeholder,
-                                     text: $plainComposerText,
-                                     presendCallback: $presendCallback,
-                                     selectedRange: $selectedRange,
-                                     maxHeight: ComposerConstant.maxHeight,
-                                     keyHandler: { handleKeyPress($0) },
-                                     pasteHandler: pasteAction)
-        }
+        Color.clear
+            .overlay(alignment: .top) {
+                composerView
+                    .clipped()
+                    .readFrame($composerFrame)
+            }
+            .frame(minHeight: ComposerConstant.minHeight, maxHeight: max(composerHeight, composerFrame.height),
+                   alignment: .top)
+            .onAppear {
+                onAppearAction()
+            }
     }
     
     private var composerHeight: CGFloat {
@@ -118,19 +98,6 @@ struct MessageComposer: View {
                     composerTranslation = 0
                 }
             }
-    }
-    
-    private func handleKeyPress(_ key: UIKeyboardHIDUsage) {
-        switch key {
-        case .keyboardReturnOrEnter:
-            sendAction()
-        case .keyboardUpArrow:
-            editAction()
-        case .keyboardEscape:
-            cancellationAction()
-        default:
-            break
-        }
     }
 }
 
@@ -298,24 +265,16 @@ struct MessageComposer_Previews: PreviewProvider, TestablePreview {
                                                  maxExpandedHeight: 250)
         viewModel.setMarkdownContent(content.string)
         
-        let composerView = WysiwygComposerView(placeholder: L10n.richTextEditorComposerPlaceholder,
+        let composerView = WysiwygComposerView(placeholder: placeholder,
                                                viewModel: viewModel,
                                                itemProviderHelper: nil,
                                                keyCommands: nil,
                                                pasteHandler: nil)
         
-        return MessageComposer(plainComposerText: .constant(content),
-                               presendCallback: .constant(nil),
-                               selectedRange: .constant(NSRange(location: 0, length: 0)),
-                               composerView: composerView,
+        return MessageComposer(composerView: composerView,
                                mode: mode,
-                               placeholder: placeholder,
-                               composerFormattingEnabled: false,
                                showResizeGrabber: false,
                                isExpanded: .constant(false),
-                               sendAction: { },
-                               editAction: { },
-                               pasteAction: { _ in },
                                cancellationAction: { },
                                onAppearAction: { viewModel.setup() })
     }

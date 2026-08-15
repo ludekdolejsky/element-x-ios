@@ -8,6 +8,7 @@
 
 import Compound
 import MatrixRustSDK
+import SwiftSoup
 import SwiftUI
 import WysiwygComposer
 
@@ -54,14 +55,11 @@ enum ComposerToolbarViewAction {
     case selectedSuggestion(_ suggestion: SuggestionItem)
     
     case voiceMessage(ComposerToolbarVoiceMessageAction)
-    
-    case plainComposerTextChanged
-    case didToggleFormattingOptions
-    case selectedTextChanged
 }
 
 enum ComposerAttachmentType {
     case camera
+    case customEmoji
     case photoLibrary
     case file
     case location
@@ -73,6 +71,7 @@ struct ComposerToolbarViewState: BindableState {
     
     var composerMode: ComposerMode = .default
     var composerEmpty = true
+    var isResolvingCustomEmojis = false
     /// Could be false if sending is disabled in the room
     var canSend = true
     var suggestions: [SuggestionItem] = []
@@ -81,6 +80,10 @@ struct ComposerToolbarViewState: BindableState {
     var isLocationSharingEnabled: Bool
     
     var keyCommands: [WysiwygKeyCommand] = []
+    
+    var canSendStandaloneEmoji: Bool {
+        canSend && composerEmpty && composerMode.isComposingNewMessage
+    }
     
     var bindings: ComposerToolbarViewStateBindings
     
@@ -100,11 +103,7 @@ struct ComposerToolbarViewState: BindableState {
         case .previewVoiceMessage:
             return true
         default:
-            if bindings.composerFormattingEnabled {
-                return !composerEmpty
-            } else {
-                return !bindings.plainComposerText.string.isEmpty
-            }
+            return !composerEmpty
         }
     }
     
@@ -117,7 +116,7 @@ struct ComposerToolbarViewState: BindableState {
     }
     
     var sendButtonDisabled: Bool {
-        if !canSend {
+        if !canSend || isResolvingCustomEmojis {
             return true
         }
         
@@ -125,11 +124,7 @@ struct ComposerToolbarViewState: BindableState {
             return false
         }
         
-        if bindings.composerFormattingEnabled {
-            return composerEmpty
-        } else {
-            return bindings.plainComposerText.string.isEmpty
-        }
+        return composerEmpty
     }
     
     var isVoiceMessageModeActivated: Bool {
@@ -142,6 +137,293 @@ struct ComposerToolbarViewState: BindableState {
     }
 }
 
+nonisolated struct CustomEmojiMessageContent: Equatable {
+    private static let plainTextDraftPrefix = "<!-- io.element.elementx.plain-custom-emoji-draft -->"
+    
+    struct Restoration: Equatable {
+        let html: String
+        let customEmojis: [CustomEmoji]
+    }
+    
+    private struct ParsedCustomEmoji {
+        let emoji: CustomEmoji
+        let isMarked: Bool
+    }
+    
+    let plain: String
+    let html: String?
+    
+    init(emoji: CustomEmoji) {
+        plain = ":\(emoji.shortcode):"
+        html = Self.imageTag(for: emoji)
+    }
+    
+    static func containsPotentialShortcode(in string: String) -> Bool {
+        string.firstMatch(of: /:[+\-\w]+:/) != nil
+    }
+    
+    /// Returns nil when the HTML doesn't contain a recognised shortcode.
+    static func renderingCustomEmojis(in html: String, customEmojis: [CustomEmoji]) -> String? {
+        var emojisByShortcode = [String: CustomEmoji]()
+        for emoji in customEmojis where emojisByShortcode[emoji.shortcode] == nil {
+            emojisByShortcode[emoji.shortcode] = emoji
+        }
+        guard !emojisByShortcode.isEmpty else { return nil }
+        
+        let transformation = transformHTML(html) { text in
+            replacingShortcodes(in: text, emojisByShortcode: emojisByShortcode)
+        } transformTag: { _ in
+            nil
+        }
+        return transformation.changed ? transformation.html : nil
+    }
+    
+    static func renderingCustomEmojis(inPlainText text: String, customEmojis: [CustomEmoji]) -> String? {
+        let html = escapeHTML(text).replacingOccurrences(of: "\n", with: "<br />")
+        return renderingCustomEmojis(in: html, customEmojis: customEmojis)
+    }
+    
+    static func restoringShortcodes(in html: String, fallbackBody: String? = nil) -> String {
+        restoringCustomEmojis(in: html, fallbackBody: fallbackBody).html
+    }
+    
+    static func restoringCustomEmojis(in html: String, fallbackBody: String? = nil) -> Restoration {
+        var customEmojis = [CustomEmoji]()
+        var remainingFallbackShortcodes = [String: Int]()
+        let transformation = transformHTML(html) { text in
+            (text, false)
+        } transformTag: { tag in
+            guard let parsedEmoji = customEmoji(from: tag) else { return nil }
+            let emoji = parsedEmoji.emoji
+            guard parsedEmoji.isMarked || consumeFallbackShortcode(emoji.shortcode,
+                                                                   fallbackBody: fallbackBody,
+                                                                   remainingShortcodes: &remainingFallbackShortcodes) else { return nil }
+            customEmojis.append(emoji)
+            return ":\(emoji.shortcode):"
+        }
+        return Restoration(html: transformation.html, customEmojis: customEmojis)
+    }
+    
+    static func markingPlainTextDraft(_ html: String) -> String {
+        plainTextDraftPrefix + html
+    }
+    
+    static func unmarkingPlainTextDraft(_ html: String) -> String? {
+        guard html.hasPrefix(plainTextDraftPrefix) else { return nil }
+        return String(html.dropFirst(plainTextDraftPrefix.count))
+    }
+    
+    private static let excludedTextTags: Set = ["a", "code", "pre", "script", "style", "textarea"]
+    private static let voidTags: Set = ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]
+    
+    private struct HTMLTagInfo {
+        let name: String
+        let isClosing: Bool
+        let isSelfClosing: Bool
+    }
+    
+    private static func transformHTML(_ html: String,
+                                      transformText: (String) -> (text: String, changed: Bool),
+                                      transformTag: (String) -> String?) -> (html: String, changed: Bool) {
+        var output = ""
+        var cursor = html.startIndex
+        var excludedTagStack = [String]()
+        var changed = false
+        
+        while cursor < html.endIndex {
+            if html[cursor] == "<", findTagEnd(in: html, from: cursor) == nil {
+                let text = String(html[cursor...])
+                if excludedTagStack.isEmpty {
+                    let transformed = transformText(text)
+                    output += transformed.text
+                    changed = changed || transformed.changed
+                } else {
+                    output += text
+                }
+                break
+            }
+            
+            guard html[cursor] == "<",
+                  let tagEnd = findTagEnd(in: html, from: cursor) else {
+                let nextTag = html[cursor...].firstIndex(of: "<") ?? html.endIndex
+                let text = String(html[cursor..<nextTag])
+                if excludedTagStack.isEmpty {
+                    let transformed = transformText(text)
+                    output += transformed.text
+                    changed = changed || transformed.changed
+                } else {
+                    output += text
+                }
+                cursor = nextTag
+                continue
+            }
+            
+            let afterTag = html.index(after: tagEnd)
+            let tag = String(html[cursor..<afterTag])
+            if let replacement = transformTag(tag) {
+                output += replacement
+                changed = true
+                cursor = afterTag
+                continue
+            }
+            
+            output += tag
+            if let info = tagInfo(from: tag), excludedTextTags.contains(info.name) {
+                if info.isClosing {
+                    if let index = excludedTagStack.lastIndex(of: info.name) {
+                        excludedTagStack.remove(at: index)
+                    }
+                } else if !info.isSelfClosing, !voidTags.contains(info.name) {
+                    excludedTagStack.append(info.name)
+                }
+            }
+            cursor = afterTag
+        }
+        
+        return (output, changed)
+    }
+    
+    private static func replacingShortcodes(in text: String,
+                                            emojisByShortcode: [String: CustomEmoji]) -> (text: String, changed: Bool) {
+        var output = ""
+        var cursor = text.startIndex
+        var changed = false
+        
+        for match in text.matches(of: /:[+\-\w]+:/) {
+            output += text[cursor..<match.range.lowerBound]
+            let token = String(text[match.range])
+            let shortcode = String(token.dropFirst().dropLast())
+            if let emoji = emojisByShortcode[shortcode] {
+                output += imageTag(for: emoji)
+                changed = true
+            } else {
+                output += token
+            }
+            cursor = match.range.upperBound
+        }
+        output += text[cursor...]
+        return (output, changed)
+    }
+    
+    private static func findTagEnd(in html: String, from start: String.Index) -> String.Index? {
+        var index = html.index(after: start)
+        var quote: Character?
+        while index < html.endIndex {
+            let character = html[index]
+            if let activeQuote = quote {
+                if character == activeQuote {
+                    quote = nil
+                }
+            } else if character == "\"" || character == "'" {
+                quote = character
+            } else if character == ">" {
+                return index
+            }
+            index = html.index(after: index)
+        }
+        return nil
+    }
+    
+    private static func tagInfo(from tag: String) -> HTMLTagInfo? {
+        guard tag.first == "<", tag.last == ">" else { return nil }
+        var contents = tag.dropFirst().dropLast().drop { $0.isWhitespace }
+        guard contents.first != "!", contents.first != "?" else { return nil }
+        
+        let isClosing = contents.first == "/"
+        if isClosing {
+            contents = contents.dropFirst().drop { $0.isWhitespace }
+        }
+        let name = contents.prefix { $0.isLetter || $0.isNumber }.lowercased()
+        guard !name.isEmpty else { return nil }
+        let isSelfClosing = tag.dropLast().drop { $0.isWhitespace }.last == "/"
+        return HTMLTagInfo(name: name,
+                           isClosing: isClosing,
+                           isSelfClosing: isSelfClosing)
+    }
+    
+    private static func customEmoji(from tag: String) -> ParsedCustomEmoji? {
+        guard let document = try? SwiftSoup.parseBodyFragment(tag),
+              let element = document.body()?.children().first(),
+              element.tagName().caseInsensitiveCompare("img") == .orderedSame,
+              let rawURL = try? element.attr("src"),
+              let imageURL = URL(string: decodeHTMLEntities(rawURL)),
+              imageURL.scheme == "mxc",
+              imageURL.host != nil else {
+            return nil
+        }
+        let isMarked = element.hasAttr("data-mx-emoticon")
+        let title = try? element.attr("title")
+        let alt = try? element.attr("alt")
+        let rawValue: String
+        if let title, !title.isEmpty {
+            rawValue = title
+        } else if isMarked, let alt, !alt.isEmpty {
+            rawValue = alt
+        } else {
+            return nil
+        }
+        
+        let decodedValue = decodeHTMLEntities(rawValue)
+        let shortcode = if decodedValue.first == ":", decodedValue.last == ":", decodedValue.count > 2 {
+            String(decodedValue.dropFirst().dropLast())
+        } else {
+            decodedValue
+        }
+        guard !shortcode.isEmpty,
+              shortcode.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "+" || $0 == "-" }) else {
+            return nil
+        }
+        let decodedAlt = alt.map(decodeHTMLEntities)
+        let body = decodedAlt.flatMap { $0.isEmpty ? nil : $0 } ?? shortcode
+        return ParsedCustomEmoji(emoji: CustomEmoji(shortcode: shortcode, body: body, imageURL: imageURL),
+                                 isMarked: isMarked)
+    }
+    
+    private static func nonOverlappingOccurrences(of token: String, in string: String) -> Int {
+        var count = 0
+        var searchRange = string.startIndex..<string.endIndex
+        while let match = string.range(of: token, range: searchRange) {
+            count += 1
+            searchRange = match.upperBound..<string.endIndex
+        }
+        return count
+    }
+    
+    private static func consumeFallbackShortcode(_ shortcode: String,
+                                                 fallbackBody: String?,
+                                                 remainingShortcodes: inout [String: Int]) -> Bool {
+        guard let fallbackBody else { return false }
+        if remainingShortcodes[shortcode] == nil {
+            remainingShortcodes[shortcode] = nonOverlappingOccurrences(of: ":\(shortcode):", in: fallbackBody)
+        }
+        guard remainingShortcodes[shortcode, default: 0] > 0 else { return false }
+        remainingShortcodes[shortcode, default: 0] -= 1
+        return true
+    }
+    
+    private static func imageTag(for emoji: CustomEmoji) -> String {
+        "<img data-mx-emoticon src=\"\(escapeHTML(emoji.imageURL.absoluteString))\" alt=\"\(escapeHTML(emoji.body))\" title=\"\(escapeHTML(emoji.shortcode))\" height=\"32\" />"
+    }
+    
+    private static func escapeHTML(_ string: String) -> String {
+        string
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+    
+    private static func decodeHTMLEntities(_ string: String) -> String {
+        string
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&apos;", with: "'")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
+    }
+}
+
 struct ComposerToolbarViewStateBindings {
     var plainComposerText: NSAttributedString = .init(string: "")
     var composerFocused = false
@@ -150,8 +432,6 @@ struct ComposerToolbarViewStateBindings {
     var formatItems: [FormatItem] = .init()
     var alertInfo: AlertInfo<UUID>?
     var selectedRange = NSRange(location: 0, length: 0)
-    
-    var presendCallback: (() -> Void)?
 }
 
 /// An item in the toolbar

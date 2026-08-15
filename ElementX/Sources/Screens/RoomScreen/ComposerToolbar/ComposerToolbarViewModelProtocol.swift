@@ -15,6 +15,7 @@ protocol ComposerToolbarViewModelProtocol {
     
     func start()
     func stop()
+    func sendEmoji(_ emoji: EmojiPickerEmojiViewData)
     
     func process(timelineAction: TimelineComposerAction)
 }

@@ -11,6 +11,7 @@ import SwiftUI
 
 struct EmojiPickerScreen: View {
     let context: EmojiPickerScreenViewModel.Context
+    let mediaProvider: MediaProviderProtocol
     
     @State var searchString = ""
     @State private var isSearching = false
@@ -30,13 +31,11 @@ struct EmojiPickerScreen: View {
                                     feedbackGenerator.impactOccurred()
                                     context.send(viewAction: .emojiTapped(emoji: emoji))
                                 } label: {
-                                    Text(emoji.value)
-                                        .padding(9.0)
-                                        .font(.compound.headingXL)
-                                        .background(Circle()
-                                            .foregroundColor(emojiBackgroundColor(for: emoji.value)))
+                                    EmojiPickerItemView(emoji: emoji,
+                                                        isSelected: context.viewState.selectedEmojis.contains(emoji.reactionKey),
+                                                        mediaProvider: mediaProvider)
                                 }
-                                .accessibilityLabel(accessibilityLabel(for: emoji.value))
+                                .accessibilityLabel(accessibilityLabel(for: emoji))
                             }
                         } header: {
                             EmojiPickerScreenHeaderView(title: category.name)
@@ -63,19 +62,11 @@ struct EmojiPickerScreen: View {
         }
     }
     
-    private func accessibilityLabel(for emoji: String) -> String {
-        if context.viewState.selectedEmojis.contains(emoji) {
-            return L10n.a11yRemoveReaction(emoji)
+    private func accessibilityLabel(for emoji: EmojiPickerEmojiViewData) -> String {
+        if context.viewState.selectedEmojis.contains(emoji.reactionKey) {
+            return L10n.a11yRemoveReaction(emoji.label)
         } else {
-            return L10n.a11yAddReaction(emoji)
-        }
-    }
-    
-    private func emojiBackgroundColor(for emoji: String) -> Color {
-        if context.viewState.selectedEmojis.contains(emoji) {
-            return .compound.bgActionPrimaryRest
-        } else {
-            return .clear
+            return L10n.a11yAddReaction(emoji.label)
         }
     }
     
@@ -104,10 +95,10 @@ struct EmojiPickerScreen: View {
 struct EmojiPickerScreen_Previews: PreviewProvider, TestablePreview {
     static let viewModel = EmojiPickerScreenViewModel(selectedEmojis: ["😀", "😄"],
                                                       emojiProvider: EmojiProvider(appSettings: .volatile()),
-                                                      continuation: AsyncStream<String>.makeStream().continuation)
+                                                      continuation: AsyncStream<EmojiPickerEmojiViewData>.makeStream().continuation)
     
     static var previews: some View {
-        EmojiPickerScreen(context: viewModel.context)
+        EmojiPickerScreen(context: viewModel.context, mediaProvider: MediaProviderMock(.init()))
             .previewDisplayName("Screen")
             .snapshotPreferences(expect: viewModel.context.observe(\.viewState.categories).map { !$0.isEmpty })
     }
@@ -116,13 +107,47 @@ struct EmojiPickerScreen_Previews: PreviewProvider, TestablePreview {
 struct EmojiPickerScreenSheet_Previews: PreviewProvider {
     static let viewModel = EmojiPickerScreenViewModel(selectedEmojis: ["😀", "😄"],
                                                       emojiProvider: EmojiProvider(appSettings: .volatile()),
-                                                      continuation: AsyncStream<String>.makeStream().continuation)
+                                                      continuation: AsyncStream<EmojiPickerEmojiViewData>.makeStream().continuation)
     
     static var previews: some View {
         Text("Timeline view")
             .sheet(isPresented: .constant(true)) {
-                EmojiPickerScreen(context: viewModel.context)
+                EmojiPickerScreen(context: viewModel.context, mediaProvider: MediaProviderMock(.init()))
             }
             .previewDisplayName("Sheet")
+    }
+}
+
+private struct EmojiPickerItemView: View {
+    let emoji: EmojiPickerEmojiViewData
+    let isSelected: Bool
+    let mediaProvider: MediaProviderProtocol
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .foregroundColor(isSelected ? .compound.bgActionPrimaryRest : .clear)
+            
+            if let customEmoji = emoji.customEmoji {
+                LoadableImage(url: customEmoji.imageURL,
+                              size: CGSize(width: 36, height: 36),
+                              allowsAnimation: true,
+                              mediaProvider: mediaProvider) { image in
+                    image
+                        .scaledToFit()
+                        .frame(width: 36, height: 36)
+                } placeholder: {
+                    Circle()
+                        .foregroundStyle(.compound.bgSubtleSecondary)
+                        .frame(width: 36, height: 36)
+                }
+                .padding(8)
+                .environment(\.shouldAutomaticallyLoadImages, true)
+            } else {
+                Text(emoji.value)
+                    .padding(9.0)
+                    .font(.compound.headingXL)
+            }
+        }
     }
 }

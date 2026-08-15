@@ -44,6 +44,14 @@ struct RoomAttachmentPicker: View {
             }
             .accessibilityIdentifier(A11yIdentifiers.roomScreen.attachmentPickerPoll)
             
+            if context.viewState.canSendStandaloneEmoji {
+                Button {
+                    context.send(viewAction: .attach(.customEmoji))
+                } label: {
+                    Label(UntranslatedL10n.screenRoomAttachmentSourceCustomEmoji, icon: \.reaction)
+                }
+            }
+            
             if context.viewState.isLocationSharingEnabled {
                 Button {
                     context.send(viewAction: .attach(.location))

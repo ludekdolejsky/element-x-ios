@@ -8,7 +8,7 @@
 
 import Foundation
 
-typealias EmojiPickerScreenContinuation = AsyncStream<String>.Continuation
+typealias EmojiPickerScreenContinuation = AsyncStream<EmojiPickerEmojiViewData>.Continuation
 
 enum EmojiPickerScreenViewModelAction {
     case dismiss
@@ -27,9 +27,14 @@ enum EmojiPickerScreenViewAction {
 
 struct EmojiPickerEmojiCategoryViewData: Identifiable {
     let id: String
+    let nameOverride: String?
     let emojis: [EmojiPickerEmojiViewData]
     
     var name: String {
+        if let nameOverride {
+            return nameOverride
+        }
+        
         switch id {
         case "people":
             return L10n.emojiPickerCategoryPeople
@@ -48,15 +53,20 @@ struct EmojiPickerEmojiCategoryViewData: Identifiable {
         case "flags":
             return L10n.emojiPickerCategoryFlags
         case EmojiCategory.frequentlyUsedCategoryIdentifier:
-            return L10n.commonFrequentlyUsed
+            return L10n.emojiPickerCategoryRecent
         default:
-            MXLog.failure("Missing translation for emoji category with id \(id)")
-            return ""
+            return id
         }
     }
 }
 
-struct EmojiPickerEmojiViewData: Identifiable {
-    var id: String
+nonisolated struct EmojiPickerEmojiViewData: Equatable, Identifiable, Sendable {
+    let id: String
     let value: String
+    let label: String
+    let customEmoji: CustomEmoji?
+    
+    var reactionKey: String {
+        customEmoji?.imageURL.absoluteString ?? value
+    }
 }

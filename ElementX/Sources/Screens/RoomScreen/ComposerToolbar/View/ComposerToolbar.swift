@@ -81,7 +81,7 @@ struct ComposerToolbar: View {
                 }
             }
         }
-        .disabled(!context.viewState.canSend)
+        .disabled(!context.viewState.canSend || context.viewState.isResolvingCustomEmojis)
         .alert(item: $context.alertInfo)
     }
     
@@ -98,7 +98,7 @@ struct ComposerToolbar: View {
             mainTopBarContent
             
             if !context.composerFormattingEnabled {
-                if context.viewState.isUploading {
+                if context.viewState.isUploading || context.viewState.isResolvingCustomEmojis {
                     ProgressView()
                         .scaledFrame(size: Compound.supportsGlass ? 44 : 36, relativeTo: .compound.headingLG)
                         .scaledPadding(.vertical, trailingButtonVerticalPadding, relativeTo: .compound.headingLG)
@@ -173,21 +173,10 @@ struct ComposerToolbar: View {
     }
     
     private var messageComposer: some View {
-        MessageComposer(plainComposerText: $context.plainComposerText,
-                        presendCallback: $context.presendCallback,
-                        selectedRange: $context.selectedRange,
-                        composerView: composerView,
+        MessageComposer(composerView: composerView,
                         mode: context.viewState.composerMode,
-                        placeholder: placeholder,
-                        composerFormattingEnabled: context.composerFormattingEnabled,
                         showResizeGrabber: context.composerFormattingEnabled,
                         isExpanded: $context.composerExpanded) {
-            sendMessage()
-        } editAction: {
-            context.send(viewAction: .editLastMessage)
-        } pasteAction: { providers in
-            context.send(viewAction: .handlePasteOrDrop(providers: providers))
-        } cancellationAction: {
             switch context.viewState.composerMode {
             case .edit:
                 context.send(viewAction: .cancelEdit)
@@ -217,26 +206,13 @@ struct ComposerToolbar: View {
         .onChange(of: composerFocused) { _, newValue in
             context.composerFocused = newValue
         }
-        .onChange(of: context.plainComposerText) {
-            context.send(viewAction: .plainComposerTextChanged)
-        }
-        .onChange(of: context.composerFormattingEnabled) {
-            context.send(viewAction: .didToggleFormattingOptions)
-        }
-        .onChange(of: context.selectedRange) {
-            context.send(viewAction: .selectedTextChanged)
-        }
         .onAppear {
             composerFocused = context.composerFocused
         }
     }
     
     private func sendMessage() {
-        // Allow the inner TextField do apply any final processing before
-        // sending e.g. accepting current autocorrection.
-        // Fixes https://github.com/element-hq/element-x-ios/issues/3216
-        context.presendCallback?()
-        
+        // Let the editor commit pending autocorrection before reading its content.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             context.send(viewAction: .sendMessage)
         }

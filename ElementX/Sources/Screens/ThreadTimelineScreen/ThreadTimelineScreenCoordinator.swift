@@ -49,6 +49,7 @@ final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
     private let appSettings: AppSettings
     
     private var cancellables = Set<AnyCancellable>()
+    private var customEmojiPickerCancellable: AnyCancellable?
     
     private let actionsSubject: PassthroughSubject<ThreadTimelineScreenCoordinatorAction, Never> = .init()
     var actions: AnyPublisher<ThreadTimelineScreenCoordinatorAction, Never> {
@@ -86,7 +87,8 @@ final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
                                                      mentionDisplayHelper: ComposerMentionDisplayHelper(timelineContext: timelineViewModel.context),
                                                      appSettings: parameters.appSettings,
                                                      analyticsService: parameters.analytics,
-                                                     composerDraftService: parameters.composerDraftService)
+                                                     composerDraftService: parameters.composerDraftService,
+                                                     emojiProvider: parameters.emojiProvider)
     }
     
     func start() {
@@ -154,7 +156,11 @@ final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
             .sink { [weak self] action in
                 guard let self else { return }
                 
-                timelineViewModel.process(composerAction: action)
+                if case .attach(.customEmoji) = action {
+                    presentCustomEmojiPicker()
+                } else {
+                    timelineViewModel.process(composerAction: action)
+                }
             }
             .store(in: &cancellables)
         
@@ -167,6 +173,18 @@ final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
         timelineViewModel.stop()
         composerViewModel.stop()
         viewModel.stop()
+    }
+    
+    private func presentCustomEmojiPicker() {
+        let (stream, continuation) = AsyncStream<EmojiPickerEmojiViewData>.makeStream()
+        actionsSubject.send(.presentEmojiPicker(selectedEmojis: [], continuation: continuation))
+        
+        customEmojiPickerCancellable = Task { [weak self] in
+            for await emoji in stream {
+                self?.composerViewModel.sendEmoji(emoji)
+            }
+        }
+        .asCancellable()
     }
     
     func toPresentable() -> AnyView {
