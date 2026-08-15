@@ -92,7 +92,7 @@ class EmojiProvider: EmojiProviderProtocol {
                 let searchArray = [emoji.label + emoji.unicode] + emoji.shortcodes + emoji.keywords
                 return searchArray.description.range(of: searchString, options: .caseInsensitive) != nil
             }
-            return emojis.isEmpty ? nil : EmojiCategory(id: category.id, emojis: emojis)
+            return emojis.isEmpty ? nil : EmojiCategory(id: category.id, name: category.name, emojis: emojis)
         }
     }
     
@@ -135,5 +135,6 @@ extension EmojiItem {
         label = emojibase.label
         shortcodes = emojibase.shortcodes
         keywords = emojibase.tags ?? []
+        customEmoji = nil
     }
 }
