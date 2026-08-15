@@ -328,6 +328,27 @@ class MockScreen: Identifiable {
             let coordinator = RoomScreenCoordinator(parameters: parameters)
             navigationStackCoordinator.setRootCoordinator(coordinator)
             return navigationStackCoordinator
+        case .roomSanitizedCustomEmojiTimeline:
+            let navigationStackCoordinator = NavigationStackCoordinator()
+            let timelineController = TimelineControllerMock(.init(timelineItems: TimelineFixtures.sanitizedCustomEmojiChunk))
+            let parameters = RoomScreenCoordinatorParameters(userSession: UserSessionMock(.init()),
+                                                             roomProxy: JoinedRoomProxyMock(.init(name: "Custom emoji")),
+                                                             timelineController: timelineController,
+                                                             mediaPlayerProvider: MediaPlayerProviderMock(),
+                                                             emojiProvider: EmojiProvider(appSettings: appSettings),
+                                                             linkMetadataProvider: LinkMetadataProvider(),
+                                                             completionSuggestionService: CompletionSuggestionServiceMock(configuration: .init()),
+                                                             ongoingCallRoomIDPublisher: .init(.init(nil)),
+                                                             appMediator: AppMediatorMock(.init()),
+                                                             appSettings: appSettings,
+                                                             appHooks: AppHooks(),
+                                                             analytics: analytics,
+                                                             composerDraftService: ComposerDraftServiceMock(.init()),
+                                                             timelineControllerFactory: TimelineControllerFactoryMock(.init()),
+                                                             userIndicatorController: UserIndicatorControllerMock())
+            let coordinator = RoomScreenCoordinator(parameters: parameters)
+            navigationStackCoordinator.setRootCoordinator(coordinator)
+            return navigationStackCoordinator
         case .roomSmallTimelineWithReactions:
             let navigationStackCoordinator = NavigationStackCoordinator()
             let timelineController = TimelineControllerMock(.init(timelineItems: TimelineFixtures.default))
