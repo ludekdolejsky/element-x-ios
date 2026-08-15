@@ -1,0 +1,23 @@
+//
+// Copyright 2026 Nitrovery Ltd.
+//
+// SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Element-Commercial.
+// Please see LICENSE files in the repository root for full details.
+//
+
+@testable import ElementX
+import Testing
+
+struct NitroConfigurationTests {
+    @Test
+    func loadsNitroVariantValues() {
+        #expect(NitroConfiguration.isEnabled)
+        #expect(NitroConfiguration.pushGatewayBaseURL == "https://push.nitrovery.com")
+        #expect(NitroConfiguration.reminderBaseURL == "https://matrix-bot.nitrovery.com")
+        #expect(NitroConfiguration.transcriptionBaseURL == "https://matrix-bot.nitrovery.com")
+        #expect(InfoPlistReader.main.classicAppGroupIdentifier == nil)
+        #expect(InfoPlistReader.main.classicAppKeychainServiceIdentifier == nil)
+        #expect(InfoPlistReader.main.classicAppKeychainAccessGroupIdentifier == nil)
+        #expect(InfoPlistReader.main.classicAppDeepLinkURL == nil)
+    }
+}

@@ -17,6 +17,11 @@ nonisolated struct InfoPlistReader {
         static let bundleDisplayName = "CFBundleDisplayName"
         static let productionAppName = "productionAppName"
         static let isNightlyBuild = "isNightlyBuild"
+        static let isNitroBuild = "isNitroBuild"
+        static let notificationFilteringEnabled = "notificationFilteringEnabled"
+        static let nitroPushGatewayBaseURL = "nitroPushGatewayBaseURL"
+        static let nitroReminderBaseURL = "nitroReminderBaseURL"
+        static let nitroTranscriptionBaseURL = "nitroTranscriptionBaseURL"
         static let utExportedTypeDeclarationsKey = "UTExportedTypeDeclarations"
         static let utTypeIdentifierKey = "UTTypeIdentifier"
         static let utDescriptionKey = "UTTypeDescription"
@@ -100,6 +105,28 @@ nonisolated struct InfoPlistReader {
         infoPlistValue(forKey: Keys.isNightlyBuild)
     }
     
+    /// Whether or not the build uses the Nitro app variant.
+    var isNitroBuild: Bool {
+        optionalBoolInfoPlistValue(forKey: Keys.isNitroBuild) ?? false
+    }
+    
+    /// Whether the target is provisioned with Apple's notification filtering entitlement.
+    var notificationFilteringEnabled: Bool {
+        optionalBoolInfoPlistValue(forKey: Keys.notificationFilteringEnabled) ?? true
+    }
+    
+    var nitroPushGatewayBaseURL: URL? {
+        urlInfoPlistValue(forKey: Keys.nitroPushGatewayBaseURL)
+    }
+    
+    var nitroReminderBaseURL: URL? {
+        urlInfoPlistValue(forKey: Keys.nitroReminderBaseURL)
+    }
+    
+    var nitroTranscriptionBaseURL: URL? {
+        urlInfoPlistValue(forKey: Keys.nitroTranscriptionBaseURL)
+    }
+    
     // MARK: - Custom App Scheme
     
     var appScheme: String {
@@ -126,20 +153,19 @@ nonisolated struct InfoPlistReader {
     // MARK: - Sign in with Classic app
     
     var classicAppGroupIdentifier: String? {
-        infoPlistValue(forKey: Keys.classicAppGroupIdentifier)
+        nonEmptyStringInfoPlistValue(forKey: Keys.classicAppGroupIdentifier)
     }
     
     var classicAppKeychainServiceIdentifier: String? {
-        infoPlistValue(forKey: Keys.classicAppKeychainServiceIdentifier)
+        nonEmptyStringInfoPlistValue(forKey: Keys.classicAppKeychainServiceIdentifier)
     }
     
     var classicAppKeychainAccessGroupIdentifier: String? {
-        infoPlistValue(forKey: Keys.classicAppKeychainAccessGroupIdentifier)
+        nonEmptyStringInfoPlistValue(forKey: Keys.classicAppKeychainAccessGroupIdentifier)
     }
     
     var classicAppDeepLinkURL: URL? {
-        let urlString: String? = infoPlistValue(forKey: Keys.classicAppDeepLinkURL)
-        return urlString.flatMap { URL(string: $0) }
+        urlInfoPlistValue(forKey: Keys.classicAppDeepLinkURL)
     }
     
     // MARK: - Private
@@ -159,6 +185,21 @@ nonisolated struct InfoPlistReader {
     private func infoPlistValue(forKey key: String) -> Bool {
         // Build setting values are stored as strings ("YES"/"NO")…
         (infoPlistValue(forKey: key) as NSString).boolValue
+    }
+    
+    private func optionalBoolInfoPlistValue(forKey key: String) -> Bool? {
+        (bundle.object(forInfoDictionaryKey: key) as? NSString)?.boolValue
+    }
+    
+    private func nonEmptyStringInfoPlistValue(forKey key: String) -> String? {
+        guard let value = bundle.object(forInfoDictionaryKey: key) as? String, !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+    
+    private func urlInfoPlistValue(forKey key: String) -> URL? {
+        nonEmptyStringInfoPlistValue(forKey: key).flatMap { URL(string: $0) }
     }
     
     private func customSchemeForName(_ name: String) -> String {

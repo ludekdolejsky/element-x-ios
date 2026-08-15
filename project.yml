@@ -68,7 +68,7 @@ include:
 - path: Components/MapLibre/MapLibreInterface/SupportingFiles/target.yml
 - path: Components/MapLibre/MapLibreShim/SupportingFiles/target.yml
 - path: Components/SDKMocks/SupportingFiles/target.yml
-# - path: MyAppVariant/override.yml
+- path: Components/Variants/Nitro/nitro.yml
 
 packages:
   # Element/Matrix dependencies
@@ -174,4 +174,3 @@ aggregateTargets:
         export PATH="$PATH:/opt/homebrew/bin"
         periphery scan --format xcode
       basedOnDependencyAnalysis: false
-

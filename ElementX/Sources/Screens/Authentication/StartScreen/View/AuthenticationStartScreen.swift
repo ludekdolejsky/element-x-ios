@@ -146,7 +146,7 @@ struct AuthenticationStartScreen: View {
     
     @ViewBuilder
     var developerOptionsButton: some View {
-        if AppSettings.appBuildType != .release, !ProcessInfo.isRunningTests {
+        if NitroConfiguration.isEnabled || AppSettings.appBuildType != .release, !ProcessInfo.isRunningTests {
             Button { context.send(viewAction: .developerOptions) } label: {
                 CompoundIcon(\.code)
                     .foregroundStyle(.compound.iconSecondary)

@@ -85,6 +85,7 @@ final class NotificationManagerTests {
             Issue.record("Http kind expected")
             return
         }
+        #expect(appSettings.pushGatewayBaseURL == "https://push.nitrovery.com")
         #expect(data.url == appSettings.pushGatewayNotifyEndpoint.absoluteString)
         #expect(data.format == .eventIdOnly)
         let defaultPayload = APNSPayload(aps: APSInfo(mutableContent: 1,

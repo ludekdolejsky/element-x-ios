@@ -37,7 +37,7 @@ struct SettingsScreen: View {
             
             signOutSection
             
-            if context.viewState.showDeveloperOptions {
+            if NitroConfiguration.isEnabled || context.viewState.showDeveloperOptions {
                 developerOptionsSection
             }
         }
@@ -224,7 +224,7 @@ struct SettingsScreen: View {
                         })
             }
         } footer: {
-            if !context.viewState.showDeveloperOptions {
+            if !NitroConfiguration.isEnabled, !context.viewState.showDeveloperOptions {
                 versionSection
             }
         }

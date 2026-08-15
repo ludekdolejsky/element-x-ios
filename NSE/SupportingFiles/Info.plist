@@ -33,8 +33,12 @@
 	<string>$(BASE_BUNDLE_IDENTIFIER)</string>
 	<key>isNightlyBuild</key>
 	<string>$(IS_NIGHTLY_BUILD)</string>
+	<key>isNitroBuild</key>
+	<string>$(IS_NITRO_BUILD)</string>
 	<key>keychainAccessGroupIdentifier</key>
 	<string>$(KEYCHAIN_ACCESS_GROUP_IDENTIFIER)</string>
+	<key>notificationFilteringEnabled</key>
+	<string>$(NOTIFICATION_FILTERING_ENABLED)</string>
 	<key>productionAppName</key>
 	<string>$(PRODUCTION_APP_NAME)</string>
 </dict>
