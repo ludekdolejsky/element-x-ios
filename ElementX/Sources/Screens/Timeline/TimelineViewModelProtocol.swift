@@ -15,6 +15,7 @@ protocol TimelineViewModelProtocol {
     var context: TimelineViewModel.Context { get }
     
     func process(composerAction: ComposerToolbarViewModelAction)
+    func stop()
     /// Updates the timeline to show and highlight the item with the corresponding event ID.
     func focusOnEvent(eventID: String) async
     /// Stops the current live location sharing

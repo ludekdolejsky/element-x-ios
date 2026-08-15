@@ -17,6 +17,7 @@ nonisolated struct InfoPlistReader {
         static let bundleDisplayName = "CFBundleDisplayName"
         static let productionAppName = "productionAppName"
         static let isNightlyBuild = "isNightlyBuild"
+        static let notificationFilteringEnabled = "notificationFilteringEnabled"
         static let utExportedTypeDeclarationsKey = "UTExportedTypeDeclarations"
         static let utTypeIdentifierKey = "UTTypeIdentifier"
         static let utDescriptionKey = "UTTypeDescription"
@@ -98,6 +99,11 @@ nonisolated struct InfoPlistReader {
     /// Whether or not the build is from the Nightly stream.
     var isNightlyBuild: Bool {
         infoPlistValue(forKey: Keys.isNightlyBuild)
+    }
+    
+    /// Whether the target is provisioned with Apple's notification filtering entitlement.
+    var notificationFilteringEnabled: Bool {
+        infoPlistValue(forKey: Keys.notificationFilteringEnabled)
     }
     
     // MARK: - Custom App Scheme

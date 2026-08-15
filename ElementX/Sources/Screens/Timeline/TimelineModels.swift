@@ -76,6 +76,8 @@ enum TimelineViewAction {
     case handlePasteOrDrop(providers: [NSItemProvider])
     case handlePollAction(TimelineViewPollAction)
     case handleAudioPlayerAction(TimelineAudioPlayerAction)
+    case sendTranscriptToThread(NitroTranscriptInfo)
+    case dismissNitroReminderCreate
     
     case stopLiveLocationSharing(TimelineItemIdentifier)
     
@@ -191,6 +193,23 @@ struct TimelineViewStateBindings {
     
     var showTranslation = false
     var textToBeTranslated: String?
+    
+    var nitroTranscriptInfo: NitroTranscriptInfo?
+    var nitroReminderCreateViewModel: NitroReminderCreateScreenViewModel?
+}
+
+struct NitroTranscriptInfo: Equatable, Identifiable {
+    let itemID: TimelineItemIdentifier
+    let text: String
+    
+    var id: TimelineItemIdentifier {
+        itemID
+    }
+}
+
+enum NitroAudioTranscriptionRequest: Hashable {
+    case currentVoiceMessage
+    case timeline(itemID: TimelineItemIdentifier, sendToThread: Bool)
 }
 
 struct TimelineItemActionMenuInfo: Equatable, Identifiable {
@@ -221,6 +240,7 @@ struct ReadReceiptSummaryInfo: Identifiable {
 
 enum TimelineAlertInfoType: Hashable {
     case audioRecodingPermissionError
+    case audioTranscriptionConsent(NitroAudioTranscriptionRequest)
     case pollEndConfirmation(String)
     case sendingFailed
     case encryptionAuthenticity(String)
@@ -354,6 +374,8 @@ extension TimelineViewState {
             return plainBody
         }
         
+        replaceCustomEmojiAttachments(in: attributedString)
+        
         let range = NSRange(location: 0, length: attributedString.length)
         attributedString.enumerateAttributes(in: range) { attributes, range, _ in
             if let userID = attributes[.MatrixUserID] as? String {
@@ -392,5 +414,24 @@ extension TimelineViewState {
         }
         
         return attributedString.string
+    }
+    
+    private func replaceCustomEmojiAttachments(in attributedString: NSMutableAttributedString) {
+        let range = NSRange(location: 0, length: attributedString.length)
+        var replacements = [(range: NSRange, text: String)]()
+        
+        attributedString.enumerateAttribute(.attachment, in: range) { value, range, _ in
+            guard let attachment = value as? PillTextAttachment,
+                  let pillData = attachment.pillData,
+                  case .customEmoji(_, let alt, let shortcode) = pillData.type else {
+                return
+            }
+            let fallback = shortcode.map { ":\($0):" } ?? alt ?? "[emoji]"
+            replacements.append((range, fallback))
+        }
+        
+        for replacement in replacements.reversed() {
+            attributedString.replaceCharacters(in: replacement.range, with: replacement.text)
+        }
     }
 }

@@ -19,6 +19,7 @@ final class ComposerToolbarViewModelTests {
     private var viewModel: ComposerToolbarViewModel!
     private var completionSuggestionServiceMock: CompletionSuggestionServiceMock!
     private var draftServiceMock: ComposerDraftServiceMock!
+    private var appSettings: AppSettings!
     
     init() {
         setUpViewModel()
@@ -61,6 +62,24 @@ final class ComposerToolbarViewModelTests {
     }
     
     @Test
+    func formattingToolbarIsCollapsedByDefault() {
+        #expect(!viewModel.state.bindings.composerFormattingEnabled)
+    }
+    
+    @Test
+    func enablingFormattingPreservesComposerAndSelection() {
+        viewModel.process(viewAction: .composerAppeared)
+        wysiwygViewModel.setMarkdownContent("Keep this text")
+        let selection = NSRange(location: 5, length: 4)
+        wysiwygViewModel.textView.selectedRange = selection
+        
+        viewModel.process(viewAction: .enableTextFormatting)
+        
+        #expect(wysiwygViewModel.content.markdown == "Keep this text")
+        #expect(wysiwygViewModel.textView.selectedRange == selection)
+    }
+    
+    @Test
     func rteEnabledAfterSendingMessage() {
         viewModel.process(viewAction: .enableTextFormatting)
         #expect(viewModel.state.bindings.composerFocused)
@@ -99,16 +118,18 @@ final class ComposerToolbarViewModelTests {
     
     @Test
     func suggestionTrigger() async throws {
-        let deferred = deferFulfillment(wysiwygViewModel.$attributedContent) { $0.plainText == "#room-alias-test" }
+        let deferred = deferFulfillment(wysiwygViewModel.$attributedContent) { $0.plainText == "Say :meats" }
         wysiwygViewModel.setMarkdownContent("@user-test")
         wysiwygViewModel.setMarkdownContent("#room-alias-test")
+        wysiwygViewModel.setMarkdownContent("Say :meats")
         try await deferred.fulfill()
         
         // The first one is nil because when initialised the view model is empty
         #expect(completionSuggestionServiceMock.setSuggestionTriggerReceivedInvocations == [nil,
                                                                                             .init(type: .user, text: "user-test", range: .init(location: 0, length: 10)),
                                                                                             .init(type: .room, text: "room-alias-test",
-                                                                                                  range: .init(location: 0, length: 16))])
+                                                                                                  range: .init(location: 0, length: 16)),
+                                                                                            .init(type: .emoji, text: "meats", range: .init(location: 4, length: 6))])
     }
     
     @Test
@@ -201,12 +222,374 @@ final class ComposerToolbarViewModelTests {
         try await deferred.fulfill()
     }
     
+    @Test
+    func sendCustomEmoji() async throws {
+        let customEmoji = try CustomEmoji(shortcode: "party\"",
+                                          body: "A&B \"<>\"",
+                                          imageURL: #require(URL(string: "mxc://example.org/party")))
+        let emoji = EmojiPickerEmojiViewData(id: "party",
+                                             value: ":party:",
+                                             label: "Party",
+                                             customEmoji: customEmoji)
+        let expectedHTML = #"<img data-mx-emoticon src="mxc://example.org/party" alt="A&amp;B &quot;&lt;&gt;&quot;" title="party&quot;" height="32" />"#
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(plain, html, mode, intentionalMentions) = action else {
+                return false
+            }
+            return plain == ":party\":" &&
+                html == expectedHTML &&
+                mode == .default &&
+                intentionalMentions == .empty
+        }
+        
+        viewModel.sendEmoji(emoji)
+        
+        try await deferred.fulfill()
+    }
+    
+    @Test
+    func selectedCustomEmojiSuggestionUsesShortcodeWithCollapsedToolbar() throws {
+        let customEmoji = try CustomEmoji(shortcode: "meatspin",
+                                          body: "Meatspin",
+                                          imageURL: #require(URL(string: "mxc://example.org/meatspin")))
+        let emojiItem = EmojiItem(label: "Meatspin",
+                                  unicode: ":meatspin:",
+                                  keywords: [],
+                                  shortcodes: ["meatspin"],
+                                  customEmoji: customEmoji)
+        let suggestion = SuggestionItem(suggestionType: .emoji(emojiItem),
+                                        range: .init(location: 0, length: 6),
+                                        rawSuggestionText: "meats")
+        wysiwygViewModel.setMarkdownContent(":meats")
+        
+        viewModel.context.send(viewAction: .selectedSuggestion(suggestion))
+        
+        #expect(wysiwygViewModel.content.markdown == ":meatspin:")
+        #expect(wysiwygViewModel.textView.selectedRange == .init(location: 10, length: 0))
+    }
+    
+    @Test
+    func selectedCustomEmojiSuggestionUsesShortcodeInRichComposer() throws {
+        let customEmoji = try CustomEmoji(shortcode: "meatspin",
+                                          body: "Meatspin",
+                                          imageURL: #require(URL(string: "mxc://example.org/meatspin")))
+        let emojiItem = EmojiItem(label: "Meatspin",
+                                  unicode: ":meatspin:",
+                                  keywords: [],
+                                  shortcodes: ["meatspin"],
+                                  customEmoji: customEmoji)
+        let suggestion = SuggestionItem(suggestionType: .emoji(emojiItem),
+                                        range: .init(location: 4, length: 4),
+                                        rawSuggestionText: "mea")
+        wysiwygViewModel.setMarkdownContent("Say :mea")
+        wysiwygViewModel.setMarkdownContent("Say :meats")
+        
+        viewModel.context.send(viewAction: .selectedSuggestion(suggestion))
+        
+        #expect(wysiwygViewModel.content.markdown == "Say :meatspin:")
+        #expect(wysiwygViewModel.textView.selectedRange == .init(location: 14, length: 0))
+    }
+    
+    @Test
+    func selectedSystemEmojiSuggestionUsesUnicodeWithCollapsedToolbar() {
+        let emojiItem = EmojiItem(label: "Grinning face",
+                                  unicode: "😀",
+                                  keywords: ["smile"],
+                                  shortcodes: ["grinning"])
+        let suggestion = SuggestionItem(suggestionType: .emoji(emojiItem),
+                                        range: .init(location: 4, length: 4),
+                                        rawSuggestionText: "gri")
+        wysiwygViewModel.setMarkdownContent("Say :gri now")
+        
+        viewModel.context.send(viewAction: .selectedSuggestion(suggestion))
+        
+        #expect(wysiwygViewModel.content.markdown == "Say 😀 now")
+        #expect(wysiwygViewModel.textView.selectedRange == .init(location: 6, length: 0))
+    }
+    
+    @Test
+    func customEmojiFormatterOnlyTransformsEligibleTextNodes() throws {
+        let customEmoji = try CustomEmoji(shortcode: "meatspin",
+                                          body: "Meatspin",
+                                          imageURL: #require(URL(string: "mxc://example.org/meatspin")))
+        let source = #"<p>:meatspin: <code>:meatspin:</code> <a href=":meatspin:">:meatspin:</a> :unknown:</p>"#
+        let image = #"<img data-mx-emoticon src="mxc://example.org/meatspin" alt="Meatspin" title="meatspin" height="32" />"#
+        
+        let result = CustomEmojiMessageContent.renderingCustomEmojis(in: source, customEmojis: [customEmoji])
+        
+        #expect(result == "<p>\(image) <code>:meatspin:</code> <a href=\":meatspin:\">:meatspin:</a> :unknown:</p>")
+    }
+    
+    @Test
+    func customEmojiFormatterUsesFirstDuplicateShortcode() throws {
+        let currentEmoji = try CustomEmoji(shortcode: "shared",
+                                           body: "Current",
+                                           imageURL: #require(URL(string: "mxc://example.org/current")))
+        let globalEmoji = try CustomEmoji(shortcode: "shared",
+                                          body: "Global",
+                                          imageURL: #require(URL(string: "mxc://example.org/global")))
+        
+        let result = CustomEmojiMessageContent.renderingCustomEmojis(in: ":shared:",
+                                                                     customEmojis: [currentEmoji, globalEmoji])
+        
+        #expect(result?.contains(#"src="mxc://example.org/current""#) == true)
+        #expect(result?.contains("mxc://example.org/global") == false)
+    }
+    
+    @Test
+    func customEmojiFormatterRestoresShortcodeForEditing() {
+        let source = #"<strong>Hello</strong> <img data-mx-emoticon src="mxc://example.org/meatspin" alt="Meatspin" title="meatspin" height="32" />"#
+        
+        #expect(CustomEmojiMessageContent.restoringShortcodes(in: source) == "<strong>Hello</strong> :meatspin:")
+    }
+    
+    @Test
+    func customEmojiFormatterRestoresExactMetadataForRoundTrip() throws {
+        let source = #"<img data-mx-emoticon src="mxc://original.example/asset" alt="Original body" title="shared" height="32" />"#
+        
+        let restoration = CustomEmojiMessageContent.restoringCustomEmojis(in: source)
+        let emoji = try #require(restoration.customEmojis.first)
+        
+        #expect(restoration.html == ":shared:")
+        #expect(emoji.shortcode == "shared")
+        #expect(emoji.body == "Original body")
+        #expect(emoji.imageURL.absoluteString == "mxc://original.example/asset")
+    }
+    
+    @Test
+    func customEmojiFormatterRestoresSanitizedEmojiUsingPlainFallback() throws {
+        let source = #"Look <img src="mxc://original.example/asset" alt="Original body" title="shared" height="32" /> now"#
+        
+        let restoration = CustomEmojiMessageContent.restoringCustomEmojis(in: source, fallbackBody: "Look :shared: now")
+        let emoji = try #require(restoration.customEmojis.first)
+        
+        #expect(restoration.html == "Look :shared: now")
+        #expect(emoji.shortcode == "shared")
+        #expect(emoji.body == "Original body")
+        #expect(emoji.imageURL.absoluteString == "mxc://original.example/asset")
+    }
+    
+    @Test
+    func customEmojiFormatterRequiresExactEmoticonAttribute() {
+        let source = #"<img src="mxc://example.org/plain" alt="contains data-mx-emoticon text" title="plain" />"#
+        
+        #expect(CustomEmojiMessageContent.restoringShortcodes(in: source) == source)
+    }
+    
+    @Test
+    func sendCustomEmojiShortcodePreservesPlainFallback() async throws {
+        let customEmoji = try CustomEmoji(shortcode: "meatspin",
+                                          body: "Meatspin",
+                                          imageURL: #require(URL(string: "mxc://example.org/meatspin")))
+        let emojiItem = EmojiItem(label: "Meatspin",
+                                  unicode: ":meatspin:",
+                                  keywords: [],
+                                  shortcodes: ["meatspin"],
+                                  customEmoji: customEmoji)
+        setUpViewModel(emojiProvider: ComposerTestEmojiProvider(categories: [.init(id: "custom", emojis: [emojiItem])]))
+        wysiwygViewModel.setMarkdownContent("Hello :meatspin:")
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(plain, html, _, _) = action else { return false }
+            return plain == "Hello :meatspin:"
+                && html?.contains("data-mx-emoticon") == true
+                && html?.contains("title=\"meatspin\"") == true
+        }
+        
+        viewModel.context.send(viewAction: .sendMessage)
+        
+        try await deferred.fulfill()
+    }
+    
+    @Test
+    func sendCustomEmojiWithCollapsedToolbarPreservesLiteralText() async throws {
+        let customEmoji = try CustomEmoji(shortcode: "meatspin",
+                                          body: "Meatspin",
+                                          imageURL: #require(URL(string: "mxc://example.org/meatspin")))
+        let emojiItem = EmojiItem(label: "Meatspin",
+                                  unicode: ":meatspin:",
+                                  keywords: [],
+                                  shortcodes: ["meatspin"],
+                                  customEmoji: customEmoji)
+        setUpViewModel(emojiProvider: ComposerTestEmojiProvider(categories: [.init(id: "custom", emojis: [emojiItem])]))
+        let source = "**literal** <tag> :meatspin:\n_next_"
+        wysiwygViewModel.setHtmlContent("**literal** &lt;tag&gt; :meatspin:<br />_next_")
+        let image = #"<img data-mx-emoticon src="mxc://example.org/meatspin" alt="Meatspin" title="meatspin" height="32" />"#
+        let expectedHTML = "**literal** &lt;tag&gt; \(image)<br />_next_"
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(plain, html, _, _) = action else { return false }
+            return plain == source && html == expectedHTML
+        }
+        
+        viewModel.context.send(viewAction: .sendMessage)
+        
+        try await deferred.fulfill()
+    }
+    
+    @Test
+    func sendCustomEmojiShortcodeFromRichComposerPreservesFallbackAndFormatting() async throws {
+        let customEmoji = try CustomEmoji(shortcode: "meatspin",
+                                          body: "Meatspin",
+                                          imageURL: #require(URL(string: "mxc://example.org/meatspin")))
+        let emojiItem = EmojiItem(label: "Meatspin",
+                                  unicode: ":meatspin:",
+                                  keywords: [],
+                                  shortcodes: ["meatspin"],
+                                  customEmoji: customEmoji)
+        setUpViewModel(emojiProvider: ComposerTestEmojiProvider(categories: [.init(id: "custom", emojis: [emojiItem])]))
+        wysiwygViewModel.setMarkdownContent("**Hello** :meatspin:")
+        let expectedPlain = wysiwygViewModel.content.markdown
+        #expect(expectedPlain.contains(":meatspin:"))
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(plain, html, _, _) = action else { return false }
+            return plain == expectedPlain
+                && html?.contains("<strong>Hello</strong>") == true
+                && html?.contains("data-mx-emoticon") == true
+                && html?.contains("title=\"meatspin\"") == true
+        }
+        
+        viewModel.context.send(viewAction: .sendMessage)
+        
+        try await deferred.fulfill()
+    }
+    
+    @Test
+    func loadsEmojiProviderBeforeSendingShortcodeWithColdCache() async throws {
+        let customEmoji = try CustomEmoji(shortcode: "meatspin",
+                                          body: "Meatspin",
+                                          imageURL: #require(URL(string: "mxc://example.org/meatspin")))
+        let emojiItem = EmojiItem(label: "Meatspin",
+                                  unicode: ":meatspin:",
+                                  keywords: [],
+                                  shortcodes: ["meatspin"],
+                                  customEmoji: customEmoji)
+        let emojiProvider = ComposerTestEmojiProvider(categories: [.init(id: "custom", emojis: [emojiItem])],
+                                                      cacheLoaded: false)
+        setUpViewModel(emojiProvider: emojiProvider)
+        wysiwygViewModel.setMarkdownContent("Hello :meatspin:")
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(plain, html, _, _) = action else { return false }
+            return plain == "Hello :meatspin:"
+                && html?.contains("data-mx-emoticon") == true
+                && html?.contains("title=\"meatspin\"") == true
+        }
+        
+        viewModel.context.send(viewAction: .sendMessage)
+        
+        try await deferred.fulfill()
+        #expect(emojiProvider.categoryRequests == 1)
+    }
+    
+    @Test(arguments: [true, false])
+    func editingCustomEmojiPreservesOriginalMXCOverProviderDuplicate(formattingEnabled: Bool) async throws {
+        let providerEmoji = try CustomEmoji(shortcode: "shared",
+                                            body: "Provider",
+                                            imageURL: #require(URL(string: "mxc://provider.example/asset")))
+        let providerItem = EmojiItem(label: "Provider",
+                                     unicode: ":shared:",
+                                     keywords: [],
+                                     shortcodes: ["shared"],
+                                     customEmoji: providerEmoji)
+        setUpViewModel(emojiProvider: ComposerTestEmojiProvider(categories: [.init(id: "custom", emojis: [providerItem])]))
+        viewModel.context.composerFormattingEnabled = formattingEnabled
+        let sourceHTML = #"Hello <img data-mx-emoticon src="mxc://original.example/asset" alt="Original" title="shared" height="32" />"#
+        viewModel.process(timelineAction: .setText(plainText: "Hello :shared:", htmlText: sourceHTML))
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(_, html, _, _) = action else { return false }
+            return html?.contains("mxc://original.example/asset") == true
+                && html?.contains("mxc://provider.example/asset") == false
+        }
+        
+        viewModel.process(viewAction: .sendMessage)
+        
+        try await deferred.fulfill()
+    }
+    
+    @Test
+    func editingSanitizedCustomEmojiRestoresTextAndPreservesOriginalMXC() async throws {
+        let sourceHTML = #"Hello <img src="mxc://original.example/asset" alt="Original" title="shared" height="32" />"#
+        viewModel.process(timelineAction: .setText(plainText: "Hello :shared:", htmlText: sourceHTML))
+        
+        #expect(wysiwygViewModel.content.markdown == "Hello :shared:")
+        #expect(!wysiwygViewModel.isContentEmpty)
+        
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(plain, html, _, _) = action else { return false }
+            return plain == "Hello :shared:"
+                && html?.contains("mxc://original.example/asset") == true
+                && html?.contains("data-mx-emoticon") == true
+        }
+        viewModel.process(viewAction: .sendMessage)
+        try await deferred.fulfill()
+    }
+    
+    @Test
+    func customEmojiDraftPreservesOriginalMXCAndCollapsedToolbar() async throws {
+        let sourceHTML = #"Hello <img data-mx-emoticon src="mxc://original.example/asset" alt="Original" title="shared" height="32" />"#
+        viewModel.context.composerFormattingEnabled = false
+        viewModel.process(timelineAction: .setText(plainText: "Hello :shared:", htmlText: sourceHTML))
+        
+        var capturedDraft: ComposerDraftProxy?
+        await waitForConfirmation("Save custom emoji draft") { confirmation in
+            draftServiceMock.saveDraftClosure = { draft in
+                capturedDraft = draft
+                confirmation()
+                return .success(())
+            }
+            viewModel.saveDraft()
+        }
+        let draft = try #require(capturedDraft)
+        let draftHTML = try #require(draft.htmlText)
+        #expect(draftHTML.contains("mxc://original.example/asset"))
+        
+        setUpViewModel { .success(draft) }
+        await viewModel.loadDraft()
+        #expect(!viewModel.context.composerFormattingEnabled)
+        #expect(viewModel.context.plainComposerText.string == "Hello :shared:")
+        
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(_, html, _, _) = action else { return false }
+            return html?.contains("mxc://original.example/asset") == true
+        }
+        viewModel.process(viewAction: .sendMessage)
+        try await deferred.fulfill()
+    }
+    
+    @Test
+    func encryptedRoomRequiresCustomEmojiMediaAcknowledgement() async throws {
+        let customEmoji = try CustomEmoji(shortcode: "meatspin",
+                                          body: "Meatspin",
+                                          imageURL: #require(URL(string: "mxc://example.org/meatspin")))
+        let emojiItem = EmojiItem(label: "Meatspin",
+                                  unicode: ":meatspin:",
+                                  keywords: [],
+                                  shortcodes: ["meatspin"],
+                                  customEmoji: customEmoji)
+        setUpViewModel(emojiProvider: ComposerTestEmojiProvider(categories: [.init(id: "custom", emojis: [emojiItem])]),
+                       isEncrypted: true)
+        viewModel.context.composerFormattingEnabled = false
+        wysiwygViewModel.setMarkdownContent(":meatspin:")
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case .sendMessage = action else { return false }
+            return true
+        }
+        let alertDeferred = deferFulfillment(viewModel.context.$viewState) { $0.bindings.alertInfo != nil }
+        
+        viewModel.process(viewAction: .sendMessage)
+        try await alertDeferred.fulfill()
+        #expect(viewModel.context.alertInfo != nil)
+        #expect(!appSettings.hasAcknowledgedCustomEmojiMediaWarning)
+        viewModel.context.alertInfo?.secondaryButton?.action?()
+        
+        try await deferred.fulfill()
+        #expect(appSettings.hasAcknowledgedCustomEmojiMediaWarning)
+        #expect(viewModel.context.alertInfo == nil)
+    }
+    
     // MARK: - Draft
     
     @Test
     func saveDraftPlainText() async throws {
-        viewModel.context.composerFormattingEnabled = false
-        viewModel.context.plainComposerText = .init(string: "Hello world!")
+        wysiwygViewModel.setMarkdownContent("Hello world!")
         
         var capturedDraft: ComposerDraftProxy?
         await waitForConfirmation("Save draft") { confirmation in
@@ -220,7 +603,7 @@ final class ComposerToolbarViewModelTests {
         
         let draft = try #require(capturedDraft)
         #expect(draft.plainText == "Hello world!")
-        #expect(draft.htmlText == nil)
+        #expect(draft.htmlText == "Hello world!")
         #expect(draft.draftType == .newMessage)
         #expect(draftServiceMock.saveDraftCallsCount == 1)
         #expect(!draftServiceMock.clearDraftCalled)
@@ -253,9 +636,8 @@ final class ComposerToolbarViewModelTests {
     
     @Test
     func saveDraftEdit() async throws {
-        viewModel.context.composerFormattingEnabled = false
         viewModel.process(timelineAction: .setMode(mode: .edit(originalEventOrTransactionID: .eventID("testID"), type: .default)))
-        viewModel.context.plainComposerText = .init(string: "Hello world!")
+        wysiwygViewModel.setMarkdownContent("Hello world!")
         
         var capturedDraft: ComposerDraftProxy?
         await waitForConfirmation("Save draft") { confirmation in
@@ -269,7 +651,7 @@ final class ComposerToolbarViewModelTests {
         
         let draft = try #require(capturedDraft)
         #expect(draft.plainText == "Hello world!")
-        #expect(draft.htmlText == nil)
+        #expect(draft.htmlText == "Hello world!")
         #expect(draft.draftType == .edit(eventID: "testID"))
         #expect(draftServiceMock.saveDraftCallsCount == 1)
         #expect(!draftServiceMock.clearDraftCalled)
@@ -278,13 +660,12 @@ final class ComposerToolbarViewModelTests {
     
     @Test
     func saveDraftReply() async throws {
-        viewModel.context.composerFormattingEnabled = false
         viewModel.process(timelineAction: .setMode(mode: .reply(eventID: "testID",
                                                                 replyDetails: .loaded(sender: .init(id: ""),
                                                                                       eventID: "testID",
                                                                                       eventContent: .message(.text(.init(body: "reply text")))),
                                                                 isThread: false)))
-        viewModel.context.plainComposerText = .init(string: "Hello world!")
+        wysiwygViewModel.setMarkdownContent("Hello world!")
         
         var capturedDraft: ComposerDraftProxy?
         await waitForConfirmation("Save draft") { confirmation in
@@ -298,7 +679,7 @@ final class ComposerToolbarViewModelTests {
         
         let draft = try #require(capturedDraft)
         #expect(draft.plainText == "Hello world!")
-        #expect(draft.htmlText == nil)
+        #expect(draft.htmlText == "Hello world!")
         #expect(draft.draftType == .reply(eventID: "testID"))
         #expect(draftServiceMock.saveDraftCallsCount == 1)
         #expect(!draftServiceMock.clearDraftCalled)
@@ -352,9 +733,8 @@ final class ComposerToolbarViewModelTests {
     
     @Test
     func clearDraftForNonTextMode() async {
-        viewModel.context.composerFormattingEnabled = false
         let waveformData: [Float] = Array(repeating: 1.0, count: 1000)
-        viewModel.context.plainComposerText = .init(string: "Hello world!")
+        wysiwygViewModel.setMarkdownContent("Hello world!")
         viewModel.process(timelineAction: .setMode(mode: .previewVoiceMessage(state: AudioPlayerState(id: .recorderPreview, title: "", duration: 10.0),
                                                                               waveform: .data(waveformData),
                                                                               isUploading: false)))
@@ -417,7 +797,7 @@ final class ComposerToolbarViewModelTests {
             try await deferred.fulfill()
         }
         
-        #expect(viewModel.context.composerFormattingEnabled)
+        #expect(!viewModel.context.composerFormattingEnabled)
         #expect(viewModel.state.composerMode == .default)
         #expect(wysiwygViewModel.content.html == "<strong>Hello</strong> world!")
         #expect(wysiwygViewModel.content.markdown == "__Hello__ world!")
@@ -519,14 +899,13 @@ final class ComposerToolbarViewModelTests {
     
     @Test
     func saveVolatileDraftWhenEditing() {
-        viewModel.context.composerFormattingEnabled = false
-        viewModel.context.plainComposerText = .init(string: "Hello world!")
+        wysiwygViewModel.setMarkdownContent("Hello world!")
         viewModel.process(timelineAction: .setMode(mode: .edit(originalEventOrTransactionID: .eventID(UUID().uuidString), type: .default)))
         
         let draft = draftServiceMock.saveVolatileDraftReceivedDraft
         #expect(draft != nil)
         #expect(draft?.plainText == "Hello world!")
-        #expect(draft?.htmlText == nil)
+        #expect(draft?.htmlText == "Hello world!")
         #expect(draft?.draftType == .newMessage)
     }
     
@@ -591,18 +970,17 @@ final class ComposerToolbarViewModelTests {
         viewModel.process(timelineAction: .setText(plainText: text, htmlText: nil))
         
         let deferred = deferFulfillment(viewModel.actions) { action in
-            switch action {
-            case let .sendMessage(plainText, _, _, intentionalMentions):
-                // As of right now the markdown loses the display name when restored
-                return plainText == "Hello [@test:matrix.org](https://matrix.to/#/@test:matrix.org)!" &&
-                    intentionalMentions == IntentionalMentions(userIDs: ["@test:matrix.org"], atRoom: false)
-            default:
-                return false
+            if case .sendMessage = action {
+                true
+            } else {
+                false
             }
         }
         
         viewModel.process(viewAction: .sendMessage)
-        try await deferred.fulfill()
+        guard case let .sendMessage(plainText, _, _, intentionalMentions) = try await deferred.fulfill() else { return }
+        #expect(plainText == "Hello TestName!")
+        #expect(intentionalMentions == IntentionalMentions(userIDs: ["@test:matrix.org"], atRoom: false))
     }
     
     @Test
@@ -632,18 +1010,17 @@ final class ComposerToolbarViewModelTests {
         viewModel.process(timelineAction: .setText(plainText: text, htmlText: nil))
         
         let deferred = deferFulfillment(viewModel.actions) { action in
-            switch action {
-            case let .sendMessage(plainText, _, _, intentionalMentions):
-                // As of right now the markdown loses the display name when restored
-                return plainText == "Hello [@user1:matrix.org](https://matrix.to/#/@user1:matrix.org), [@user2:matrix.org](https://matrix.to/#/@user2:matrix.org) and @room" &&
-                    intentionalMentions == IntentionalMentions(userIDs: ["@user1:matrix.org", "@user2:matrix.org"], atRoom: true)
-            default:
-                return false
+            if case .sendMessage = action {
+                true
+            } else {
+                false
             }
         }
         
         viewModel.process(viewAction: .sendMessage)
-        try await deferred.fulfill()
+        guard case let .sendMessage(plainText, _, _, intentionalMentions) = try await deferred.fulfill() else { return }
+        #expect(plainText == "Hello User1, User2 and @room")
+        #expect(intentionalMentions == IntentionalMentions(userIDs: ["@user1:matrix.org", "@user2:matrix.org"], atRoom: true))
     }
     
     @Test
@@ -653,18 +1030,17 @@ final class ComposerToolbarViewModelTests {
         viewModel.process(timelineAction: .setText(plainText: text, htmlText: nil))
         
         let deferred = deferFulfillment(viewModel.actions) { action in
-            switch action {
-            case let .sendMessage(plainText, _, _, intentionalMentions):
-                // As of right now the markdown loses the display name when restored
-                return plainText == "Hello [@roomuser:matrix.org](https://matrix.to/#/@roomuser:matrix.org)" &&
-                    intentionalMentions == IntentionalMentions(userIDs: ["@roomuser:matrix.org"], atRoom: false)
-            default:
-                return false
+            if case .sendMessage = action {
+                true
+            } else {
+                false
             }
         }
         
         viewModel.process(viewAction: .sendMessage)
-        try await deferred.fulfill()
+        guard case let .sendMessage(plainText, _, _, intentionalMentions) = try await deferred.fulfill() else { return }
+        #expect(plainText == "Hello User1")
+        #expect(intentionalMentions == IntentionalMentions(userIDs: ["@roomuser:matrix.org"], atRoom: false))
     }
     
     @Test
@@ -802,7 +1178,10 @@ final class ComposerToolbarViewModelTests {
     
     // MARK: - Helpers
     
-    private func setUpViewModel(initialText: String? = nil, loadDraftClosure: (() async -> Result<ComposerDraftProxy?, ComposerDraftServiceError>)? = nil) {
+    private func setUpViewModel(initialText: String? = nil,
+                                loadDraftClosure: (() async -> Result<ComposerDraftProxy?, ComposerDraftServiceError>)? = nil,
+                                emojiProvider: EmojiProviderProtocol? = nil,
+                                isEncrypted: Bool = false) {
         wysiwygViewModel = WysiwygComposerViewModel()
         completionSuggestionServiceMock = CompletionSuggestionServiceMock(configuration: .init())
         draftServiceMock = ComposerDraftServiceMock(.init())
@@ -810,17 +1189,88 @@ final class ComposerToolbarViewModelTests {
             draftServiceMock.loadDraftClosure = loadDraftClosure
         }
         
-        let appSettings = AppSettings.volatile()
+        appSettings = AppSettings.volatile()
         
         viewModel = ComposerToolbarViewModel(initialText: initialText,
-                                             roomProxy: JoinedRoomProxyMock(.init()),
+                                             roomProxy: JoinedRoomProxyMock(.init(isEncrypted: isEncrypted)),
                                              wysiwygViewModel: wysiwygViewModel,
                                              completionSuggestionService: completionSuggestionServiceMock,
                                              mediaProvider: MediaProviderMock(.init()),
                                              mentionDisplayHelper: ComposerMentionDisplayHelper.mock,
                                              appSettings: appSettings,
                                              analyticsService: AnalyticsServiceMock(.init()),
-                                             composerDraftService: draftServiceMock)
-        viewModel.context.composerFormattingEnabled = true
+                                             composerDraftService: draftServiceMock,
+                                             emojiProvider: emojiProvider)
     }
+}
+
+extension ComposerToolbarViewModelTests {
+    @Test
+    func disablesComposerWhileResolvingCustomEmojis() async throws {
+        let customEmoji = try CustomEmoji(shortcode: "meatspin",
+                                          body: "Meatspin",
+                                          imageURL: #require(URL(string: "mxc://example.org/meatspin")))
+        let emojiItem = EmojiItem(label: "Meatspin",
+                                  unicode: ":meatspin:",
+                                  keywords: [],
+                                  shortcodes: ["meatspin"],
+                                  customEmoji: customEmoji)
+        let (stream, continuation) = AsyncStream.makeStream(of: Void.self)
+        let emojiProvider = ComposerTestEmojiProvider(categories: [.init(id: "custom", emojis: [emojiItem])],
+                                                      cacheLoaded: false) {
+            for await _ in stream {
+                break
+            }
+            return [.init(id: "custom", emojis: [emojiItem])]
+        }
+        setUpViewModel(emojiProvider: emojiProvider)
+        wysiwygViewModel.setMarkdownContent("Hello :meatspin:")
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(plain, html, _, _) = action else { return false }
+            return plain == "Hello :meatspin:" && html?.contains("data-mx-emoticon") == true
+        }
+        
+        viewModel.context.send(viewAction: .sendMessage)
+        
+        #expect(viewModel.context.viewState.isResolvingCustomEmojis)
+        #expect(viewModel.context.viewState.sendButtonDisabled)
+        continuation.yield()
+        continuation.finish()
+        try await deferred.fulfill()
+        #expect(!viewModel.context.viewState.isResolvingCustomEmojis)
+    }
+}
+
+private final class ComposerTestEmojiProvider: EmojiProviderProtocol {
+    private let emojiCategories: [EmojiCategory]
+    private let cacheLoaded: Bool
+    private let categoriesClosure: (() async -> [EmojiCategory])?
+    private(set) var categoryRequests = 0
+    
+    init(categories: [EmojiCategory],
+         cacheLoaded: Bool = true,
+         categoriesClosure: (() async -> [EmojiCategory])? = nil) {
+        emojiCategories = categories
+        self.cacheLoaded = cacheLoaded
+        self.categoriesClosure = categoriesClosure
+    }
+    
+    func categories(searchString: String?) async -> [EmojiCategory] {
+        categoryRequests += 1
+        if let categoriesClosure {
+            return await categoriesClosure()
+        }
+        return emojiCategories
+    }
+    
+    func cachedCustomEmojis() -> [CustomEmoji] {
+        guard cacheLoaded else { return [] }
+        return emojiCategories.flatMap(\.emojis).compactMap(\.customEmoji)
+    }
+    
+    func frequentlyUsedSystemEmojis() -> [String] {
+        []
+    }
+    
+    func markEmojiAsFrequentlyUsed(_ emoji: String) { }
 }

@@ -61,17 +61,26 @@ class EmojiPickerScreenViewModel: EmojiPickerScreenViewModelType, EmojiPickerScr
     private func convert(emojiCategories: [EmojiCategory]) -> [EmojiPickerEmojiCategoryViewData] {
         emojiCategories.compactMap { emojiCategory in
             let emojisViewData: [EmojiPickerEmojiViewData] = emojiCategory.emojis.compactMap { emojiItem in
-                EmojiPickerEmojiViewData(id: "\(emojiCategory.id)-\(emojiItem.id)", value: emojiItem.unicode)
+                EmojiPickerEmojiViewData(id: "\(emojiCategory.id)-\(emojiItem.id)",
+                                         value: emojiItem.unicode,
+                                         label: emojiItem.label,
+                                         customEmoji: emojiItem.customEmoji)
             }
             
-            return EmojiPickerEmojiCategoryViewData(id: emojiCategory.id, emojis: emojisViewData)
+            return EmojiPickerEmojiCategoryViewData(id: emojiCategory.id,
+                                                    nameOverride: emojiCategory.name,
+                                                    emojis: emojisViewData)
         }
     }
     
     private func selectEmoji(_ emoji: EmojiPickerEmojiViewData) {
-        emojiProvider.markEmojiAsFrequentlyUsed(emoji.value)
+        let emojiProvider = emojiProvider
+        Task {
+            await emojiProvider.markEmojiAsRecentlyUsed(emoji.reactionKey,
+                                                        shortcode: emoji.customEmoji?.shortcode)
+        }
         
-        continuation.yield(emoji.value)
+        continuation.yield(emoji)
         continuation.finish()
         
         actionsSubject.send(.dismiss)

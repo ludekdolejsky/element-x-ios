@@ -49,27 +49,42 @@ final class PillAttachmentViewProvider: NSTextAttachmentViewProvider, NSSecureCo
                 return
             }
             
-            let context: PillContext
-            if ProcessInfo.isXcodePreview || ProcessInfo.isRunningTests {
-                // The mock viewModel simulates the loading logic for testing purposes
-                context = PillContext.mock(viewState: .mention(isOwnMention: false, displayText: "Alice", statusEmoji: nil),
-                                           delay: .seconds(2))
-            } else if let timelineContext = provider.delegate?.timelineContext {
-                context = PillContext(timelineContext: timelineContext, data: pillData)
-            } else {
-                MXLog.failure("Missing room context")
-                return
+            switch pillData.type {
+            case .customEmoji(let urlString, let alt, _):
+                let view = CustomEmojiAttachmentView(urlString: urlString,
+                                                     alt: alt,
+                                                     lineHeight: pillData.fontData.lineHeight,
+                                                     mediaProvider: provider.delegate?.timelineContext?.mediaProvider)
+                let controller = UIHostingController(rootView: view)
+                controller.view.backgroundColor = .clear
+                controller.view.isUserInteractionEnabled = false
+                controller.view.isAccessibilityElement = true
+                controller.view.accessibilityLabel = alt
+                provider.view = controller.view
+                provider.delegate?.registerPillView(controller.view)
+            default:
+                let context: PillContext
+                if ProcessInfo.isXcodePreview || ProcessInfo.isRunningTests {
+                    // The mock viewModel simulates the loading logic for testing purposes
+                    context = PillContext.mock(viewState: .mention(isOwnMention: false, displayText: "Alice", statusEmoji: nil),
+                                               delay: .seconds(2))
+                } else if let timelineContext = provider.delegate?.timelineContext {
+                    context = PillContext(timelineContext: timelineContext, data: pillData)
+                } else {
+                    MXLog.failure("Missing room context")
+                    return
+                }
+                
+                let view = PillView(context: context) { [weak provider] in
+                    provider?.delegate?.invalidateTextAttachmentsDisplay()
+                }
+                let controller = UIHostingController(rootView: view)
+                controller.view.backgroundColor = .clear
+                // This allows the text view to handle it as a link
+                controller.view.isUserInteractionEnabled = false
+                provider.view = controller.view
+                provider.delegate?.registerPillView(controller.view)
             }
-            
-            let view = PillView(context: context) { [weak provider] in
-                provider?.delegate?.invalidateTextAttachmentsDisplay()
-            }
-            let controller = UIHostingController(rootView: view)
-            controller.view.backgroundColor = .clear
-            // This allows the text view to handle it as a link
-            controller.view.isUserInteractionEnabled = false
-            provider.view = controller.view
-            provider.delegate?.registerPillView(controller.view)
         }
     }
     
@@ -108,4 +123,42 @@ extension WysiwygTextView: PillAttachmentViewProviderDelegate {
     }
     
     func invalidateTextAttachmentsDisplay() { }
+}
+
+private struct CustomEmojiAttachmentView: View {
+    let urlString: String
+    let alt: String?
+    let lineHeight: CGFloat
+    let mediaProvider: MediaProviderProtocol?
+    
+    private var imageSize: CGFloat {
+        max(18, lineHeight)
+    }
+    
+    var body: some View {
+        Group {
+            if let mediaProvider,
+               let url = URL(string: urlString) {
+                LoadableImage(url: url,
+                              size: CGSize(width: imageSize, height: imageSize),
+                              allowsAnimation: true,
+                              mediaProvider: mediaProvider) { image in
+                    image.scaledToFit()
+                } placeholder: {
+                    fallback
+                }
+            } else {
+                fallback
+            }
+        }
+        .frame(width: imageSize, height: imageSize)
+    }
+    
+    private var fallback: some View {
+        Image(systemName: "photo")
+            .resizable()
+            .scaledToFit()
+            .foregroundColor(.compound.iconSecondary)
+            .padding(imageSize / 5)
+    }
 }

@@ -193,7 +193,10 @@ struct SettingsScreenViewModelTests {
         }
         
         let emojiUpdated = deferFulfillment(context.observe(\.viewState.bindings.customStatusEmoji)) { $0 == Character(emoji) }
-        continuation.yield(emoji)
+        continuation.yield(.init(id: emoji,
+                                 value: emoji,
+                                 label: emoji,
+                                 customEmoji: nil))
         try await emojiUpdated.fulfill()
     }
 }

@@ -76,12 +76,17 @@ nonisolated struct AttributedStringBuilder: AttributedStringBuilderProtocol {
     /// Do not use the default HTML renderer of NSAttributedString because this method
     /// runs on the UI thread which we want to avoid because renderHTMLString is called
     /// most of the time from a background thread.
-    func fromHTML(_ htmlString: String?) -> AttributedString? {
+    func fromHTML(_ htmlString: String?, customEmojiFallbackBody: String?) -> AttributedString? {
         guard let originalHTMLString = htmlString else {
             return nil
         }
         
-        if let cached = Self.cachedValue(forKey: originalHTMLString, cacheKey: cacheKey) {
+        let valueCacheKey = if let customEmojiFallbackBody {
+            "1:\(originalHTMLString.utf8.count):\(originalHTMLString)\(customEmojiFallbackBody)"
+        } else {
+            "0:\(originalHTMLString)"
+        }
+        if let cached = Self.cachedValue(forKey: valueCacheKey, cacheKey: cacheKey) {
             return cached
         }
         
@@ -93,6 +98,10 @@ nonisolated struct AttributedStringBuilder: AttributedStringBuilderProtocol {
             return nil
         }
         
+        #if IS_MAIN_APP
+        restoreSanitizedCustomEmojiMarkers(in: body, fallbackBody: customEmojiFallbackBody)
+        #endif
+        
         var listIndex = 1
         let mutableAttributedString = attributedString(element: body, documentBody: body, preserveFormatting: false, listTag: nil, listIndex: &listIndex, indentLevel: 0)
         detectPhishingAttempts(mutableAttributedString)
@@ -101,12 +110,59 @@ nonisolated struct AttributedStringBuilder: AttributedStringBuilderProtocol {
         removeParsingArtefacts(mutableAttributedString)
         
         let result = try? AttributedString(mutableAttributedString, including: \.elementX)
-        Self.cacheValue(result, forKey: originalHTMLString, cacheKey: cacheKey)
+        Self.cacheValue(result, forKey: valueCacheKey, cacheKey: cacheKey)
         
         return result
     }
     
     // MARK: - Private
+    
+    #if IS_MAIN_APP
+    private func restoreSanitizedCustomEmojiMarkers(in body: Element, fallbackBody: String?) {
+        guard let fallbackBody else { return }
+        
+        guard let images = try? body.select("img") else {
+            return
+        }
+        var remainingShortcodes = [String: Int]()
+        
+        for image in images where !image.hasAttr("data-mx-emoticon") {
+            guard let source = try? image.attr("src"),
+                  let url = URL(string: source),
+                  url.scheme == "mxc",
+                  url.host != nil,
+                  let title = try? image.attr("title"),
+                  let shortcode = customEmojiShortcode(from: title, fallbackBody: fallbackBody) else {
+                continue
+            }
+            if remainingShortcodes[shortcode] == nil {
+                remainingShortcodes[shortcode] = nonOverlappingOccurrences(of: ":\(shortcode):", in: fallbackBody)
+            }
+            guard remainingShortcodes[shortcode, default: 0] > 0 else { continue }
+            
+            _ = try? image.attr("data-mx-emoticon", "")
+            remainingShortcodes[shortcode, default: 0] -= 1
+        }
+    }
+    
+    private func customEmojiShortcode(from title: String, fallbackBody: String) -> String? {
+        var candidates = [title]
+        if title.hasPrefix(":"), title.hasSuffix(":"), title.count > 2 {
+            candidates.insert(String(title.dropFirst().dropLast()), at: 0)
+        }
+        return candidates.first { !$0.isEmpty && fallbackBody.contains(":\($0):") }
+    }
+    
+    private func nonOverlappingOccurrences(of token: String, in string: String) -> Int {
+        var count = 0
+        var searchRange = string.startIndex..<string.endIndex
+        while let match = string.range(of: token, range: searchRange) {
+            count += 1
+            searchRange = match.upperBound..<string.endIndex
+        }
+        return count
+    }
+    #endif
     
     // swiftlint:disable:next function_body_length cyclomatic_complexity
     func attributedString(element: Element,
@@ -262,11 +318,26 @@ nonisolated struct AttributedStringBuilder: AttributedStringBuilderProtocol {
                 }
                 
             case "img":
+                #if IS_MAIN_APP
+                if childElement.hasAttr("data-mx-emoticon"),
+                   let source = try? childElement.attr("src"),
+                   let url = URL(string: source),
+                   url.scheme == "mxc",
+                   url.host != nil,
+                   let attachment = customEmojiAttachment(urlString: source, element: childElement) {
+                    content = attachment
+                } else if let alt = try? childElement.attr("alt"), !alt.isEmpty {
+                    content = NSMutableAttributedString(string: "[img: \(alt)]")
+                } else {
+                    content = NSMutableAttributedString(string: "[img]")
+                }
+                #else
                 if let alt = try? childElement.attr("alt"), !alt.isEmpty {
                     content = NSMutableAttributedString(string: "[img: \(alt)]")
                 } else {
                     content = NSMutableAttributedString(string: "[img]")
                 }
+                #endif
                 
             default:
                 content = attributedString(element: childElement, documentBody: documentBody, preserveFormatting: preserveFormatting, listTag: listTag, listIndex: &childIndex, indentLevel: indentLevel)
@@ -277,6 +348,41 @@ nonisolated struct AttributedStringBuilder: AttributedStringBuilderProtocol {
         
         return result
     }
+    
+    #if IS_MAIN_APP
+    private func customEmojiAttachment(urlString: String, element: Element) -> NSMutableAttributedString? {
+        let font = UIFont.preferredFont(forTextStyle: .body)
+        let shortcode = customEmojiShortcode(for: element)
+        let attachmentData = PillTextAttachmentData(type: .customEmoji(urlString: urlString,
+                                                                       alt: customEmojiAltText(for: element, shortcode: shortcode),
+                                                                       shortcode: shortcode),
+                                                    font: font)
+        guard let attachment = PillTextAttachment(attachmentData: attachmentData) else {
+            return nil
+        }
+        
+        let size = max(18, font.lineHeight)
+        attachment.bounds = CGRect(x: 0, y: 0, width: size, height: size)
+        return NSMutableAttributedString(attributedString: NSAttributedString(attachment: attachment))
+    }
+    
+    private func customEmojiAltText(for element: Element, shortcode: String?) -> String? {
+        if let alt = try? element.attr("alt"), !alt.isEmpty {
+            return alt
+        }
+        
+        return shortcode
+    }
+    
+    private func customEmojiShortcode(for element: Element) -> String? {
+        guard let title = try? element.attr("title"), !title.isEmpty else { return nil }
+        
+        if title.hasPrefix(":"), title.hasSuffix(":"), title.count > 2 {
+            return String(title.dropFirst().dropLast())
+        }
+        return title
+    }
+    #endif
     
     private static func cacheValue(_ value: AttributedString?, forKey key: String, cacheKey: String) {
         caches.withLock { caches in

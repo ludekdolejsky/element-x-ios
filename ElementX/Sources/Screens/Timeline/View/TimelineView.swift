@@ -55,6 +55,16 @@ struct TimelineView: View {
                 ReadReceiptsSummaryView(orderedReadReceipts: $0.orderedReceipts)
                     .environmentObject(timelineContext)
             }
+            .sheet(item: $timelineContext.nitroTranscriptInfo) { info in
+                let canSendToThread = timelineContext.viewState.canCurrentUserSendMessage && timelineContext.viewState.areThreadsEnabled
+                NitroTranscriptView(info: info,
+                                    sendToThreadAction: canSendToThread ? {
+                                        timelineContext.send(viewAction: .sendTranscriptToThread(info))
+                                    } : nil)
+            }
+            .sheet(item: $timelineContext.nitroReminderCreateViewModel,
+                   onDismiss: { timelineContext.send(viewAction: .dismissNitroReminderCreate) },
+                   content: { viewModel in NitroReminderCreateScreen(context: viewModel.context) })
             .translationPresentation(isPresented: $timelineContext.showTranslation, text: timelineContext.textToBeTranslated ?? "")
             .onChange(of: timelineContext.showTranslation) { oldValue, newValue in
                 if oldValue, !newValue {

@@ -22,6 +22,7 @@ nonisolated enum PillType: Codable, Equatable {
     case user(userID: String)
     /// A pill that mentions all users in a room
     case allUsers
+    case customEmoji(urlString: String, alt: String?, shortcode: String?)
 }
 
 nonisolated struct PillTextAttachmentData: Codable, Equatable {

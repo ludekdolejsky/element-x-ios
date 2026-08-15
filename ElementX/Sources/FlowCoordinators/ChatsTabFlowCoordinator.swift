@@ -420,6 +420,8 @@ class ChatsTabFlowCoordinator: FlowCoordinatorProtocol {
                     stateMachine.processEvent(.startEncryptionResetFlow)
                 case .presentStartChatScreen:
                     stateMachine.processEvent(.startStartChatFlow)
+                case .presentReminders:
+                    presentReminders()
                 case .logout:
                     actionsSubject.send(.logout)
                 case .presentDeclineAndBlock(let userID, let roomID):
@@ -431,6 +433,30 @@ class ChatsTabFlowCoordinator: FlowCoordinatorProtocol {
             .store(in: &cancellables)
         
         sidebarNavigationStackCoordinator.setRootCoordinator(coordinator)
+    }
+    
+    private func presentReminders() {
+        let coordinator = NitroRemindersScreenCoordinator(parameters: .init(clientProxy: userSession.clientProxy,
+                                                                            reminderService: NitroReminderService(baseURL: flowParameters.appSettings.nitroReminderBaseURL)))
+        coordinator.actionsPublisher
+            .sink { [weak self] action in
+                guard let self else { return }
+                sidebarNavigationStackCoordinator.popToRoot(animated: false)
+                
+                switch action {
+                case .openReminder(let roomID, let eventID, let threadRootID):
+                    if let threadRootID {
+                        handleAppRoute(.thread(roomID: roomID,
+                                               threadRootEventID: threadRootID,
+                                               focusEventID: eventID),
+                                       animated: true)
+                    } else {
+                        handleAppRoute(.event(eventID: eventID, roomID: roomID, via: []), animated: true)
+                    }
+                }
+            }
+            .store(in: &cancellables)
+        sidebarNavigationStackCoordinator.push(coordinator)
     }
     
     private func presentReportRoom(for roomID: String) async {

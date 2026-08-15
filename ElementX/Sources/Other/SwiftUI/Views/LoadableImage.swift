@@ -26,6 +26,7 @@ struct LoadableImage<TransformerView: View, PlaceholderView: View>: View {
     private let mediaType: LoadableImageMediaType
     private let blurhash: String?
     private let size: CGSize?
+    private let allowsAnimation: Bool
     private let mediaProvider: MediaProviderProtocol?
     private let transformer: (AnyView) -> TransformerView
     private let placeholder: () -> PlaceholderView
@@ -42,6 +43,7 @@ struct LoadableImage<TransformerView: View, PlaceholderView: View>: View {
          mediaType: LoadableImageMediaType = .generic,
          blurhash: String? = nil,
          size: CGSize? = nil,
+         allowsAnimation: Bool = false,
          mediaProvider: MediaProviderProtocol?,
          transformer: @escaping (AnyView) -> TransformerView = { $0 },
          placeholder: @escaping () -> PlaceholderView) {
@@ -49,6 +51,7 @@ struct LoadableImage<TransformerView: View, PlaceholderView: View>: View {
         self.mediaType = mediaType
         self.blurhash = blurhash
         self.size = size
+        self.allowsAnimation = allowsAnimation
         self.mediaProvider = mediaProvider
         self.transformer = transformer
         self.placeholder = placeholder
@@ -58,6 +61,7 @@ struct LoadableImage<TransformerView: View, PlaceholderView: View>: View {
          mediaType: LoadableImageMediaType = .generic,
          blurhash: String? = nil,
          size: CGSize? = nil,
+         allowsAnimation: Bool = false,
          mediaProvider: MediaProviderProtocol?,
          transformer: @escaping (AnyView) -> TransformerView = { $0 },
          placeholder: @escaping () -> PlaceholderView) {
@@ -65,6 +69,7 @@ struct LoadableImage<TransformerView: View, PlaceholderView: View>: View {
         self.mediaType = mediaType
         self.blurhash = blurhash
         self.size = size
+        self.allowsAnimation = allowsAnimation
         self.mediaProvider = mediaProvider
         self.transformer = transformer
         self.placeholder = placeholder
@@ -76,6 +81,7 @@ struct LoadableImage<TransformerView: View, PlaceholderView: View>: View {
                                  mediaType: mediaType,
                                  blurhash: blurhash,
                                  size: size,
+                                 allowsAnimation: allowsAnimation,
                                  mediaProvider: mediaProvider,
                                  transformer: transformer,
                                  placeholder: placeholder)
@@ -107,13 +113,14 @@ private struct LoadableImageContent<TransformerView: View, PlaceholderView: View
     private let transformer: (AnyView) -> TransformerView
     private let placeholder: () -> PlaceholderView
     
-    @StateObject private var contentLoader: ContentLoader
+    @StateObject private var contentLoader: LoadableImageContentLoader
     @State private var loadManually = false
     
     init(mediaSource: MediaSourceProxy,
          mediaType: LoadableImageMediaType,
          blurhash: String? = nil,
          size: CGSize? = nil,
+         allowsAnimation: Bool = false,
          mediaProvider: MediaProviderProtocol?,
          transformer: @escaping (AnyView) -> TransformerView,
          placeholder: @escaping () -> PlaceholderView) {
@@ -124,7 +131,10 @@ private struct LoadableImageContent<TransformerView: View, PlaceholderView: View
         self.blurhash = blurhash
         self.transformer = transformer
         self.placeholder = placeholder
-        _contentLoader = StateObject(wrappedValue: ContentLoader(mediaSource: mediaSource, size: size, mediaProvider: mediaProvider))
+        _contentLoader = StateObject(wrappedValue: LoadableImageContentLoader(mediaSource: mediaSource,
+                                                                              size: size,
+                                                                              allowsAnimation: allowsAnimation,
+                                                                              mediaProvider: mediaProvider))
     }
     
     var shouldRender: Bool {
@@ -136,7 +146,7 @@ private struct LoadableImageContent<TransformerView: View, PlaceholderView: View
             switch (contentLoader.content, shouldRender) {
             case (.image(let image), true):
                 transformer(AnyView(Image(uiImage: image).resizable()))
-            case (.gifData, true):
+            case (.imageData, true):
                 transformer(AnyView(KFAnimatedImage(source: .provider(self))))
             case (.none, _), (_, false):
                 if let blurHashView {
@@ -238,8 +248,8 @@ private struct LoadableImageContent<TransformerView: View, PlaceholderView: View
         // Kingfisher isn't annotated and doesn't guarantee the provider is invoked on the main
         // thread so hop onto the main actor.
         Task { @MainActor in
-            guard case let .gifData(data) = contentLoader.content else {
-                handler(.failure(LoadableImageError.missingGIFData))
+            guard case let .imageData(data) = contentLoader.content else {
+                handler(.failure(LoadableImageError.missingImageData))
                 return
             }
             
@@ -249,18 +259,19 @@ private struct LoadableImageContent<TransformerView: View, PlaceholderView: View
 }
 
 private enum LoadableImageError: Error {
-    case missingGIFData
+    case missingImageData
 }
 
-private class ContentLoader: ObservableObject {
+final class LoadableImageContentLoader: ObservableObject {
     enum Content: Equatable {
         case image(UIImage)
-        case gifData(Data)
+        case imageData(Data)
     }
     
     private let mediaProvider: MediaProviderProtocol?
     private let mediaSource: MediaSourceProxy
     private let size: CGSize?
+    private let allowsAnimation: Bool
     private var imageLoadingCancellable: AnyCancellable?
     
     @Published private var cachedContent: Content?
@@ -270,28 +281,33 @@ private class ContentLoader: ObservableObject {
             return cachedContent
         }
         
-        if isGIF {
+        if isGIF, !allowsAnimation {
             if let image = mediaProvider?.imageFromSource(mediaSource),
                let data = image.kf.data(format: .GIF) {
-                return .gifData(data)
+                return .imageData(data)
             }
-        } else if let image = mediaProvider?.imageFromSource(mediaSource, size: size) {
+        } else if !loadsOriginalImageData,
+                  let image = mediaProvider?.imageFromSource(mediaSource, size: size) {
             return .image(image)
         }
         
         return cachedContent
     }
     
-    init(mediaSource: MediaSourceProxy, size: CGSize?, mediaProvider: MediaProviderProtocol?) {
+    init(mediaSource: MediaSourceProxy,
+         size: CGSize?,
+         allowsAnimation: Bool,
+         mediaProvider: MediaProviderProtocol?) {
         self.mediaSource = mediaSource
         self.size = size
+        self.allowsAnimation = allowsAnimation
         self.mediaProvider = mediaProvider
     }
     
     func load() async {
-        if isGIF {
+        if loadsOriginalImageData {
             if case let .success(data) = await mediaProvider?.loadImageDataFromSource(mediaSource) {
-                cachedContent = .gifData(data)
+                cachedContent = .imageData(data)
             }
         } else {
             guard let task = mediaProvider?.loadImageRetryingOnReconnection(mediaSource, size: size) else {
@@ -313,6 +329,10 @@ private class ContentLoader: ObservableObject {
     
     private var isGIF: Bool {
         mediaSource.mimeType == "image/gif"
+    }
+    
+    private var loadsOriginalImageData: Bool {
+        allowsAnimation || isGIF
     }
 }
 

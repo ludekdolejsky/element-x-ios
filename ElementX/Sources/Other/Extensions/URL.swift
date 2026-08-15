@@ -141,6 +141,10 @@ nonisolated extension URL {
         "mxc://matrix.org/1234567890ImAgE"
     }
     
+    nonisolated static var mockMXCAnimatedImage: URL {
+        "mxc://matrix.org/1234567890AnImAtEd"
+    }
+    
     nonisolated static var mockMXCVideo: URL {
         "mxc://matrix.org/1234567890ViDeO"
     }

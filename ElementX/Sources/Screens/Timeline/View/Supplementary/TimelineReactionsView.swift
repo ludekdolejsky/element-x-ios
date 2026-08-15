@@ -44,7 +44,8 @@ struct TimelineReactionsView: View {
     var body: some View {
         layout {
             ForEach(reactions) { reaction in
-                TimelineReactionButton(reaction: reaction) { key in
+                TimelineReactionButton(reaction: reaction,
+                                       mediaProvider: context.mediaProvider) { key in
                     feedbackGenerator.impactOccurred()
                     context.send(viewAction: .toggleReaction(key: key, itemID: itemID))
                 } showReactionSummary: { key in
@@ -139,19 +140,20 @@ struct TimelineCollapseButtonLabel: View {
 
 struct TimelineReactionButton: View {
     let reaction: AggregatedReaction
+    let mediaProvider: MediaProviderProtocol?
     let toggleReaction: (String) -> Void
     let showReactionSummary: (String) -> Void
     @ScaledMetric(relativeTo: .subheadline) private var lineHeight = 20
     
     private var accessibilityLabel: String {
         if reaction.isHighlighted {
-            return reaction.count > 1 ? L10n.tr("Localizable", "screen_room_timeline_reaction_including_you_a11y", reaction.count - 1, reaction.displayKey) : L10n.screenRoomTimelineReactionYouA11y(reaction.displayKey)
+            return reaction.count > 1 ? L10n.tr("Localizable", "screen_room_timeline_reaction_including_you_a11y", reaction.count - 1, reaction.accessibilityDisplayKey) : L10n.screenRoomTimelineReactionYouA11y(reaction.accessibilityDisplayKey)
         }
-        return L10n.tr("Localizable", "screen_room_timeline_reaction_a11y", reaction.count, reaction.displayKey)
+        return L10n.tr("Localizable", "screen_room_timeline_reaction_a11y", reaction.count, reaction.accessibilityDisplayKey)
     }
     
     private var toggleReactionAccessibilityActionName: String {
-        reaction.isHighlighted ? L10n.a11yRemoveReaction(reaction.displayKey) : L10n.a11yAddReaction(reaction.displayKey)
+        reaction.isHighlighted ? L10n.a11yRemoveReaction(reaction.accessibilityDisplayKey) : L10n.a11yAddReaction(reaction.accessibilityDisplayKey)
     }
     
     var body: some View {
@@ -176,8 +178,11 @@ struct TimelineReactionButton: View {
                 // Designs have bodyMD for the key but practically this makes
                 // emojis too big. bodySM gives a more appropriate size when compared
                 // to the count text and the lineHeight/padding in the designs.
-                Text(reaction.displayKey)
-                    .font(.compound.bodySM)
+                TimelineReactionContentView(reaction: reaction,
+                                            mediaProvider: mediaProvider,
+                                            font: .compound.bodySM,
+                                            foregroundColor: textColor,
+                                            imageSize: lineHeight)
                 if reaction.count > 1 {
                     Text(String(reaction.count))
                         .font(.compound.bodyMD)

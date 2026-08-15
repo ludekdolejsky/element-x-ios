@@ -65,6 +65,8 @@ struct TimelineItemMenuActionProvider {
             actions.append(.forward(itemID: item.id))
         }
         
+        actions.append(contentsOf: audioTranscriptionActions(for: item))
+        
         if item.isEditable, canCurrentUserSendMessage {
             if item.supportsMediaCaption {
                 if item.hasMediaCaption {
@@ -80,6 +82,7 @@ struct TimelineItemMenuActionProvider {
         }
         
         if item.isRemoteMessage {
+            actions.append(.remindMe)
             actions.append(.copyPermalink)
         }
         
@@ -148,7 +151,7 @@ struct TimelineItemMenuActionProvider {
     }
     
     private func makeEncryptedItemActions() -> TimelineItemMenuActions? {
-        var actions: [TimelineItemMenuAction] = [.copyPermalink]
+        var actions: [TimelineItemMenuAction] = [.remindMe, .copyPermalink]
         
         if isViewSourceEnabled {
             actions.append(.viewSource)
@@ -162,5 +165,24 @@ struct TimelineItemMenuActionProvider {
     
     private func canRedactItem(_ item: EventBasedTimelineItemProtocol) -> Bool {
         item.isOutgoing ? canCurrentUserRedactSelf : canCurrentUserRedactOthers
+    }
+    
+    private func audioTranscriptionActions(for item: EventBasedTimelineItemProtocol) -> [TimelineItemMenuAction] {
+        guard let messageItem = item as? EventBasedMessageTimelineItemProtocol,
+              messageItem.audioContent?.source != nil else {
+            return []
+        }
+        return canCurrentUserSendMessage && areThreadsEnabled ? [.transcribeAudio, .transcribeAudioToThread] : [.transcribeAudio]
+    }
+}
+
+private extension EventBasedMessageTimelineItemProtocol {
+    var audioContent: AudioRoomTimelineItemContent? {
+        switch contentType {
+        case .audio(let content), .voice(let content):
+            content
+        default:
+            nil
+        }
     }
 }

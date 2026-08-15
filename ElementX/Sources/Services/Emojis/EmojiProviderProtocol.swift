@@ -8,22 +8,53 @@
 
 import Foundation
 
-struct EmojiItem: Equatable, Identifiable {
+nonisolated struct CustomEmoji: Equatable, Sendable {
+    let shortcode: String
+    let body: String
+    let imageURL: URL
+}
+
+nonisolated struct EmojiItem: Equatable, Identifiable, Sendable {
     var id: String {
-        label
+        guard let customEmoji else { return unicode }
+        return "\(customEmoji.imageURL.absoluteString)#\(customEmoji.shortcode)"
+    }
+    
+    var reactionKey: String {
+        customEmoji?.imageURL.absoluteString ?? unicode
     }
     
     let label: String
     let unicode: String
     let keywords: [String]
     let shortcodes: [String]
+    let customEmoji: CustomEmoji?
+    
+    init(label: String,
+         unicode: String,
+         keywords: [String],
+         shortcodes: [String],
+         customEmoji: CustomEmoji? = nil) {
+        self.label = label
+        self.unicode = unicode
+        self.keywords = keywords
+        self.shortcodes = shortcodes
+        self.customEmoji = customEmoji
+    }
 }
 
-struct EmojiCategory: Equatable, Identifiable {
+nonisolated struct EmojiCategory: Equatable, Identifiable, Sendable {
     static let frequentlyUsedCategoryIdentifier = "io.element.elementx.frequently_used"
     
     let id: String
+    let name: String?
     let emojis: [EmojiItem]
+    
+    init(id: String, name: String? = nil, emojis: [EmojiItem]) {
+        self.id = id
+        self.name = name
+        self.emojis = emojis
+    }
 }
 
 enum EmojiProviderState {
@@ -34,7 +65,30 @@ enum EmojiProviderState {
 
 protocol EmojiProviderProtocol {
     func categories(searchString: String?) async -> [EmojiCategory]
+    func customEmojis() async -> [CustomEmoji]
+    func cachedCustomEmojis() -> [CustomEmoji]
+    func shouldRetryLoadingCategories() -> Bool
     
     func frequentlyUsedSystemEmojis() -> [String]
     func markEmojiAsFrequentlyUsed(_ emoji: String)
+    func markEmojiAsRecentlyUsed(_ emoji: String, shortcode: String?) async
+}
+
+extension EmojiProviderProtocol {
+    func customEmojis() async -> [CustomEmoji] {
+        await categories(searchString: nil).flatMap(\.emojis).compactMap(\.customEmoji)
+    }
+    
+    func cachedCustomEmojis() -> [CustomEmoji] {
+        []
+    }
+    
+    func shouldRetryLoadingCategories() -> Bool {
+        false
+    }
+    
+    func markEmojiAsRecentlyUsed(_ emoji: String, shortcode: String?) async {
+        guard !emoji.hasPrefix("mxc://") else { return }
+        markEmojiAsFrequentlyUsed(emoji)
+    }
 }

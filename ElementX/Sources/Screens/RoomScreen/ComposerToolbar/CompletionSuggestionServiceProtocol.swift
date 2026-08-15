@@ -14,6 +14,7 @@ struct SuggestionTrigger: Equatable {
     enum SuggestionType: Equatable {
         case user
         case room
+        case emoji
     }
     
     let type: SuggestionType
@@ -26,6 +27,7 @@ struct SuggestionItem: Identifiable, Equatable {
         case user(User)
         case allUsers(RoomAvatar)
         case room(Room)
+        case emoji(EmojiItem)
     }
     
     struct User: Equatable {
@@ -54,6 +56,8 @@ struct SuggestionItem: Identifiable, Equatable {
             PillUtilities.atRoom
         case .room(let room):
             room.id
+        case .emoji(let emoji):
+            "emoji-\(emoji.id)"
         }
     }
     
@@ -65,6 +69,8 @@ struct SuggestionItem: Identifiable, Equatable {
             user.displayName ?? user.id
         case .room(let room):
             room.name
+        case .emoji(let emoji):
+            emoji.customEmoji.map { ":\($0.shortcode):" } ?? emoji.shortcodes.first.map { ":\($0):" } ?? emoji.label
         }
     }
     
@@ -72,7 +78,7 @@ struct SuggestionItem: Identifiable, Equatable {
         switch suggestionType {
         case .user(let user):
             user.status.displayed?.emoji
-        case .allUsers, .room:
+        case .allUsers, .room, .emoji:
             nil
         }
     }
@@ -85,6 +91,8 @@ struct SuggestionItem: Identifiable, Equatable {
             user.displayName == nil ? nil : user.id
         case .room(let room):
             room.canonicalAlias
+        case .emoji(let emoji):
+            emoji.label
         }
     }
 }
@@ -100,11 +108,14 @@ protocol CompletionSuggestionServiceProtocol {
 
 extension WysiwygComposer.SuggestionPattern {
     var toElementPattern: SuggestionTrigger? {
+        let range = NSRange(location: Int(start), length: Int(end - start))
         switch key {
         case .at:
-            return SuggestionTrigger(type: .user, text: text, range: .init(location: Int(start), length: Int(end)))
+            return SuggestionTrigger(type: .user, text: text, range: range)
         case .hash:
-            return SuggestionTrigger(type: .room, text: text, range: .init(location: Int(start), length: Int(end)))
+            return SuggestionTrigger(type: .room, text: text, range: range)
+        case .colon:
+            return SuggestionTrigger(type: .emoji, text: text, range: range)
         default:
             return nil
         }

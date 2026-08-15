@@ -8,6 +8,7 @@
 
 import Foundation
 import MatrixRustSDK
+import SwiftSoup
 
 nonisolated struct RoomMessageEventStringBuilder {
     enum Style {
@@ -29,7 +30,7 @@ nonisolated struct RoomMessageEventStringBuilder {
         let message: AttributedString
         switch messageType {
         case .emote(content: let content):
-            if let attributedMessage = attributedMessageFrom(formattedBody: content.formatted) {
+            if let attributedMessage = attributedMessageFrom(formattedBody: content.formatted, fallbackBody: content.body) {
                 return AttributedString(L10n.commonEmote(senderDisplayName, String(attributedMessage.characters)))
             } else {
                 return AttributedString(L10n.commonEmote(senderDisplayName, content.body))
@@ -54,13 +55,13 @@ nonisolated struct RoomMessageEventStringBuilder {
             }
             message = content
         case .notice(content: let content):
-            if let attributedMessage = attributedMessageFrom(formattedBody: content.formatted) {
+            if let attributedMessage = attributedMessageFrom(formattedBody: content.formatted, fallbackBody: content.body) {
                 message = attributedMessage
             } else {
                 message = AttributedString(content.body)
             }
         case .text(content: let content):
-            if let attributedMessage = attributedMessageFrom(formattedBody: content.formatted) {
+            if let attributedMessage = attributedMessageFrom(formattedBody: content.formatted, fallbackBody: content.body) {
                 message = attributedMessage
             } else {
                 message = AttributedString(content.body)
@@ -128,7 +129,55 @@ nonisolated struct RoomMessageEventStringBuilder {
         return attributedPrefix + " " + attributedEventSummary
     }
     
-    private func attributedMessageFrom(formattedBody: FormattedBody?) -> AttributedString? {
-        formattedBody.flatMap { attributedStringBuilder.fromHTML($0.body) }
+    private func attributedMessageFrom(formattedBody: FormattedBody?, fallbackBody: String) -> AttributedString? {
+        guard let formattedBody else { return nil }
+        
+        // Room, thread and notification previews are textual. Replace custom
+        // emoji media with its shortcode while preserving other HTML formatting.
+        if let previewHTML = replacingCustomEmoji(in: formattedBody.body, fallbackBody: fallbackBody) {
+            return attributedStringBuilder.fromHTML(previewHTML)
+        }
+        
+        return attributedStringBuilder.fromHTML(formattedBody.body)
+    }
+    
+    private func replacingCustomEmoji(in html: String, fallbackBody: String) -> String? {
+        guard let document = try? SwiftSoup.parseBodyFragment(html),
+              let body = document.body(),
+              let images = try? body.select("img") else {
+            return nil
+        }
+        
+        var replacedImage = false
+        for image in images {
+            guard let source = try? image.attr("src"),
+                  let url = URL(string: source),
+                  url.scheme == "mxc",
+                  url.host != nil else {
+                continue
+            }
+            
+            guard let title = try? image.attr("title"), !title.isEmpty else {
+                continue
+            }
+            let shortcode = if title.hasPrefix(":"), title.hasSuffix(":"), title.count > 2 {
+                String(title.dropFirst().dropLast())
+            } else {
+                title
+            }
+            guard image.hasAttr("data-mx-emoticon") || fallbackBody.contains(":\(shortcode):") else {
+                continue
+            }
+            
+            do {
+                try image.replaceWith(TextNode(":\(shortcode):", nil))
+                replacedImage = true
+            } catch {
+                continue
+            }
+        }
+        
+        guard replacedImage else { return nil }
+        return try? body.html()
     }
 }

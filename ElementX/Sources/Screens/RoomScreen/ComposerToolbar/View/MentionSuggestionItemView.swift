@@ -52,6 +52,25 @@ struct MentionSuggestionItemView: View {
             RoomAvatarImage(avatar: avatar, avatarSize: .room(on: .completionSuggestions), mediaProvider: mediaProvider)
         case .room(let room):
             RoomAvatarImage(avatar: room.avatar, avatarSize: .room(on: .completionSuggestions), mediaProvider: mediaProvider)
+        case .emoji(let emoji):
+            if let customEmoji = emoji.customEmoji, let mediaProvider {
+                LoadableImage(url: customEmoji.imageURL,
+                              size: CGSize(width: 36, height: 36),
+                              allowsAnimation: true,
+                              mediaProvider: mediaProvider) { image in
+                    image
+                        .scaledToFit()
+                        .frame(width: 36, height: 36)
+                } placeholder: {
+                    Circle()
+                        .foregroundStyle(.compound.bgSubtleSecondary)
+                        .frame(width: 36, height: 36)
+                }
+            } else {
+                Text(emoji.unicode)
+                    .font(.system(size: 30))
+                    .frame(width: 36, height: 36)
+            }
         }
     }
 }

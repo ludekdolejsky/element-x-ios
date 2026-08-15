@@ -26,6 +26,44 @@ class RoomScreenUITests: XCTestCase {
         try await app.assertScreenshot()
     }
     
+    func testComposerFormattingKeepsText() {
+        let app = Application.launch(.roomSmallTimeline)
+        let composer = app.textViews[A11yIdentifiers.roomScreen.messageComposer]
+        let openFormattingOptions = app.buttons[A11yIdentifiers.roomScreen.composerToolbar.openComposeOptions]
+        let closeFormattingOptions = app.buttons[A11yIdentifiers.roomScreen.composerToolbar.closeFormattingOptions]
+        
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertTrue(openFormattingOptions.exists)
+        XCTAssertFalse(closeFormattingOptions.exists)
+        
+        composer.tap()
+        composer.typeText("Formatting stays")
+        XCTAssertEqual(composer.value as? String, "Formatting stays")
+        
+        openFormattingOptions.tap()
+        let textFormatting = app.buttons[A11yIdentifiers.roomScreen.attachmentPickerTextFormatting]
+        XCTAssertTrue(textFormatting.waitForExistence(timeout: 5))
+        textFormatting.tap()
+        
+        XCTAssertTrue(closeFormattingOptions.waitForExistence(timeout: 5))
+        XCTAssertEqual(composer.value as? String, "Formatting stays")
+    }
+    
+    func testSanitizedCustomEmojiTimeline() {
+        let app = Application.launch(.roomSanitizedCustomEmojiTimeline, disableTimelineAccessibility: false)
+        let customEmojiMessage = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", "Look \u{FFFC} now")).firstMatch
+        
+        XCTAssertTrue(customEmojiMessage.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["[img: Meatspin]"].exists)
+        Thread.sleep(forTimeInterval: 0.5)
+        var renderedFrames = Set<Data>()
+        for _ in 0..<6 {
+            renderedFrames.insert(app.screenshot().pngRepresentation)
+            Thread.sleep(forTimeInterval: 0.08)
+        }
+        XCTAssertGreaterThan(renderedFrames.count, 1, "The custom emoji should render more than one animation frame")
+    }
+    
     func testSmallTimelineWithIncomingAndPagination() async throws {
         let client = try UITestsSignalling.Client(mode: .tests)
         

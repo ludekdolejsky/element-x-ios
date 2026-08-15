@@ -1,14 +1,9 @@
 settings:
-  APP_DISPLAY_NAME: Element X
+  APP_DISPLAY_NAME: Element X Nitro
   PRODUCTION_APP_NAME: Element
-  APP_GROUP_IDENTIFIER: group.io.element
-  BASE_BUNDLE_IDENTIFIER: io.element.elementx
+  APP_GROUP_IDENTIFIER: group.com.nitrovery.elementx
+  BASE_BUNDLE_IDENTIFIER: com.nitrovery.elementx
   ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: "colors/accent-color"
-  DEVELOPMENT_TEAM: 7J4U792NQT
+  DEVELOPMENT_TEAM: 44QX7TX6DE
   IS_NIGHTLY_BUILD: false
-
-  # Optional configuration to load accounts from Element Classic.
-  CLASSIC_APP_GROUP_IDENTIFIER: group.im.vector
-  CLASSIC_APP_KEYCHAIN_SERVICE_IDENTIFIER: im.vector.app.encryption-manager-service
-  CLASSIC_APP_KEYCHAIN_ACCESS_GROUP_IDENTIFIER: "$(DEVELOPMENT_TEAM).im.vector.app.keychain.shared"
-  CLASSIC_APP_DEEP_LINK_URL: "element://open"
+  NOTIFICATION_FILTERING_ENABLED: false

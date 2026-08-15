@@ -11,6 +11,11 @@ import UIKit
 import UniformTypeIdentifiers
 
 nonisolated struct RoomTimelineItemFactory: RoomTimelineItemFactoryProtocol {
+    private static let hiddenUnsupportedEventTypes: Set = [
+        "im.ponies.room_emotes",
+        "m.room.image_pack"
+    ]
+    
     private let attributedStringBuilder: AttributedStringBuilderProtocol
     private let stateEventStringBuilder: RoomStateEventStringBuilder
     
@@ -49,8 +54,10 @@ nonisolated struct RoomTimelineItemFactory: RoomTimelineItemFactoryProtocol {
                 return nil // We shouldn't receive these without asking for custom event types.
             }
         case .failedToParseMessageLike(let eventType, let error):
+            guard !Self.hiddenUnsupportedEventTypes.contains(eventType) else { return nil }
             return buildUnsupportedTimelineItem(eventItemProxy, eventType, error, isOutgoing)
         case .failedToParseState(let eventType, _, let error):
+            guard !Self.hiddenUnsupportedEventTypes.contains(eventType) else { return nil }
             return buildUnsupportedTimelineItem(eventItemProxy, eventType, error, isOutgoing)
         case .state(_, let content):
             if isDM, case .roomCreate = content {
@@ -432,7 +439,9 @@ nonisolated struct RoomTimelineItemFactory: RoomTimelineItemFactoryProtocol {
     private func buildGalleryTimelineItemContent(_ messageContent: GalleryMessageContent, timelineItemID: TimelineItemIdentifier) -> GalleryRoomTimelineItemContent {
         let htmlCaption = messageContent.formatted?.format == .html ? messageContent.formatted?.body : nil
         let plainCaption = messageContent.formatted?.format != .html ? messageContent.formatted?.body : nil
-        let formattedCaption = htmlCaption != nil ? attributedStringBuilder.fromHTML(htmlCaption) : (plainCaption.flatMap(attributedStringBuilder.fromPlain))
+        let formattedCaption = htmlCaption != nil
+            ? attributedStringBuilder.fromHTML(htmlCaption, customEmojiFallbackBody: plainCaption ?? messageContent.body)
+            : plainCaption.flatMap(attributedStringBuilder.fromPlain)
         
         let items = messageContent.itemtypes.enumerated().map { index, itemType in
             buildGalleryItem(itemType, id: GalleryItemID(timelineItemID: timelineItemID, mediaIndex: index))
@@ -641,14 +650,16 @@ nonisolated struct RoomTimelineItemFactory: RoomTimelineItemFactoryProtocol {
     
     private func buildTextTimelineItemContent(_ messageContent: TextMessageContent) -> TextRoomTimelineItemContent {
         let htmlBody = messageContent.formatted?.format == .html ? messageContent.formatted?.body : nil
-        let formattedBody = (htmlBody != nil ? attributedStringBuilder.fromHTML(htmlBody) : attributedStringBuilder.fromPlain(messageContent.body))
+        let formattedBody = (htmlBody != nil ? attributedStringBuilder.fromHTML(htmlBody, customEmojiFallbackBody: messageContent.body) : attributedStringBuilder.fromPlain(messageContent.body))
         
         return .init(body: messageContent.body, formattedBody: formattedBody, formattedBodyHTMLString: htmlBody)
     }
     
     private func buildAudioTimelineItemContent(_ messageContent: AudioMessageContent) -> AudioRoomTimelineItemContent {
         let htmlCaption = messageContent.formattedCaption?.format == .html ? messageContent.formattedCaption?.body : nil
-        let formattedCaption = htmlCaption != nil ? attributedStringBuilder.fromHTML(htmlCaption) : attributedStringBuilder.fromPlain(messageContent.caption)
+        let formattedCaption = htmlCaption != nil
+            ? attributedStringBuilder.fromHTML(htmlCaption, customEmojiFallbackBody: messageContent.caption)
+            : attributedStringBuilder.fromPlain(messageContent.caption)
         
         var waveform: EstimatedWaveform?
         if let audioWaveform = messageContent.audio?.waveform {
@@ -668,7 +679,9 @@ nonisolated struct RoomTimelineItemFactory: RoomTimelineItemFactoryProtocol {
     
     private func buildImageTimelineItemContent(_ messageContent: ImageMessageContent) -> ImageRoomTimelineItemContent {
         let htmlCaption = messageContent.formattedCaption?.format == .html ? messageContent.formattedCaption?.body : nil
-        let formattedCaption = htmlCaption != nil ? attributedStringBuilder.fromHTML(htmlCaption) : attributedStringBuilder.fromPlain(messageContent.caption)
+        let formattedCaption = htmlCaption != nil
+            ? attributedStringBuilder.fromHTML(htmlCaption, customEmojiFallbackBody: messageContent.caption)
+            : attributedStringBuilder.fromPlain(messageContent.caption)
         
         let thumbnailInfo = ImageInfoProxy(source: messageContent.info?.thumbnailSource,
                                            width: messageContent.info?.thumbnailInfo?.width,
@@ -694,7 +707,9 @@ nonisolated struct RoomTimelineItemFactory: RoomTimelineItemFactoryProtocol {
     
     private func buildVideoTimelineItemContent(_ messageContent: VideoMessageContent) -> VideoRoomTimelineItemContent {
         let htmlCaption = messageContent.formattedCaption?.format == .html ? messageContent.formattedCaption?.body : nil
-        let formattedCaption = htmlCaption != nil ? attributedStringBuilder.fromHTML(htmlCaption) : attributedStringBuilder.fromPlain(messageContent.caption)
+        let formattedCaption = htmlCaption != nil
+            ? attributedStringBuilder.fromHTML(htmlCaption, customEmojiFallbackBody: messageContent.caption)
+            : attributedStringBuilder.fromPlain(messageContent.caption)
         
         let thumbnailInfo = ImageInfoProxy(source: messageContent.info?.thumbnailSource,
                                            width: messageContent.info?.thumbnailInfo?.width,
@@ -727,7 +742,9 @@ nonisolated struct RoomTimelineItemFactory: RoomTimelineItemFactoryProtocol {
     
     private func buildFileTimelineItemContent(_ messageContent: FileMessageContent) -> FileRoomTimelineItemContent {
         let htmlCaption = messageContent.formattedCaption?.format == .html ? messageContent.formattedCaption?.body : nil
-        let formattedCaption = htmlCaption != nil ? attributedStringBuilder.fromHTML(htmlCaption) : attributedStringBuilder.fromPlain(messageContent.caption)
+        let formattedCaption = htmlCaption != nil
+            ? attributedStringBuilder.fromHTML(htmlCaption, customEmojiFallbackBody: messageContent.caption)
+            : attributedStringBuilder.fromPlain(messageContent.caption)
         
         let thumbnailSource = messageContent.info?.thumbnailSource.map { MediaSourceProxy(source: $0, mimeType: messageContent.info?.thumbnailInfo?.mimetype) }
         
@@ -743,7 +760,7 @@ nonisolated struct RoomTimelineItemFactory: RoomTimelineItemFactoryProtocol {
     
     private func buildNoticeTimelineItemContent(_ messageContent: NoticeMessageContent) -> NoticeRoomTimelineItemContent {
         let htmlBody = messageContent.formatted?.format == .html ? messageContent.formatted?.body : nil
-        let formattedBody = (htmlBody != nil ? attributedStringBuilder.fromHTML(htmlBody) : attributedStringBuilder.fromPlain(messageContent.body))
+        let formattedBody = (htmlBody != nil ? attributedStringBuilder.fromHTML(htmlBody, customEmojiFallbackBody: messageContent.body) : attributedStringBuilder.fromPlain(messageContent.body))
         
         return .init(body: messageContent.body, formattedBody: formattedBody)
     }
@@ -755,7 +772,7 @@ nonisolated struct RoomTimelineItemFactory: RoomTimelineItemFactoryProtocol {
         
         var formattedBody: AttributedString?
         if let htmlBody {
-            formattedBody = buildEmoteFormattedBodyFromHTML(html: htmlBody, name: name)
+            formattedBody = buildEmoteFormattedBodyFromHTML(html: htmlBody, fallbackBody: messageContent.body, name: name)
         } else {
             formattedBody = attributedStringBuilder.fromPlain(L10n.commonEmote(name, messageContent.body))
         }
@@ -764,10 +781,10 @@ nonisolated struct RoomTimelineItemFactory: RoomTimelineItemFactoryProtocol {
     }
     
     /// This fixes the issue of the name not belonging to the first <p> defined paragraph
-    private func buildEmoteFormattedBodyFromHTML(html: String, name: String) -> AttributedString? {
+    private func buildEmoteFormattedBodyFromHTML(html: String, fallbackBody: String, name: String) -> AttributedString? {
         let htmlBodyPlaceholder = "{htmlBodyPlaceholder}"
         var finalString = AttributedString(L10n.commonEmote(name, htmlBodyPlaceholder))
-        guard let htmlBodyString = attributedStringBuilder.fromHTML(html) else {
+        guard let htmlBodyString = attributedStringBuilder.fromHTML(html, customEmojiFallbackBody: fallbackBody) else {
             return nil
         }
         finalString.replace(htmlBodyPlaceholder, with: htmlBodyString)

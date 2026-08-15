@@ -644,6 +644,76 @@ struct AttributedStringBuilderTests {
     }
     
     @Test
+    func matrixCustomEmoticonImageTagsProduceAttachments() throws {
+        let htmlString = """
+        <img data-mx-emoticon src="mxc://example.org/one" alt="First" title="first" height="32" /> \
+        <img data-mx-emoticon="" src="mxc://example.org/two" alt="Second" title="second" height="32" />
+        """
+        
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString), "Could not build the attributed string")
+        let attachments = attributedString.runs.compactMap { $0.suppressedAttachment as? PillTextAttachment }
+        
+        #expect(attachments.count == 2)
+        #expect(attachments.map(\.pillData.type) == [
+            .customEmoji(urlString: "mxc://example.org/one", alt: "First", shortcode: "first"),
+            .customEmoji(urlString: "mxc://example.org/two", alt: "Second", shortcode: "second")
+        ])
+        #expect(!String(attributedString.characters).contains("[img:"))
+    }
+    
+    @Test
+    func sanitizedMatrixCustomEmoticonUsesPlainFallback() throws {
+        let htmlString = #"Look <img src="mxc://example.org/meatspin" alt="Meatspin" title="meatspin" height="32" /> now"#
+        
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString, customEmojiFallbackBody: "Look :meatspin: now"),
+                                            "Could not build the attributed string")
+        let attachments = attributedString.runs.compactMap { $0.suppressedAttachment as? PillTextAttachment }
+        
+        #expect(attachments.map(\.pillData.type) == [
+            .customEmoji(urlString: "mxc://example.org/meatspin", alt: "Meatspin", shortcode: "meatspin")
+        ])
+        #expect(!String(attributedString.characters).contains("[img:"))
+    }
+    
+    @Test
+    func sanitizedCustomEmoticonSupportsPunctuationAndFallbackCounts() throws {
+        let htmlString = """
+        <img src="mxc://example.org/one" alt="First" title="party&amp;" height="32" /> \
+        <img src="mxc://example.org/two" alt="Second" title="party&amp;" height="32" />
+        """
+        
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString, customEmojiFallbackBody: ":party&:"),
+                                            "Could not build the attributed string")
+        let attachments = attributedString.runs.compactMap { $0.suppressedAttachment as? PillTextAttachment }
+        
+        #expect(attachments.map(\.pillData.type) == [
+            .customEmoji(urlString: "mxc://example.org/one", alt: "First", shortcode: "party&")
+        ])
+        #expect(String(attributedString.characters).contains("[img: Second]"))
+    }
+    
+    @Test
+    func unmarkedImageWithoutMatchingPlainFallbackRemainsText() throws {
+        let htmlString = #"Look <img src="mxc://example.org/meatspin" alt="Meatspin" title="meatspin" height="32" /> now"#
+        
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString, customEmojiFallbackBody: "Look :different: now"),
+                                            "Could not build the attributed string")
+        
+        #expect(String(attributedString.characters) == "Look [img: Meatspin] now")
+        #expect(attributedString.runs.allSatisfy { $0.suppressedAttachment == nil })
+    }
+    
+    @Test
+    func invalidCustomEmoticonSourceFallsBackToAltText() throws {
+        let htmlString = #"<img data-mx-emoticon src="https://example.org/not-mxc.png" alt="Not trusted">"#
+        
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString), "Could not build the attributed string")
+        
+        #expect(String(attributedString.characters) == "[img: Not trusted]")
+        #expect(attributedString.runs.allSatisfy { $0.suppressedAttachment == nil })
+    }
+    
+    @Test
     func listTags() throws {
         let htmlString = "<p>like</p>\n<ul>\n<li>this<br />\ntest</li>\n</ul>\n"
         
@@ -715,11 +785,11 @@ struct AttributedStringBuilderTests {
             to
          main:<ul>         <li>
                     <a href="https://github.com"><code>Some update</code></a>
-                    
+        
                 </li>
                 <li>
                     <a href="https://github.com"><code>Some other update</code></a>
-                    
+        
                 </li>
          </ul>
         """

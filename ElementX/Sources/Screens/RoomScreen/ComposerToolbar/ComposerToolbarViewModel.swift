@@ -22,12 +22,15 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
     private let roomProxy: JoinedRoomProxyProtocol
     private let analyticsService: AnalyticsServiceProtocol
     private let draftService: ComposerDraftServiceProtocol
+    private let emojiProvider: EmojiProviderProtocol?
+    private let appSettings: AppSettings
     private var identityPinningViolations = [String: RoomMemberProxyProtocol]()
+    private var preservedCustomEmojis = [CustomEmoji]()
     
     private let mentionBuilder: MentionBuilderProtocol
     private let attributedStringBuilder: AttributedStringBuilderProtocol
     
-    private var hasAppeard = false
+    private var hasAppeared = false
     
     private let actionsSubject: PassthroughSubject<ComposerToolbarViewModelAction, Never> = .init()
     var actions: AnyPublisher<ComposerToolbarViewModelAction, Never> {
@@ -43,6 +46,7 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
     private var currentLinkData: WysiwygLinkData?
     
     private var replyLoadingTask: Task<Void, Never>?
+    private var sendMessageTask: Task<Void, Never>?
     
     init(initialText: String? = nil,
          roomProxy: JoinedRoomProxyProtocol,
@@ -52,13 +56,16 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
          mentionDisplayHelper: MentionDisplayHelper,
          appSettings: AppSettings,
          analyticsService: AnalyticsServiceProtocol,
-         composerDraftService: ComposerDraftServiceProtocol) {
+         composerDraftService: ComposerDraftServiceProtocol,
+         emojiProvider: EmojiProviderProtocol? = nil) {
         self.initialText = initialText
         self.wysiwygViewModel = wysiwygViewModel
         self.completionSuggestionService = completionSuggestionService
         self.analyticsService = analyticsService
         self.roomProxy = roomProxy
         draftService = composerDraftService
+        self.emojiProvider = emojiProvider
+        self.appSettings = appSettings
         
         mentionBuilder = MentionBuilder()
         attributedStringBuilder = AttributedStringBuilder(cacheKey: "Composer", mentionBuilder: mentionBuilder)
@@ -105,18 +112,17 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             }
             .store(in: &cancellables)
         
+        wysiwygViewModel.$attributedContent
+            .sink { [weak self] content in
+                self?.state.bindings.plainComposerText = NSAttributedString(string: content.text.string)
+                self?.state.bindings.selectedRange = content.selection
+            }
+            .store(in: &cancellables)
+        
         // Needs to be observable or the placeholder and the dictation state will not be managed correctly.
         wysiwygViewModel.objectWillChange
             .sink { [weak self] _ in
                 self?.context.objectWillChange.send()
-            }
-            .store(in: &cancellables)
-        
-        context.$viewState
-            .map(\.bindings.plainComposerText)
-            .removeDuplicates()
-            .sink { [weak self] plainComposerText in
-                self?.actionsSubject.send(.contentChanged(isEmpty: plainComposerText.string.isEmpty))
             }
             .store(in: &cancellables)
         
@@ -167,20 +173,39 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
     // MARK: - Public
     
     func start() {
+        setupComposerIfNeeded()
         Task { await loadDraft() }
     }
     
     func stop() {
+        sendMessageTask?.cancel()
+        sendMessageTask = nil
+        state.isResolvingCustomEmojis = false
         saveDraft()
+    }
+    
+    func sendEmoji(_ emoji: EmojiPickerEmojiViewData) {
+        guard state.canSendStandaloneEmoji else { return }
+        
+        if let customEmoji = emoji.customEmoji {
+            let content = CustomEmojiMessageContent(emoji: customEmoji)
+            sendMessage(plain: content.plain,
+                        html: content.html,
+                        mode: state.composerMode,
+                        intentionalMentions: .empty,
+                        customEmojis: [customEmoji])
+        } else {
+            actionsSubject.send(.sendMessage(plain: emoji.value,
+                                             html: nil,
+                                             mode: state.composerMode,
+                                             intentionalMentions: .empty))
+        }
     }
     
     override func process(viewAction: ComposerToolbarViewAction) {
         switch viewAction {
         case .composerAppeared:
-            if !hasAppeard {
-                hasAppeard = true
-                wysiwygViewModel.setup()
-            }
+            setupComposerIfNeeded()
         case .composerDisappeared:
             saveDraft()
         case .sendMessage:
@@ -190,14 +215,10 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             case .previewVoiceMessage:
                 actionsSubject.send(.voiceMessage(.send))
             default:
-                if context.composerFormattingEnabled {
-                    actionsSubject.send(.sendMessage(plain: wysiwygViewModel.content.markdown,
-                                                     html: wysiwygViewModel.content.html,
-                                                     mode: state.composerMode,
-                                                     intentionalMentions: wysiwygViewModel.getMentionsState().toIntentionalMentions()))
-                } else {
-                    sendPlainComposerText()
-                }
+                sendMessageResolvingCustomEmojis(plain: wysiwygViewModel.content.markdown,
+                                                 html: wysiwygViewModel.content.html,
+                                                 mode: state.composerMode,
+                                                 intentionalMentions: wysiwygViewModel.getMentionsState().toIntentionalMentions())
             }
         case .editLastMessage:
             actionsSubject.send(.editLastMessage)
@@ -231,22 +252,6 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             handleSuggestion(suggestion)
         case .voiceMessage(let voiceMessageAction):
             processVoiceMessageAction(voiceMessageAction)
-        case .plainComposerTextChanged:
-            completionSuggestionService.processTextMessage(state.bindings.plainComposerText.string, selectedRange: context.viewState.bindings.selectedRange)
-        case .selectedTextChanged:
-            completionSuggestionService.processTextMessage(state.bindings.plainComposerText.string, selectedRange: context.viewState.bindings.selectedRange)
-        case .didToggleFormattingOptions:
-            if context.composerFormattingEnabled {
-                guard !context.plainComposerText.string.isEmpty else {
-                    return
-                }
-                DispatchQueue.main.async {
-                    self.wysiwygViewModel.textView.flushPills()
-                    self.wysiwygViewModel.setMarkdownContent(self.context.plainComposerText.string)
-                }
-            } else {
-                context.plainComposerText = NSAttributedString(string: wysiwygViewModel.attributedContent.text.string)
-            }
         }
     }
     
@@ -258,8 +263,8 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             }
             set(mode: mode)
         case .setText(let plainText, let htmlText):
-            if let htmlText, context.composerFormattingEnabled {
-                set(text: htmlText)
+            if let htmlText {
+                set(text: plainText, sourceHTML: htmlText)
             } else {
                 set(text: plainText)
             }
@@ -298,14 +303,22 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
     
     // MARK: - Private
     
+    private func setupComposerIfNeeded() {
+        guard !hasAppeared else { return }
+        hasAppeared = true
+        wysiwygViewModel.setup()
+    }
+    
     private func handleLoadDraft(_ draft: ComposerDraftProxy) {
-        if let html = draft.htmlText {
-            context.composerFormattingEnabled = true
-            DispatchQueue.main.async {
-                self.set(text: html)
-            }
+        context.composerFormattingEnabled = false
+        context.composerExpanded = false
+        
+        if let html = draft.htmlText,
+           let customEmojiHTML = CustomEmojiMessageContent.unmarkingPlainTextDraft(html) {
+            set(text: draft.plainText, sourceHTML: customEmojiHTML)
+        } else if let html = draft.htmlText {
+            set(text: draft.plainText, sourceHTML: html)
         } else {
-            context.composerFormattingEnabled = false
             set(text: draft.plainText)
         }
         
@@ -338,33 +351,19 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
         let htmlText: String?
         let type: ComposerDraftProxy.ComposerDraftType
         
-        if context.composerFormattingEnabled {
-            if wysiwygViewModel.isContentEmpty, state.composerMode == .default {
-                if isVolatile {
-                    draftService.clearVolatileDraft()
-                } else {
-                    Task {
-                        await draftService.clearDraft()
-                    }
+        if wysiwygViewModel.isContentEmpty, state.composerMode == .default {
+            if isVolatile {
+                draftService.clearVolatileDraft()
+            } else {
+                Task {
+                    await draftService.clearDraft()
                 }
-                return
             }
-            plainText = wysiwygViewModel.content.markdown
-            htmlText = wysiwygViewModel.content.html
-        } else {
-            if context.plainComposerText.string.isEmpty, state.composerMode == .default {
-                if isVolatile {
-                    draftService.clearVolatileDraft()
-                } else {
-                    Task {
-                        await draftService.clearDraft()
-                    }
-                }
-                return
-            }
-            plainText = plainComposerContent.text
-            htmlText = nil
+            return
         }
+        plainText = wysiwygViewModel.content.markdown
+        let renderedHTML = renderedCustomEmojiHTML(plain: plainText, html: wysiwygViewModel.content.html)
+        htmlText = renderedHTML?.isEmpty == false ? renderedHTML : nil
         
         switch state.composerMode {
         case .default:
@@ -393,62 +392,89 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
         }
     }
     
-    private var plainComposerContent: PlainComposerContent {
-        let attributedString = NSMutableAttributedString(attributedString: context.plainComposerText)
+    private func sendMessage(plain: String,
+                             html: String?,
+                             mode: ComposerMode,
+                             intentionalMentions: IntentionalMentions,
+                             customEmojis: [CustomEmoji] = []) {
+        let formattedHTML = renderedCustomEmojiHTML(plain: plain, html: html, customEmojis: customEmojis)
+        let action = ComposerToolbarViewModelAction.sendMessage(plain: plain,
+                                                                html: formattedHTML,
+                                                                mode: mode,
+                                                                intentionalMentions: intentionalMentions)
+        guard shouldWarnBeforeSendingCustomEmoji(html: formattedHTML) else {
+            actionsSubject.send(action)
+            return
+        }
         
-        var shouldMakeAnotherPass = false
-        var userIDs = Set<String>()
-        var containsAtRoom = false
-        
-        repeat { // Don't enumerate and mutate at the same time, big no no
-            shouldMakeAnotherPass = false
-            attributedString.enumerateAttribute(.link, in: .init(location: 0, length: attributedString.length), options: []) { value, range, stop in
-                guard let value else { return }
-                shouldMakeAnotherPass = true
-                
-                // Remove the attribute so it doesn't get inherited by the new string
-                attributedString.removeAttribute(.link, range: range)
-                
-                if let userID = attributedString.attribute(.MatrixUserID, at: range.location, effectiveRange: nil) as? String {
-                    let displayName = attributedString.attribute(.MatrixUserDisplayName, at: range.location, effectiveRange: nil)
-                    attributedString.replaceCharacters(in: range, with: "[\(displayName ?? userID)](\(value))")
-                    userIDs.insert(userID)
-                    stop.pointee = true
-                } else if let roomAlias = attributedString.attribute(.MatrixRoomAlias, at: range.location, effectiveRange: nil) as? String {
-                    let displayName = attributedString.attribute(.MatrixRoomDisplayName, at: range.location, effectiveRange: nil)
-                    attributedString.replaceCharacters(in: range, with: "[\(displayName ?? roomAlias)](\(value))")
-                    stop.pointee = true
-                } else {
-                    return
-                }
-            }
-        } while shouldMakeAnotherPass
-        
-        repeat {
-            shouldMakeAnotherPass = false
-            attributedString.enumerateAttribute(.MatrixAllUsersMention, in: .init(location: 0, length: attributedString.length), options: []) { value, range, stop in
-                guard value != nil else { return }
-                
-                shouldMakeAnotherPass = true
-                
-                // Remove the attribute so it doesn't get inherited by the new string
-                attributedString.removeAttribute(.MatrixAllUsersMention, range: range)
-                
-                attributedString.replaceCharacters(in: range, with: PillUtilities.atRoom)
-                containsAtRoom = true
-                
-                stop.pointee = true
-            }
-        } while shouldMakeAnotherPass
-        
-        return .init(text: attributedString.string, mentionedUserIDs: userIDs, containsAtRoomMention: containsAtRoom)
+        state.bindings.alertInfo = .init(id: UUID(),
+                                         title: UntranslatedL10n.customEmojiMediaWarningTitle,
+                                         message: UntranslatedL10n.customEmojiMediaWarningMessage,
+                                         primaryButton: .init(title: L10n.actionCancel) { [weak self] in
+                                             self?.state.bindings.alertInfo = nil
+                                         },
+                                         secondaryButton: .init(title: L10n.actionContinue) { [weak self] in
+                                             guard let self else { return }
+                                             appSettings.hasAcknowledgedCustomEmojiMediaWarning = true
+                                             state.bindings.alertInfo = nil
+                                             actionsSubject.send(action)
+                                         })
     }
     
-    private func sendPlainComposerText() {
-        let plainComposerContent = plainComposerContent
-        actionsSubject.send(.sendMessage(plain: plainComposerContent.text, html: nil,
-                                         mode: state.composerMode,
-                                         intentionalMentions: .init(userIDs: plainComposerContent.mentionedUserIDs, atRoom: plainComposerContent.containsAtRoomMention)))
+    private func sendMessageResolvingCustomEmojis(plain: String,
+                                                  html: String?,
+                                                  mode: ComposerMode,
+                                                  intentionalMentions: IntentionalMentions) {
+        guard CustomEmojiMessageContent.containsPotentialShortcode(in: plain),
+              let emojiProvider else {
+            sendMessage(plain: plain, html: html, mode: mode, intentionalMentions: intentionalMentions)
+            return
+        }
+        guard sendMessageTask == nil else { return }
+        state.isResolvingCustomEmojis = true
+        
+        sendMessageTask = Task { [weak self] in
+            let customEmojis = await emojiProvider.customEmojis()
+            guard !Task.isCancelled, let self else { return }
+            sendMessageTask = nil
+            state.isResolvingCustomEmojis = false
+            sendMessage(plain: plain,
+                        html: html,
+                        mode: mode,
+                        intentionalMentions: intentionalMentions,
+                        customEmojis: customEmojis)
+        }
+    }
+    
+    private func renderedCustomEmojiHTML(plain: String,
+                                         html: String?,
+                                         customEmojis: [CustomEmoji] = []) -> String? {
+        guard CustomEmojiMessageContent.containsPotentialShortcode(in: plain) else { return html }
+        
+        var seenShortcodes = Set<String>()
+        let availableCustomEmojis = (preservedCustomEmojis + customEmojis + (emojiProvider?.cachedCustomEmojis() ?? []))
+            .filter { seenShortcodes.insert($0.shortcode).inserted }
+        guard !availableCustomEmojis.isEmpty else { return html }
+        
+        if let html {
+            return CustomEmojiMessageContent.renderingCustomEmojis(in: html, customEmojis: availableCustomEmojis) ?? html
+        }
+        return CustomEmojiMessageContent.renderingCustomEmojis(inPlainText: plain, customEmojis: availableCustomEmojis)
+    }
+    
+    private func shouldWarnBeforeSendingCustomEmoji(html: String?) -> Bool {
+        guard state.isRoomEncrypted,
+              !appSettings.hasAcknowledgedCustomEmojiMediaWarning,
+              let html else {
+            return false
+        }
+        return !CustomEmojiMessageContent.restoringCustomEmojis(in: html).customEmojis.isEmpty
+    }
+    
+    private func replaceRichComposerText(in range: NSRange, with replacement: String) {
+        _ = wysiwygViewModel.replaceText(range: range, replacementText: replacement)
+        wysiwygViewModel.applyAtributedContent()
+        wysiwygViewModel.updateCompressedHeightIfNeeded()
     }
     
     private func processVoiceMessageAction(_ action: ComposerToolbarVoiceMessageAction) {
@@ -470,6 +496,8 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             actionsSubject.send(.voiceMessage(.scrubPlayback(scrubbing: scrubbing)))
         case .seekPlayback(let progress):
             actionsSubject.send(.voiceMessage(.seekPlayback(progress: progress)))
+        case .transcribe:
+            actionsSubject.send(.voiceMessage(.transcribe))
         case .send:
             break
         }
@@ -506,44 +534,31 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
                 MXLog.error("Could not build user permalink")
                 return
             }
-            
-            if context.composerFormattingEnabled {
-                wysiwygViewModel.setMention(url: url.absoluteString, name: user.id, mentionType: .user)
-            } else {
-                let attributedString = NSMutableAttributedString(attributedString: state.bindings.plainComposerText)
-                mentionBuilder.handleUserMention(for: attributedString, in: suggestion.range, url: url, userID: user.id, userDisplayName: user.displayName)
-                state.bindings.plainComposerText = attributedString
-                
-                let newSelectedRange = NSRange(location: state.bindings.selectedRange.location - suggestion.rawSuggestionText.count, length: 0)
-                state.bindings.selectedRange = newSelectedRange
-            }
+            wysiwygViewModel.setMention(url: url.absoluteString, name: user.id, mentionType: .user)
         case .allUsers:
-            if context.composerFormattingEnabled {
-                wysiwygViewModel.setAtRoomMention()
-            } else {
-                let attributedString = NSMutableAttributedString(attributedString: state.bindings.plainComposerText)
-                mentionBuilder.handleAllUsersMention(for: attributedString, in: suggestion.range)
-                state.bindings.plainComposerText = attributedString
-                
-                let newSelectedRange = NSRange(location: state.bindings.selectedRange.location - suggestion.rawSuggestionText.count, length: 0)
-                state.bindings.selectedRange = newSelectedRange
-            }
+            wysiwygViewModel.setAtRoomMention()
         case let .room(room):
             guard let url = try? URL(string: matrixToRoomAliasPermalink(roomAlias: room.canonicalAlias)) else {
                 MXLog.error("Could not build alias permalink")
                 return
             }
-            
-            if context.composerFormattingEnabled {
-                wysiwygViewModel.setMention(url: url.absoluteString, name: room.name, mentionType: .room)
+            wysiwygViewModel.setMention(url: url.absoluteString, name: room.name, mentionType: .room)
+        case let .emoji(emoji):
+            let replacement = emoji.customEmoji.map { ":\($0.shortcode):" } ?? emoji.unicode
+            let currentTrigger = wysiwygViewModel.suggestionPattern?.toElementPattern
+            let range = if let currentTrigger, currentTrigger.type == .emoji {
+                currentTrigger.range
             } else {
-                let attributedString = NSMutableAttributedString(attributedString: state.bindings.plainComposerText)
-                mentionBuilder.handleRoomAliasMention(for: attributedString, in: suggestion.range, url: url, roomAlias: room.canonicalAlias, roomDisplayName: room.name)
-                state.bindings.plainComposerText = attributedString
-                
-                let newSelectedRange = NSRange(location: state.bindings.selectedRange.location - suggestion.rawSuggestionText.count, length: 0)
-                state.bindings.selectedRange = newSelectedRange
+                suggestion.range
             }
+            replaceRichComposerText(in: range, with: replacement)
+            if let emojiProvider {
+                Task {
+                    await emojiProvider.markEmojiAsRecentlyUsed(emoji.reactionKey,
+                                                                shortcode: emoji.customEmoji?.shortcode)
+                }
+            }
+            completionSuggestionService.setSuggestionTrigger(nil)
         }
     }
     
@@ -585,56 +600,16 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
         }
     }
     
-    private func set(text: String) {
-        if context.composerFormattingEnabled {
-            wysiwygViewModel.textView.flushPills()
-            wysiwygViewModel.setHtmlContent(text)
+    private func set(text: String, sourceHTML: String? = nil) {
+        wysiwygViewModel.textView.flushPills()
+        
+        if let sourceHTML {
+            let restoration = CustomEmojiMessageContent.restoringCustomEmojis(in: sourceHTML, fallbackBody: text)
+            preservedCustomEmojis = restoration.customEmojis
+            wysiwygViewModel.setHtmlContent(restoration.html)
         } else {
-            let attributedString = NSMutableAttributedString(string: text)
-            
-            parseUserMentionsMarkdown(text) { range, url in
-                // Call your handleUserMention function here
-                attributedString.addAttribute(.link, value: url, range: range)
-            }
-            
-            let matches = MatrixEntityRegex.allUsersRegex.matches(in: attributedString.string)
-            for match in matches {
-                attributedString.addAttribute(.MatrixAllUsersMention, value: true, range: match.range)
-            }
-            
-            attributedStringBuilder.addMatrixEntityPermalinkAttributesTo(attributedString)
-            
-            state.bindings.plainComposerText = attributedString
-        }
-    }
-    
-    private func parseUserMentionsMarkdown(_ text: String, callback: (NSRange, URL) -> Void) {
-        // Define the regex pattern
-        let pattern = "\\[(.*?)\\]\\(https://matrix\\.to/#/(@.*?)\\)"
-        
-        // Create the regex
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-            return
-        }
-        
-        // Find matches in the input text
-        let nsText = text as NSString
-        let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsText.length))
-        
-        // Process each match
-        for match in matches.sorted(by: { $0.range.length > $1.range.length }) {
-            // Extract the display name, user ID, and full URL
-            guard match.numberOfRanges == 3 else { continue }
-            
-            let userIDRange = match.range(at: 2)
-            let fullRange = match.range(at: 0)
-            
-            let userID = nsText.substring(with: userIDRange)
-            let fullURLString = "https://matrix.to/#/\(userID)"
-            
-            if let url = URL(string: fullURLString) {
-                callback(fullRange, url)
-            }
+            preservedCustomEmojis = []
+            wysiwygViewModel.setMarkdownContent(text)
         }
     }
     

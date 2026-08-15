@@ -99,6 +99,27 @@ enum TimelineFixtures {
         smallChunkProxies.buildRoomTimelineItems()
     }
     
+    /// A message after the Rust timeline sanitizer has removed `data-mx-emoticon`.
+    static var sanitizedCustomEmojiChunk: [RoomTimelineItemProtocol] {
+        let body = "Look :meatspin: now"
+        let html = #"Look <img src="mxc://matrix.org/1234567890AnImAtEd" alt="Meatspin" title="meatspin" height="32" /> now"#
+        let messageType = MessageType.text(content: .init(body: body, formatted: .init(format: .html, body: html)))
+        let content = TimelineItemContent.msgLike(content: .init(kind: .message(content: .init(msgType: messageType,
+                                                                                               body: body,
+                                                                                               isEdited: false,
+                                                                                               mentions: nil)),
+                                                                 reactions: [],
+                                                                 inReplyTo: nil,
+                                                                 threadRoot: nil,
+                                                                 threadSummary: nil))
+        let event = EventTimelineItem(configuration: .init(sender: "@alice:matrix.org", isOwn: false, content: content))
+        let proxy = EventTimelineItemProxy(item: event, uniqueID: .init("sanitized-custom-emoji"))
+        guard let item = factory.buildTimelineItem(for: proxy, isDM: false) else {
+            fatalError("Unable to build custom emoji timeline fixture")
+        }
+        return [item]
+    }
+    
     /// A small chunk of events, containing 2 text items.
     static var smallChunkWithReadReceipts: [RoomTimelineItemProtocol] {
         [TextRoomTimelineItem(text: "Hey there 👋",

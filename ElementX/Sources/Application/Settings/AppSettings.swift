@@ -148,12 +148,14 @@ final nonisolated class AppSettings: @unchecked Sendable {
     private(set) var hideBrandChrome = false
     
     /// The task identifier used for background app refresh. Also used in main target's the Info.plist
-    let backgroundAppRefreshTaskIdentifier = "io.element.elementx.background.refresh"
+    let backgroundAppRefreshTaskIdentifier = "\(InfoPlistReader.main.baseBundleIdentifier).background.refresh"
     
     /// A URL where users can go read more about the app.
     private(set) var websiteURL: URL = "https://element.io"
     /// A URL that contains the app's logo that may be used when showing content in a web view.
     private(set) var logoURL: URL = "https://element.io/mobile-icon.png"
+    let nitroTranscriptionBaseURL: URL = "https://matrix-bot.nitrovery.com"
+    let nitroReminderBaseURL: URL = "https://matrix-bot.nitrovery.com"
     /// A URL that contains that app's copyright notice.
     private(set) var copyrightURL: URL = "https://element.io/copyright"
     /// A URL that contains the app's Terms of use.
@@ -239,7 +241,7 @@ final nonisolated class AppSettings: @unchecked Sendable {
         #endif
     }
     
-    private(set) var pushGatewayBaseURL: URL = "https://matrix.org"
+    private(set) var pushGatewayBaseURL: URL = "https://push.nitrovery.com"
     var pushGatewayNotifyEndpoint: URL {
         pushGatewayBaseURL.appending(path: "_matrix/push/v1/notify")
     }
@@ -358,6 +360,12 @@ final nonisolated class AppSettings: @unchecked Sendable {
     @UserPreference(defaultValue: AudioPlaybackSpeed.default)
     var voiceMessagePlaybackSpeed: AudioPlaybackSpeed
     
+    @UserPreference(defaultValue: false)
+    var hasAcknowledgedCustomEmojiMediaWarning: Bool
+    
+    @UserPreference(defaultValue: false)
+    var hasAcknowledgedAudioTranscriptionWarning: Bool
+    
     /// Whether or not to show a warning on the media caption composer so the user knows
     /// that captions might not be visible to users who are using other Matrix clients.
     let shouldShowMediaCaptionWarning = true
@@ -414,19 +422,19 @@ final nonisolated class AppSettings: @unchecked Sendable {
     @UserPreference(defaultValue: false)
     var knockingEnabled: Bool
     
-    @UserPreference(defaultValue: false)
+    @UserPreference(defaultValue: true)
     var threadsEnabled: Bool
     
-    @UserPreference(defaultValue: false)
+    @UserPreference(defaultValue: true)
     var roomThreadListEnabled: Bool
     
-    @UserPreference(defaultValue: ProcessInfo().isiOSAppOnMac)
+    @UserPreference(defaultValue: true)
     var globalSearchEnabled: Bool
     
     @UserPreference(defaultValue: false)
     var focusEventOnNotificationTap: Bool
     
-    @UserPreference(defaultValue: false)
+    @UserPreference(defaultValue: true)
     var linkPreviewsEnabled: Bool
     
     /// Enables *sending* gallery messages (multiple media in a single message).

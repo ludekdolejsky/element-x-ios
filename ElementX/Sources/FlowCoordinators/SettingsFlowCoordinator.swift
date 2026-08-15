@@ -164,6 +164,7 @@ class SettingsFlowCoordinator: FlowCoordinatorProtocol {
     private func presentEmojiPicker(emojiPickerContinuation: EmojiPickerScreenContinuation) {
         let coordinator = EmojiPickerScreenCoordinator(parameters: .init(selectedEmojis: [],
                                                                          emojiProvider: flowParameters.emojiProvider,
+                                                                         mediaProvider: flowParameters.userSession.mediaProvider,
                                                                          continuation: emojiPickerContinuation))
         coordinator.actions
             .sink { [weak self] action in

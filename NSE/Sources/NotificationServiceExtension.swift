@@ -88,9 +88,8 @@ actor NotificationServiceExtensionActor {
         appHooks.setUp()
         
         // If the device is still locked then we can't write to the app group container and
-        // the target configuration will fail. We could call exit(0) here, however with the
-        // notification filtering entitlement that results in the notification being discarded
-        // so we need to wait for the delegate method to be called and bail out there instead.
+        // the target configuration will fail. Wait for the delegate method to be called so builds
+        // with notification filtering can replace the first notification with an offline notice.
         // The `Mutex` guarantees `Target.nse.configure(...)` runs at most once per process even
         // under concurrent NSE instance creation.
         if !BootDetectionManager.isDeviceLockedAfterReboot(containerURL: URL.appGroupContainerDirectory) {
@@ -117,19 +116,16 @@ actor NotificationServiceExtensionActor {
             
             if await Self.hasHandledFirstNotificationSinceBoot {
                 return contentHandler(request.content)
-            } else {
-                await MainActor.run { Self.hasHandledFirstNotificationSinceBoot = true }
-                deliverReceivedWhileOfflineNotification(for: request)
-                return contentHandler(.init())
             }
+            await MainActor.run { Self.hasHandledFirstNotificationSinceBoot = true }
+            return contentHandler(receivedWhileOfflineNotificationContent(for: request))
         }
         
         guard await !shouldDeliverReceivedWhileOfflineNotification() else {
             // Don't log until the app hooks have been run:
             // swiftlint:disable:next print_deprecation
             print("Device is unlocked but may have missed notifications while offline.")
-            deliverReceivedWhileOfflineNotification(for: request)
-            return contentHandler(.init())
+            return contentHandler(receivedWhileOfflineNotificationContent(for: request))
         }
         
         guard let roomID = request.content.roomID else {
@@ -200,6 +196,15 @@ actor NotificationServiceExtensionActor {
     }
     
     // MARK: - Boot handling
+    
+    private func receivedWhileOfflineNotificationContent(for request: UNNotificationRequest) -> UNNotificationContent {
+        guard InfoPlistReader.main.notificationFilteringEnabled else {
+            return request.content
+        }
+        
+        deliverReceivedWhileOfflineNotification(for: request)
+        return .init()
+    }
     
     /// The APNs servers only store the most recent notification when delivery fails. So when the user first boots
     /// their phone we need to use some approximations to decide whether or not the first notification may potentially

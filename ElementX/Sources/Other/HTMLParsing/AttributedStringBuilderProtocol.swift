@@ -24,7 +24,13 @@ nonisolated struct AttributedStringBuilderComponent: Hashable, Identifiable {
 nonisolated protocol AttributedStringBuilderProtocol: Sendable {
     func fromPlain(_ string: String?) -> AttributedString?
     
-    func fromHTML(_ htmlString: String?) -> AttributedString?
+    func fromHTML(_ htmlString: String?, customEmojiFallbackBody: String?) -> AttributedString?
     
     func addMatrixEntityPermalinkAttributesTo(_ attributedString: NSMutableAttributedString)
+}
+
+nonisolated extension AttributedStringBuilderProtocol {
+    func fromHTML(_ htmlString: String?) -> AttributedString? {
+        fromHTML(htmlString, customEmojiFallbackBody: nil)
+    }
 }

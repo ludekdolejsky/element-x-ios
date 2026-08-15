@@ -34,6 +34,7 @@ enum UITestsScreenIdentifier: String {
     case roomMembersListScreenPendingInvites
     case roomPlainNoAvatar
     case roomRolesAndPermissionsFlow
+    case roomSanitizedCustomEmojiTimeline
     case roomSmallTimeline
     case roomSmallTimelineIncomingAndSmallPagination
     case roomSmallTimelineLargePagination

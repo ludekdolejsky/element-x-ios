@@ -8,6 +8,7 @@
 
 import Combine
 import UIKit
+import UniformTypeIdentifiers
 
 enum TimelineInteractionHandlerAction {
     case composer(action: TimelineComposerAction)
@@ -27,6 +28,9 @@ enum TimelineInteractionHandlerAction {
     case viewInRoomTimeline(eventID: String)
     case displayThread(itemID: TimelineItemIdentifier)
     case showTranslation(text: String)
+    case requestNitroAudioTranscriptionConsent(NitroAudioTranscriptionRequest)
+    case showNitroTranscript(NitroTranscriptInfo)
+    case showNitroReminderCreate(NitroReminderCreateScreenViewModel)
 }
 
 /// The interaction handler groups logic for dealing with various actions the user can take on a timeline's
@@ -45,6 +49,8 @@ class TimelineInteractionHandler {
     private let linkMetadataProvider: LinkMetadataProviderProtocol
     private let timelineControllerFactory: TimelineControllerFactoryProtocol
     private let pollInteractionHandler: PollInteractionHandlerProtocol
+    private let nitroTranscriptionService: NitroTranscriptionServiceProtocol
+    private let nitroReminderService: NitroReminderServiceProtocol
     
     private let actionsSubject: PassthroughSubject<TimelineInteractionHandlerAction, Never> = .init()
     var actions: AnyPublisher<TimelineInteractionHandlerAction, Never> {
@@ -60,6 +66,8 @@ class TimelineInteractionHandler {
     private var resumeVoiceMessagePlaybackAfterScrubbing = false
     
     private var emojiPickerCancellable: AnyCancellable?
+    private var transcriptionTask: Task<Void, Never>?
+    private var transcriptionTaskID: UUID?
     
     init(roomProxy: JoinedRoomProxyProtocol,
          timelineController: TimelineControllerProtocol,
@@ -72,7 +80,9 @@ class TimelineInteractionHandler {
          analyticsService: AnalyticsServiceProtocol,
          emojiProvider: EmojiProviderProtocol,
          linkMetadataProvider: LinkMetadataProviderProtocol,
-         timelineControllerFactory: TimelineControllerFactoryProtocol) {
+         timelineControllerFactory: TimelineControllerFactoryProtocol,
+         nitroTranscriptionService: NitroTranscriptionServiceProtocol? = nil,
+         nitroReminderService: NitroReminderServiceProtocol? = nil) {
         self.roomProxy = roomProxy
         self.timelineController = timelineController
         self.userSession = userSession
@@ -85,6 +95,8 @@ class TimelineInteractionHandler {
         self.emojiProvider = emojiProvider
         self.linkMetadataProvider = linkMetadataProvider
         self.timelineControllerFactory = timelineControllerFactory
+        self.nitroTranscriptionService = nitroTranscriptionService ?? NitroTranscriptionService(baseURL: appSettings.nitroTranscriptionBaseURL)
+        self.nitroReminderService = nitroReminderService ?? NitroReminderService(baseURL: appSettings.nitroReminderBaseURL)
         
         pollInteractionHandler = PollInteractionHandler(analyticsService: analyticsService,
                                                         timelineController: timelineController)
@@ -105,7 +117,7 @@ class TimelineInteractionHandler {
         }
     }
     
-    // swiftlint:disable:next cyclomatic_complexity
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     func handleTimelineItemMenuAction(_ action: TimelineItemMenuAction, itemID: TimelineItemIdentifier) {
         // Redacting needs the event alone, so it works even when the item isn't part of this timeline,
         // such as one held by a media preview that was built from a different one.
@@ -205,13 +217,43 @@ class TimelineInteractionHandler {
             actionsSubject.send(.viewInRoomTimeline(eventID: eventID))
         case .downloadMedia:
             break // Handled inline in the media preview screen.
+        case .remindMe:
+            presentReminderCreate(for: eventTimelineItem)
         case .translate:
             guard let messageTimelineItem = timelineItem as? EventBasedMessageTimelineItemProtocol else { return }
             actionsSubject.send(.showTranslation(text: messageTimelineItem.body))
+        case .transcribeAudio, .transcribeAudioToThread:
+            transcribeTimelineAudio(itemID: itemID, sendToThread: action == .transcribeAudioToThread)
         }
         
         if action.switchToDefaultComposer {
             actionsSubject.send(.composer(action: .setMode(mode: .default)))
+        }
+    }
+    
+    private func presentReminderCreate(for item: EventBasedTimelineItemProtocol) {
+        guard let eventID = item.id.eventID else {
+            actionsSubject.send(.displayErrorToast(UntranslatedL10n.errorReminderRequestFailedIos))
+            return
+        }
+        
+        Task {
+            let threadRootID: String?
+            if let activeThreadRootID = timelineController.timelineKind.threadRootEventID {
+                threadRootID = activeThreadRootID
+            } else if case let .success(event) = await roomProxy.loadOrFetchEventDetails(for: eventID) {
+                threadRootID = event.threadRootEventId()
+            } else {
+                threadRootID = nil
+            }
+            
+            let viewModel = NitroReminderCreateScreenViewModel(eventID: eventID,
+                                                               threadRootID: threadRootID,
+                                                               roomProxy: roomProxy,
+                                                               clientProxy: userSession.clientProxy,
+                                                               reminderService: nitroReminderService,
+                                                               userIndicatorController: userIndicatorController)
+            actionsSubject.send(.showNitroReminderCreate(viewModel))
         }
     }
     
@@ -393,6 +435,233 @@ class TimelineInteractionHandler {
         }
     }
     
+    func transcribeCurrentVoiceMessage() {
+        guard canStartAudioTranscription else {
+            actionsSubject.send(.requestNitroAudioTranscriptionConsent(.currentVoiceMessage))
+            return
+        }
+        
+        startCurrentVoiceMessageTranscription()
+    }
+    
+    func confirmAudioTranscription(_ request: NitroAudioTranscriptionRequest) {
+        appSettings.hasAcknowledgedAudioTranscriptionWarning = true
+        
+        switch request {
+        case .currentVoiceMessage:
+            startCurrentVoiceMessageTranscription()
+        case .timeline(let itemID, let sendToThread):
+            startTimelineAudioTranscription(itemID: itemID, sendToThread: sendToThread)
+        }
+    }
+    
+    private func startCurrentVoiceMessageTranscription() {
+        startTranscription { [weak self] in
+            await self?.performTranscribeCurrentVoiceMessage()
+        }
+    }
+    
+    func cancelTranscription() {
+        transcriptionTaskID = nil
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+    }
+    
+    private func performTranscribeCurrentVoiceMessage() async {
+        guard !Task.isCancelled else { return }
+        guard let audioPlayerState = voiceMessageRecorder.previewAudioPlayerState,
+              let recordingURL = voiceMessageRecorder.recordingURL else {
+            actionsSubject.send(.displayErrorToast(UntranslatedL10n.errorAudioTranscriptionFailedIos))
+            return
+        }
+        
+        actionsSubject.send(.composer(action: .setMode(mode: .previewVoiceMessage(state: audioPlayerState,
+                                                                                  waveform: .url(recordingURL),
+                                                                                  isUploading: true))))
+        await voiceMessageRecorder.stopPlayback()
+        guard !Task.isCancelled else { return }
+        
+        switch await transcribeAudioFile(at: recordingURL,
+                                         filename: recordingURL.lastPathComponent,
+                                         contentType: "audio/mp4") {
+        case .success(let transcript):
+            guard !Task.isCancelled else { return }
+            actionsSubject.send(.composer(action: .setMode(mode: .default)))
+            actionsSubject.send(.composer(action: .setText(plainText: transcript, htmlText: nil)))
+            actionsSubject.send(.composer(action: .setFocus))
+            voiceMessageRecorderObserver = nil
+            await voiceMessageRecorder.deleteRecording()
+        case .failure(let error):
+            guard !Task.isCancelled, error != .cancelled else { return }
+            actionsSubject.send(.composer(action: .setMode(mode: .previewVoiceMessage(state: audioPlayerState,
+                                                                                      waveform: .url(recordingURL),
+                                                                                      isUploading: false))))
+            actionsSubject.send(.displayErrorToast(UntranslatedL10n.errorAudioTranscriptionFailedIos))
+        }
+    }
+    
+    func sendTranscriptToThread(_ info: NitroTranscriptInfo) async {
+        guard await sendTranscriptToThread(info.text, replyingTo: info.itemID) else {
+            actionsSubject.send(.displayErrorToast(UntranslatedL10n.errorAudioTranscriptionFailedIos))
+            return
+        }
+    }
+    
+    private func transcribeTimelineAudio(itemID: TimelineItemIdentifier, sendToThread: Bool) {
+        guard canStartAudioTranscription else {
+            actionsSubject.send(.requestNitroAudioTranscriptionConsent(.timeline(itemID: itemID, sendToThread: sendToThread)))
+            return
+        }
+        
+        startTimelineAudioTranscription(itemID: itemID, sendToThread: sendToThread)
+    }
+    
+    private func startTimelineAudioTranscription(itemID: TimelineItemIdentifier, sendToThread: Bool) {
+        startTranscription { [weak self] in
+            await self?.performTranscribeTimelineAudio(itemID: itemID, sendToThread: sendToThread)
+        }
+    }
+    
+    // swiftlint:disable:next cyclomatic_complexity
+    private func performTranscribeTimelineAudio(itemID: TimelineItemIdentifier, sendToThread: Bool) async {
+        guard !Task.isCancelled else { return }
+        guard let item = timelineController.timelineItems.firstUsingStableID(itemID) as? EventBasedMessageTimelineItemProtocol,
+              let content = audioContent(from: item),
+              let source = content.source else {
+            actionsSubject.send(.displayErrorToast(UntranslatedL10n.errorAudioTranscriptionFailedIos))
+            return
+        }
+        
+        let indicatorID = UUID().uuidString
+        userIndicatorController.submitIndicator(.init(id: indicatorID,
+                                                      type: .modal,
+                                                      title: UntranslatedL10n.commonTranscribingAudioIos,
+                                                      persistent: true))
+        defer {
+            userIndicatorController.retractIndicatorWithId(indicatorID)
+        }
+        
+        guard case let .success(fileHandle) = await userSession.mediaProvider.loadFileFromSource(source, filename: content.filename),
+              let fileURL = fileHandle.url else {
+            guard !Task.isCancelled else { return }
+            actionsSubject.send(.displayErrorToast(UntranslatedL10n.errorAudioTranscriptionFailedIos))
+            return
+        }
+        guard !Task.isCancelled else { return }
+        
+        let result = await transcribeAudioFile(at: fileURL,
+                                               filename: content.filename,
+                                               contentType: content.contentType?.preferredMIMEType ?? "application/octet-stream")
+        guard !Task.isCancelled else { return }
+        guard case let .success(transcript) = result else {
+            guard result != .failure(.cancelled) else { return }
+            actionsSubject.send(.displayErrorToast(UntranslatedL10n.errorAudioTranscriptionFailedIos))
+            return
+        }
+        
+        if sendToThread {
+            guard await sendTranscriptToThread(transcript, replyingTo: itemID) else {
+                guard !Task.isCancelled else { return }
+                actionsSubject.send(.displayErrorToast(UntranslatedL10n.errorAudioTranscriptionFailedIos))
+                return
+            }
+        } else {
+            guard !Task.isCancelled else { return }
+            actionsSubject.send(.showNitroTranscript(.init(itemID: itemID, text: transcript)))
+        }
+    }
+    
+    private func transcribeAudioFile(at fileURL: URL,
+                                     filename: String,
+                                     contentType: String) async -> Result<String, NitroTranscriptionError> {
+        guard !Task.isCancelled else { return .failure(.cancelled) }
+        guard let homeserverURL = URL(string: userSession.clientProxy.homeserver),
+              case let .success(openIDToken) = await userSession.clientProxy.requestOpenIDToken() else {
+            if Task.isCancelled {
+                return .failure(.cancelled)
+            }
+            return .failure(.invalidResponse)
+        }
+        guard !Task.isCancelled else { return .failure(.cancelled) }
+        
+        return await nitroTranscriptionService.transcribeAudio(at: fileURL,
+                                                               filename: filename,
+                                                               contentType: contentType,
+                                                               homeserverURL: homeserverURL,
+                                                               openIDToken: openIDToken)
+    }
+    
+    private func startTranscription(_ operation: @escaping @MainActor () async -> Void) {
+        guard transcriptionTask == nil else { return }
+        
+        let taskID = UUID()
+        transcriptionTaskID = taskID
+        transcriptionTask = Task { [weak self] in
+            guard !Task.isCancelled else {
+                self?.finishTranscription(taskID: taskID)
+                return
+            }
+            await operation()
+            self?.finishTranscription(taskID: taskID)
+        }
+    }
+    
+    private var canStartAudioTranscription: Bool {
+        !roomProxy.infoPublisher.value.isEncrypted || appSettings.hasAcknowledgedAudioTranscriptionWarning
+    }
+    
+    private func finishTranscription(taskID: UUID) {
+        guard transcriptionTaskID == taskID else { return }
+        transcriptionTaskID = nil
+        transcriptionTask = nil
+    }
+    
+    private func sendTranscriptToThread(_ transcript: String, replyingTo itemID: TimelineItemIdentifier) async -> Bool {
+        guard let eventID = itemID.eventID else { return false }
+        
+        let rootEventID: String
+        if let activeThreadRootEventID = timelineController.timelineKind.threadRootEventID {
+            rootEventID = activeThreadRootEventID
+        } else if case let .success(event) = await roomProxy.loadOrFetchEventDetails(for: eventID) {
+            rootEventID = event.threadRootEventId() ?? eventID
+        } else {
+            return false
+        }
+        
+        guard case let .success(threadTimeline) = await roomProxy.threadTimeline(eventID: rootEventID) else {
+            return false
+        }
+        
+        let plainText = "Transcript:\n\(transcript)"
+        let html = "<strong>Transcript</strong><br />\(escapedHTML(transcript).replacingOccurrences(of: "\n", with: "<br />"))"
+        switch await threadTimeline.sendMessage(plainText,
+                                                html: html,
+                                                inReplyToEventID: eventID,
+                                                intentionalMentions: .empty) {
+        case .success:
+            return true
+        case .failure:
+            return false
+        }
+    }
+    
+    private func audioContent(from item: EventBasedMessageTimelineItemProtocol) -> AudioRoomTimelineItemContent? {
+        switch item.contentType {
+        case .audio(let content), .voice(let content):
+            content
+        default:
+            nil
+        }
+    }
+    
+    private func escapedHTML(_ string: String) -> String {
+        string
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+    
     func startPlayingRecordedVoiceMessage() async {
         await mediaPlayerProvider.detachAllStates(except: voiceMessageRecorder.previewAudioPlayerState)
         if case .failure(let error) = await voiceMessageRecorder.startPlayback() {
@@ -537,12 +806,12 @@ class TimelineInteractionHandler {
         }
         let selectedEmojis = Set(eventTimelineItem.properties.reactions.compactMap { $0.isHighlighted ? $0.key : nil })
         
-        let (stream, continuation) = AsyncStream<String>.makeStream()
+        let (stream, continuation) = AsyncStream<EmojiPickerEmojiViewData>.makeStream()
         actionsSubject.send(.displayEmojiPicker(selectedEmojis: selectedEmojis, continuation: continuation))
         
         emojiPickerCancellable = Task { [weak self] in
             for await emoji in stream {
-                await self?.timelineController.toggleReaction(emoji, to: eventOrTransactionID)
+                await self?.timelineController.toggleReaction(emoji.reactionKey, to: eventOrTransactionID)
             }
         }
         .asCancellable()

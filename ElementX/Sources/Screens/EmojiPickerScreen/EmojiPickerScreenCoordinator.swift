@@ -13,6 +13,7 @@ struct EmojiPickerScreenCoordinatorParameters {
     /// Any emojis that should be displayed as already selected.
     let selectedEmojis: Set<String>
     let emojiProvider: EmojiProviderProtocol
+    let mediaProvider: MediaProviderProtocol
     /// A continuation that yields the selected emoji.
     let continuation: EmojiPickerScreenContinuation
 }
@@ -23,6 +24,7 @@ enum EmojiPickerScreenCoordinatorAction {
 
 final class EmojiPickerScreenCoordinator: CoordinatorProtocol {
     private var viewModel: EmojiPickerScreenViewModelProtocol
+    private let mediaProvider: MediaProviderProtocol
     
     private let actionsSubject: PassthroughSubject<EmojiPickerScreenCoordinatorAction, Never> = .init()
     private var cancellables = Set<AnyCancellable>()
@@ -32,6 +34,7 @@ final class EmojiPickerScreenCoordinator: CoordinatorProtocol {
     }
     
     init(parameters: EmojiPickerScreenCoordinatorParameters) {
+        mediaProvider = parameters.mediaProvider
         viewModel = EmojiPickerScreenViewModel(selectedEmojis: parameters.selectedEmojis,
                                                emojiProvider: parameters.emojiProvider,
                                                continuation: parameters.continuation)
@@ -55,6 +58,6 @@ final class EmojiPickerScreenCoordinator: CoordinatorProtocol {
     }
     
     func toPresentable() -> AnyView {
-        AnyView(EmojiPickerScreen(context: viewModel.context))
+        AnyView(EmojiPickerScreen(context: viewModel.context, mediaProvider: mediaProvider))
     }
 }

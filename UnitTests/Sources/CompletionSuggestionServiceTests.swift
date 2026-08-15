@@ -8,6 +8,7 @@
 
 import Combine
 @testable import ElementX
+import Foundation
 import Testing
 
 @MainActor
@@ -412,4 +413,212 @@ struct CompletionSuggestionServiceTests {
         service.setSuggestionTrigger(.init(type: .room, text: "#prelude-", range: .init()))
         try await deferred.fulfill()
     }
+    
+    @Test
+    func emojiSuggestionsIncludeCustomAndSystemEmoji() async throws {
+        let customEmoji = try CustomEmoji(shortcode: "meatspin",
+                                          body: "Meatspin",
+                                          imageURL: #require(URL(string: "mxc://example.org/meatspin")))
+        let customItem = EmojiItem(label: "Meatspin",
+                                   unicode: ":meatspin:",
+                                   keywords: ["spin"],
+                                   shortcodes: ["meatspin"],
+                                   customEmoji: customEmoji)
+        let systemItem = EmojiItem(label: "Grinning face",
+                                   unicode: "😀",
+                                   keywords: ["smile"],
+                                   shortcodes: ["grinning"])
+        let emojiProvider = CompletionTestEmojiProvider(categories: [.init(id: "test", emojis: [customItem, systemItem])])
+        let roomProxy = JoinedRoomProxyMock(.init(id: "roomID", name: "test"))
+        let roomSummaryProvider = RoomSummaryProviderMock(.init(state: .loaded([])))
+        let service = CompletionSuggestionService(roomProxy: roomProxy,
+                                                  roomListPublisher: roomSummaryProvider.roomListPublisher.eraseToAnyPublisher(),
+                                                  emojiProvider: emojiProvider)
+        
+        await Task.yield()
+        #expect(emojiProvider.categoryRequests == 0)
+        
+        var deferred = deferFulfillment(service.suggestionsPublisher) { suggestions in
+            suggestions == [.init(suggestionType: .emoji(customItem),
+                                  range: .init(location: 6, length: 4),
+                                  rawSuggestionText: "mea")]
+        }
+        service.processTextMessage("Hello :mea", selectedRange: .init(location: 10, length: 0))
+        try await deferred.fulfill()
+        
+        deferred = deferFulfillment(service.suggestionsPublisher) { suggestions in
+            suggestions == [.init(suggestionType: .emoji(systemItem),
+                                  range: .init(location: 0, length: 4),
+                                  rawSuggestionText: "smi")]
+        }
+        service.processTextMessage(":smi", selectedRange: .init(location: 4, length: 0))
+        try await deferred.fulfill()
+        
+        deferred = deferFulfillment(service.suggestionsPublisher) { suggestions in
+            suggestions == [.init(suggestionType: .emoji(customItem),
+                                  range: .init(location: 1, length: 4),
+                                  rawSuggestionText: "mea")]
+        }
+        service.processTextMessage("(:mea", selectedRange: .init(location: 5, length: 0))
+        try await deferred.fulfill()
+        
+        deferred = deferFulfillment(service.suggestionsPublisher) { $0.isEmpty }
+        service.processTextMessage("https://example.org", selectedRange: .init(location: 6, length: 0))
+        try await deferred.fulfill()
+        #expect(emojiProvider.categoryRequests == 1)
+    }
+    
+    @Test
+    func duplicateCustomEmojiSuggestionsUseFirstCategory() async throws {
+        let currentEmoji = try CustomEmoji(shortcode: "shared",
+                                           body: "Current",
+                                           imageURL: #require(URL(string: "mxc://example.org/current")))
+        let globalEmoji = try CustomEmoji(shortcode: "shared",
+                                          body: "Global",
+                                          imageURL: #require(URL(string: "mxc://example.org/global")))
+        let currentItem = EmojiItem(label: "Current",
+                                    unicode: ":shared:",
+                                    keywords: [],
+                                    shortcodes: ["shared"],
+                                    customEmoji: currentEmoji)
+        let globalItem = EmojiItem(label: "Global",
+                                   unicode: ":shared:",
+                                   keywords: [],
+                                   shortcodes: ["shared"],
+                                   customEmoji: globalEmoji)
+        let emojiProvider = CompletionTestEmojiProvider(categories: [
+            .init(id: "current", emojis: [currentItem]),
+            .init(id: "global", emojis: [globalItem])
+        ])
+        let roomProxy = JoinedRoomProxyMock(.init(id: "roomID", name: "test"))
+        let roomSummaryProvider = RoomSummaryProviderMock(.init(state: .loaded([])))
+        let service = CompletionSuggestionService(roomProxy: roomProxy,
+                                                  roomListPublisher: roomSummaryProvider.roomListPublisher.eraseToAnyPublisher(),
+                                                  emojiProvider: emojiProvider)
+        let deferred = deferFulfillment(service.suggestionsPublisher) { suggestions in
+            suggestions == [.init(suggestionType: .emoji(currentItem),
+                                  range: .init(location: 0, length: 4),
+                                  rawSuggestionText: "sha")]
+        }
+        
+        service.processTextMessage(":sha", selectedRange: .init(location: 4, length: 0))
+        
+        try await deferred.fulfill()
+    }
+    
+    @Test
+    func emojiSuggestionsRefreshAfterCacheLifetime() async throws {
+        let firstItem = EmojiItem(label: "First",
+                                  unicode: "1️⃣",
+                                  keywords: [],
+                                  shortcodes: ["first"])
+        let secondItem = EmojiItem(label: "Second",
+                                   unicode: "2️⃣",
+                                   keywords: [],
+                                   shortcodes: ["second"])
+        let emojiProvider = CompletionTestEmojiProvider(categoryResponses: [
+            [.init(id: "first", emojis: [firstItem])],
+            [.init(id: "second", emojis: [secondItem])]
+        ])
+        let roomProxy = JoinedRoomProxyMock(.init(id: "roomID", name: "test"))
+        let roomSummaryProvider = RoomSummaryProviderMock(.init(state: .loaded([])))
+        var currentDate = Date()
+        let service = CompletionSuggestionService(roomProxy: roomProxy,
+                                                  roomListPublisher: roomSummaryProvider.roomListPublisher.eraseToAnyPublisher(),
+                                                  emojiProvider: emojiProvider) { currentDate }
+        var deferred = deferFulfillment(service.suggestionsPublisher) { suggestions in
+            suggestions == [.init(suggestionType: .emoji(firstItem),
+                                  range: .init(location: 0, length: 4),
+                                  rawSuggestionText: "fir")]
+        }
+        service.processTextMessage(":fir", selectedRange: .init(location: 4, length: 0))
+        try await deferred.fulfill()
+        #expect(emojiProvider.categoryRequests == 1)
+        
+        service.setSuggestionTrigger(nil)
+        currentDate.addTimeInterval(5 * 60 + 1)
+        deferred = deferFulfillment(service.suggestionsPublisher) { suggestions in
+            suggestions == [.init(suggestionType: .emoji(secondItem),
+                                  range: .init(location: 0, length: 4),
+                                  rawSuggestionText: "sec")]
+        }
+        service.processTextMessage(":sec", selectedRange: .init(location: 4, length: 0))
+        try await deferred.fulfill()
+        #expect(emojiProvider.categoryRequests == 2)
+    }
+    
+    @Test
+    func emojiSuggestionsRetrySoonAfterFailedLoad() async throws {
+        let fallbackItem = EmojiItem(label: "Fallback",
+                                     unicode: "🔁",
+                                     keywords: [],
+                                     shortcodes: ["fallback"])
+        let recoveredItem = EmojiItem(label: "Recovered",
+                                      unicode: "✅",
+                                      keywords: [],
+                                      shortcodes: ["recovered"])
+        let emojiProvider = CompletionTestEmojiProvider(categoryResponses: [
+            [.init(id: "fallback", emojis: [fallbackItem])],
+            [.init(id: "recovered", emojis: [recoveredItem])]
+        ], loadFailures: [true, false])
+        let roomProxy = JoinedRoomProxyMock(.init(id: "roomID", name: "test"))
+        let roomSummaryProvider = RoomSummaryProviderMock(.init(state: .loaded([])))
+        var currentDate = Date()
+        let service = CompletionSuggestionService(roomProxy: roomProxy,
+                                                  roomListPublisher: roomSummaryProvider.roomListPublisher.eraseToAnyPublisher(),
+                                                  emojiProvider: emojiProvider) { currentDate }
+        var deferred = deferFulfillment(service.suggestionsPublisher) { suggestions in
+            suggestions == [.init(suggestionType: .emoji(fallbackItem),
+                                  range: .init(location: 0, length: 4),
+                                  rawSuggestionText: "fal")]
+        }
+        service.processTextMessage(":fal", selectedRange: .init(location: 4, length: 0))
+        try await deferred.fulfill()
+        #expect(emojiProvider.categoryRequests == 1)
+        
+        service.setSuggestionTrigger(nil)
+        currentDate.addTimeInterval(31)
+        deferred = deferFulfillment(service.suggestionsPublisher) { suggestions in
+            suggestions == [.init(suggestionType: .emoji(recoveredItem),
+                                  range: .init(location: 0, length: 4),
+                                  rawSuggestionText: "rec")]
+        }
+        service.processTextMessage(":rec", selectedRange: .init(location: 4, length: 0))
+        try await deferred.fulfill()
+        #expect(emojiProvider.categoryRequests == 2)
+    }
+}
+
+private final class CompletionTestEmojiProvider: EmojiProviderProtocol {
+    private let categoryResponses: [[EmojiCategory]]
+    private let loadFailures: [Bool]
+    private(set) var categoryRequests = 0
+    private var lastLoadFailed = false
+    
+    init(categories: [EmojiCategory]) {
+        categoryResponses = [categories]
+        loadFailures = [false]
+    }
+    
+    init(categoryResponses: [[EmojiCategory]], loadFailures: [Bool] = []) {
+        self.categoryResponses = categoryResponses
+        self.loadFailures = loadFailures
+    }
+    
+    func categories(searchString: String?) async -> [EmojiCategory] {
+        let responseIndex = min(categoryRequests, categoryResponses.count - 1)
+        lastLoadFailed = loadFailures.indices.contains(responseIndex) ? loadFailures[responseIndex] : false
+        categoryRequests += 1
+        return categoryResponses[responseIndex]
+    }
+    
+    func shouldRetryLoadingCategories() -> Bool {
+        lastLoadFailed
+    }
+    
+    func frequentlyUsedSystemEmojis() -> [String] {
+        []
+    }
+    
+    func markEmojiAsFrequentlyUsed(_ emoji: String) { }
 }

@@ -37,9 +37,7 @@ struct SettingsScreen: View {
             
             signOutSection
             
-            if context.viewState.showDeveloperOptions {
-                developerOptionsSection
-            }
+            developerOptionsSection
         }
         .compoundList()
         .navigationTitle(L10n.commonSettings)
@@ -223,10 +221,6 @@ struct SettingsScreen: View {
                             context.send(viewAction: .deactivateAccount)
                         })
             }
-        } footer: {
-            if !context.viewState.showDeveloperOptions {
-                versionSection
-            }
         }
     }
     
@@ -255,9 +249,6 @@ struct SettingsScreen: View {
         .compoundListSectionFooter()
         .textSelection(.enabled)
         .padding(.top, 24)
-        .onTapGesture(count: 7) {
-            context.send(viewAction: .enableDeveloperOptions)
-        }
     }
     
     private var versionText: Text {
