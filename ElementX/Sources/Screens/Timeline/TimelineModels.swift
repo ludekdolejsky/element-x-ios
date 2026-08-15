@@ -76,6 +76,8 @@ enum TimelineViewAction {
     case handlePasteOrDrop(providers: [NSItemProvider])
     case handlePollAction(TimelineViewPollAction)
     case handleAudioPlayerAction(TimelineAudioPlayerAction)
+    case sendTranscriptToThread(NitroTranscriptInfo)
+    case dismissNitroReminderCreate
     
     case stopLiveLocationSharing(TimelineItemIdentifier)
     
@@ -191,6 +193,9 @@ struct TimelineViewStateBindings {
     
     var showTranslation = false
     var textToBeTranslated: String?
+    
+    var nitroTranscriptInfo: NitroTranscriptInfo?
+    var nitroReminderCreateViewModel: NitroReminderCreateScreenViewModel?
 }
 
 struct TimelineItemActionMenuInfo: Equatable, Identifiable {
@@ -221,6 +226,7 @@ struct ReadReceiptSummaryInfo: Identifiable {
 
 enum TimelineAlertInfoType: Hashable {
     case audioRecodingPermissionError
+    case audioTranscriptionConsent(NitroAudioTranscriptionRequest)
     case pollEndConfirmation(String)
     case sendingFailed
     case encryptionAuthenticity(String)

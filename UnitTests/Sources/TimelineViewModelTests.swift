@@ -10,7 +10,9 @@ import Combine
 @testable import ElementX
 import Foundation
 import MatrixRustSDK
+import Synchronization
 import Testing
+import UniformTypeIdentifiers
 
 @MainActor
 final class TimelineViewModelTests {
@@ -565,25 +567,349 @@ final class TimelineViewModelTests {
         #expect(viewModel.state.bindings.alertInfo?.title == "alice (@alice:matrix.org) shared this message since you were not in the room when it was sent.")
     }
     
+    // MARK: - Nitro Transcription
+    
+    @Test
+    func encryptedRoomRequiresAudioTranscriptionConsent() async throws {
+        let item = try makeAudioItem(eventID: "$audio")
+        let timelineController = TimelineControllerMock(.init(timelineItems: [item]))
+        let mediaProvider = MediaProviderMock(.init())
+        mediaProvider.loadFileFromSourceFilenameReturnValue = .success(.unmanaged(url: URL(filePath: "/tmp/audio.ogg")))
+        let appSettings = AppSettings.volatile()
+        let transcriptionService = TestNitroTranscriptionService(result: .success("Timeline transcript"))
+        let viewModel = makeViewModel(roomProxy: JoinedRoomProxyMock(.init(name: "", isEncrypted: true)),
+                                      timelineController: timelineController,
+                                      userSession: makeNitroUserSession(mediaProvider: mediaProvider),
+                                      appSettings: appSettings,
+                                      nitroTranscriptionService: transcriptionService)
+        let consentDeferred = deferFulfillment(viewModel.context.$viewState) {
+            $0.bindings.alertInfo?.id == .audioTranscriptionConsent(.timeline(itemID: item.id, sendToThread: false))
+        }
+        
+        viewModel.process(viewAction: .handleTimelineItemMenuAction(itemID: item.id, action: .transcribeAudio))
+        
+        try await consentDeferred.fulfill()
+        #expect(transcriptionService.request == nil)
+        #expect(!appSettings.hasAcknowledgedAudioTranscriptionWarning)
+        
+        let transcriptDeferred = deferFulfillment(viewModel.context.$viewState) {
+            $0.bindings.nitroTranscriptInfo?.text == "Timeline transcript"
+        }
+        viewModel.state.bindings.alertInfo?.secondaryButton?.action?()
+        
+        try await transcriptDeferred.fulfill()
+        #expect(appSettings.hasAcknowledgedAudioTranscriptionWarning)
+        #expect(transcriptionService.request != nil)
+        #expect(viewModel.state.bindings.alertInfo == nil)
+    }
+    
+    @Test
+    func transcribingRecordedVoiceMessageInsertsText() async throws {
+        let clientProxy = ClientProxyMock(.init(homeserver: "https://matrix.example.org"))
+        clientProxy.requestOpenIDTokenReturnValue = .success(.init(accessToken: "token",
+                                                                   tokenType: "Bearer",
+                                                                   matrixServerName: "example.org"))
+        let userSession = UserSessionMock(.init(clientProxy: clientProxy))
+        let recorder = VoiceMessageRecorderMock()
+        recorder.previewAudioPlayerState = AudioPlayerState(id: .recorderPreview, title: "", duration: 1)
+        recorder.recordingURL = URL(filePath: "/tmp/voice-message.m4a")
+        recorder.isRecording = false
+        let transcriptionService = TestNitroTranscriptionService(result: .success("Recorded transcript"))
+        let viewModel = makeViewModel(timelineController: TimelineControllerMock(.init()),
+                                      userSession: userSession,
+                                      nitroTranscriptionService: transcriptionService,
+                                      voiceMessageRecorder: recorder)
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .composer(.setText(plainText, htmlText)) = action else { return false }
+            return plainText == "Recorded transcript" && htmlText == nil
+        }
+        let transcriptWasInserted = Mutex(false)
+        viewModel.actions.sink { action in
+            guard case .composer(.setText) = action else { return }
+            transcriptWasInserted.withLock { $0 = true }
+        }
+        .store(in: &cancellables)
+        let (deletions, deletionContinuation) = AsyncStream<Void>.makeStream()
+        var deletionIterator = deletions.makeAsyncIterator()
+        recorder.deleteRecordingClosure = {
+            #expect(transcriptWasInserted.withLock { $0 })
+            deletionContinuation.yield(())
+            deletionContinuation.finish()
+        }
+        
+        viewModel.process(composerAction: .voiceMessage(.transcribe))
+        try await deferred.fulfill()
+        let deletion = await deletionIterator.next()
+        #expect(deletion != nil)
+        #expect(recorder.stopPlaybackCalled)
+        #expect(recorder.deleteRecordingCalled)
+        #expect(transcriptionService.request?.filename == "voice-message.m4a")
+        #expect(transcriptionService.request?.contentType == "audio/mp4")
+    }
+    
+    @Test
+    func ignoresDuplicateRecordedVoiceMessageTranscription() async throws {
+        let clientProxy = ClientProxyMock(.init(homeserver: "https://matrix.example.org"))
+        clientProxy.requestOpenIDTokenReturnValue = .success(.init(accessToken: "token",
+                                                                   tokenType: "Bearer",
+                                                                   matrixServerName: "example.org"))
+        let userSession = UserSessionMock(.init(clientProxy: clientProxy))
+        let recorder = VoiceMessageRecorderMock()
+        recorder.previewAudioPlayerState = AudioPlayerState(id: .recorderPreview, title: "", duration: 1)
+        recorder.recordingURL = URL(filePath: "/tmp/voice-message.m4a")
+        recorder.isRecording = false
+        let transcriptionService = ControllableNitroTranscriptionService()
+        var starts = transcriptionService.starts.makeAsyncIterator()
+        let viewModel = makeViewModel(timelineController: TimelineControllerMock(.init()),
+                                      userSession: userSession,
+                                      nitroTranscriptionService: transcriptionService,
+                                      voiceMessageRecorder: recorder)
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .composer(.setText(plainText, _)) = action else { return false }
+            return plainText == "Recorded transcript"
+        }
+        
+        viewModel.process(composerAction: .voiceMessage(.transcribe))
+        let firstStart = await starts.next()
+        #expect(firstStart != nil)
+        viewModel.process(composerAction: .voiceMessage(.transcribe))
+        #expect(transcriptionService.requestCount == 1)
+        transcriptionService.complete(with: .success("Recorded transcript"))
+        
+        try await deferred.fulfill()
+        #expect(transcriptionService.requestCount == 1)
+    }
+    
+    @Test
+    func stoppingTimelineCancelsRecordedVoiceMessageTranscription() async {
+        let clientProxy = ClientProxyMock(.init(homeserver: "https://matrix.example.org"))
+        clientProxy.requestOpenIDTokenReturnValue = .success(.init(accessToken: "token",
+                                                                   tokenType: "Bearer",
+                                                                   matrixServerName: "example.org"))
+        let userSession = UserSessionMock(.init(clientProxy: clientProxy))
+        let recorder = VoiceMessageRecorderMock()
+        recorder.previewAudioPlayerState = AudioPlayerState(id: .recorderPreview, title: "", duration: 1)
+        recorder.recordingURL = URL(filePath: "/tmp/voice-message.m4a")
+        recorder.isRecording = false
+        let transcriptionService = ControllableNitroTranscriptionService()
+        var starts = transcriptionService.starts.makeAsyncIterator()
+        var finishes = transcriptionService.finishes.makeAsyncIterator()
+        let userIndicatorController = UserIndicatorControllerMock()
+        let viewModel = makeViewModel(timelineController: TimelineControllerMock(.init()),
+                                      userSession: userSession,
+                                      nitroTranscriptionService: transcriptionService,
+                                      voiceMessageRecorder: recorder,
+                                      userIndicatorController: userIndicatorController)
+        var emittedResult = false
+        viewModel.actions.sink { action in
+            if case .composer(.setText) = action {
+                emittedResult = true
+            }
+        }
+        .store(in: &cancellables)
+        
+        viewModel.process(composerAction: .voiceMessage(.transcribe))
+        let start = await starts.next()
+        #expect(start != nil)
+        viewModel.stop()
+        transcriptionService.complete(with: .success("Late transcript"))
+        let finish = await finishes.next()
+        #expect(finish != nil)
+        await Task.yield()
+        
+        #expect(!emittedResult)
+        #expect(!recorder.deleteRecordingCalled)
+        #expect(!userIndicatorController.submitIndicatorDelayCalled)
+    }
+    
+    @Test
+    func transcribingTimelineAudioShowsTranscript() async throws {
+        let item = try makeAudioItem(eventID: "$audio")
+        let timelineController = TimelineControllerMock(.init(timelineItems: [item]))
+        let mediaProvider = MediaProviderMock(.init())
+        mediaProvider.loadFileFromSourceFilenameReturnValue = .success(.unmanaged(url: URL(filePath: "/tmp/audio.ogg")))
+        let userSession = makeNitroUserSession(mediaProvider: mediaProvider)
+        let transcriptionService = TestNitroTranscriptionService(result: .success("Timeline transcript"))
+        let viewModel = makeViewModel(timelineController: timelineController,
+                                      userSession: userSession,
+                                      nitroTranscriptionService: transcriptionService)
+        let deferred = deferFulfillment(viewModel.context.$viewState) {
+            $0.bindings.nitroTranscriptInfo?.text == "Timeline transcript"
+        }
+        
+        viewModel.process(viewAction: .handleTimelineItemMenuAction(itemID: item.id, action: .transcribeAudio))
+        
+        try await deferred.fulfill()
+        #expect(viewModel.state.bindings.nitroTranscriptInfo?.itemID == item.id)
+        #expect(mediaProvider.loadFileFromSourceFilenameReceivedArguments?.filename == "voice.ogg")
+    }
+    
+    @Test
+    func transcribingTimelineAudioSendsReplyIntoThread() async throws {
+        let item = try makeAudioItem(eventID: "$audio")
+        let timelineController = TimelineControllerMock(.init(timelineKind: .thread(rootEventID: "$root"), timelineItems: [item]))
+        let mediaProvider = MediaProviderMock(.init())
+        mediaProvider.loadFileFromSourceFilenameReturnValue = .success(.unmanaged(url: URL(filePath: "/tmp/audio.ogg")))
+        let userSession = makeNitroUserSession(mediaProvider: mediaProvider)
+        let transcriptionService = TestNitroTranscriptionService(result: .success("Thread transcript <safe>"))
+        let threadTimeline = TimelineProxyMock()
+        let roomProxy = JoinedRoomProxyMock(.init(name: ""))
+        roomProxy.threadTimelineEventIDReturnValue = .success(threadTimeline)
+        let viewModel = makeViewModel(roomProxy: roomProxy,
+                                      timelineController: timelineController,
+                                      userSession: userSession,
+                                      nitroTranscriptionService: transcriptionService)
+        let (sentStream, sentContinuation) = AsyncStream<Bool>.makeStream()
+        let deferred = deferFulfillment(sentStream) { $0 }
+        
+        threadTimeline.sendMessageHtmlInReplyToEventIDIntentionalMentionsClosure = { plain, html, replyEventID, mentions in
+            #expect(plain == "Transcript:\nThread transcript <safe>")
+            #expect(html == "<strong>Transcript</strong><br />Thread transcript &lt;safe&gt;")
+            #expect(replyEventID == "$audio")
+            #expect(mentions == .empty)
+            sentContinuation.yield(true)
+            return .success(())
+        }
+        viewModel.process(viewAction: .handleTimelineItemMenuAction(itemID: item.id, action: .transcribeAudioToThread))
+        try await deferred.fulfill()
+        sentContinuation.finish()
+        #expect(roomProxy.threadTimelineEventIDReceivedEventID == "$root")
+    }
+    
     // MARK: - Helpers
     
     private func makeViewModel(roomProxy: JoinedRoomProxyProtocol? = nil,
                                focussedEventID: String? = nil,
-                               timelineController: TimelineControllerProtocol) -> TimelineViewModel {
-        let appSettings = AppSettings.volatile()
+                               timelineController: TimelineControllerProtocol,
+                               userSession: UserSessionProtocol? = nil,
+                               appSettings: AppSettings? = nil,
+                               nitroTranscriptionService: NitroTranscriptionServiceProtocol? = nil,
+                               voiceMessageRecorder: VoiceMessageRecorderProtocol? = nil,
+                               userIndicatorController: UserIndicatorControllerProtocol = UserIndicatorControllerMock()) -> TimelineViewModel {
+        let appSettings = appSettings ?? {
+            let appSettings = AppSettings.volatile()
+            appSettings.hasAcknowledgedAudioTranscriptionWarning = true
+            return appSettings
+        }()
+        let userSession = userSession ?? UserSessionMock(.init())
         
         return TimelineViewModel(roomProxy: roomProxy ?? JoinedRoomProxyMock(.init(name: "")),
                                  focussedEventID: focussedEventID,
                                  timelineController: timelineController,
-                                 userSession: UserSessionMock(.init()),
+                                 userSession: userSession,
                                  mediaPlayerProvider: MediaPlayerProviderMock(),
-                                 userIndicatorController: UserIndicatorControllerMock(),
+                                 userIndicatorController: userIndicatorController,
                                  appMediator: AppMediatorMock(.init()),
                                  appSettings: appSettings,
                                  analyticsService: AnalyticsServiceMock(.init()),
                                  emojiProvider: EmojiProvider(appSettings: appSettings),
                                  linkMetadataProvider: LinkMetadataProvider(),
-                                 timelineControllerFactory: TimelineControllerFactoryMock(.init()))
+                                 timelineControllerFactory: TimelineControllerFactoryMock(.init()),
+                                 nitroTranscriptionService: nitroTranscriptionService,
+                                 voiceMessageRecorder: voiceMessageRecorder)
+    }
+    
+    private func makeNitroUserSession(mediaProvider: MediaProviderProtocol) -> UserSessionMock {
+        let clientProxy = ClientProxyMock(.init(homeserver: "https://matrix.example.org"))
+        clientProxy.requestOpenIDTokenReturnValue = .success(.init(accessToken: "token",
+                                                                   tokenType: "Bearer",
+                                                                   matrixServerName: "example.org"))
+        let userSession = UserSessionMock(.init(clientProxy: clientProxy))
+        userSession.mediaProvider = mediaProvider
+        return userSession
+    }
+    
+    private func makeAudioItem(eventID: String) throws -> AudioRoomTimelineItem {
+        let source = try MediaSourceProxy(url: #require(URL(string: "mxc://example.org/audio")), mimeType: "audio/ogg")
+        return AudioRoomTimelineItem(id: .event(uniqueID: .init(eventID), eventOrTransactionID: .eventID(eventID)),
+                                     timestamp: .mock,
+                                     isOutgoing: false,
+                                     isEditable: false,
+                                     canBeRepliedTo: true,
+                                     sender: .init(id: "@alice:example.org"),
+                                     content: .init(filename: "voice.ogg",
+                                                    duration: 1,
+                                                    waveform: nil,
+                                                    source: source,
+                                                    fileSize: 5,
+                                                    contentType: .audio))
+    }
+}
+
+private final nonisolated class TestNitroTranscriptionService: NitroTranscriptionServiceProtocol {
+    struct Request: Equatable, Sendable {
+        let fileURL: URL
+        let filename: String
+        let contentType: String
+        let homeserverURL: URL
+        let openIDToken: NitroOpenIDToken
+    }
+    
+    private let result: Result<String, NitroTranscriptionError>
+    private let storedRequest = Mutex<Request?>(nil)
+    
+    var request: Request? {
+        storedRequest.withLock { $0 }
+    }
+    
+    init(result: Result<String, NitroTranscriptionError>) {
+        self.result = result
+    }
+    
+    func transcribeAudio(at fileURL: URL,
+                         filename: String,
+                         contentType: String,
+                         homeserverURL: URL,
+                         openIDToken: NitroOpenIDToken) async -> Result<String, NitroTranscriptionError> {
+        storedRequest.withLock {
+            $0 = .init(fileURL: fileURL,
+                       filename: filename,
+                       contentType: contentType,
+                       homeserverURL: homeserverURL,
+                       openIDToken: openIDToken)
+        }
+        return result
+    }
+}
+
+private final nonisolated class ControllableNitroTranscriptionService: NitroTranscriptionServiceProtocol {
+    let starts: AsyncStream<Void>
+    let finishes: AsyncStream<Void>
+    
+    private let startContinuation: AsyncStream<Void>.Continuation
+    private let finishContinuation: AsyncStream<Void>.Continuation
+    private let results: AsyncStream<Result<String, NitroTranscriptionError>>
+    private let resultContinuation: AsyncStream<Result<String, NitroTranscriptionError>>.Continuation
+    private let storedRequestCount = Mutex(0)
+    
+    var requestCount: Int {
+        storedRequestCount.withLock { $0 }
+    }
+    
+    init() {
+        (starts, startContinuation) = AsyncStream.makeStream()
+        (finishes, finishContinuation) = AsyncStream.makeStream()
+        (results, resultContinuation) = AsyncStream.makeStream()
+    }
+    
+    func complete(with result: Result<String, NitroTranscriptionError>) {
+        resultContinuation.yield(result)
+        resultContinuation.finish()
+    }
+    
+    func transcribeAudio(at fileURL: URL,
+                         filename: String,
+                         contentType: String,
+                         homeserverURL: URL,
+                         openIDToken: NitroOpenIDToken) async -> Result<String, NitroTranscriptionError> {
+        storedRequestCount.withLock { $0 += 1 }
+        startContinuation.yield(())
+        defer { finishContinuation.yield(()) }
+        
+        for await result in results {
+            return result
+        }
+        return .failure(.cancelled)
     }
 }
 

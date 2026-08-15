@@ -14,6 +14,7 @@ import SwiftUI
 
 typealias TimelineViewModelType = StateStoreViewModel<TimelineViewState, TimelineViewAction>
 
+// swiftlint:disable:next type_body_length
 class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
     private enum Constants {
         static let paginationEventLimit: UInt16 = 20
@@ -33,6 +34,7 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
     private let emojiProvider: EmojiProviderProtocol
     
     private let timelineInteractionHandler: TimelineInteractionHandler
+    private var nitroReminderCreateCancellable: AnyCancellable?
     
     private let composerFocusedSubject = PassthroughSubject<Bool, Never>()
     
@@ -57,7 +59,10 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
          analyticsService: AnalyticsServiceProtocol,
          emojiProvider: EmojiProviderProtocol,
          linkMetadataProvider: LinkMetadataProviderProtocol,
-         timelineControllerFactory: TimelineControllerFactoryProtocol) {
+         timelineControllerFactory: TimelineControllerFactoryProtocol,
+         nitroTranscriptionService: NitroTranscriptionServiceProtocol? = nil,
+         nitroReminderService: NitroReminderServiceProtocol? = nil,
+         voiceMessageRecorder: VoiceMessageRecorderProtocol? = nil) {
         self.roomProxy = roomProxy
         self.timelineController = timelineController
         self.userSession = userSession
@@ -68,7 +73,7 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         self.appMediator = appMediator
         self.emojiProvider = emojiProvider
         
-        let voiceMessageRecorder = VoiceMessageRecorder(audioRecorder: AudioRecorder(), mediaPlayerProvider: mediaPlayerProvider)
+        let voiceMessageRecorder = voiceMessageRecorder ?? VoiceMessageRecorder(audioRecorder: AudioRecorder(), mediaPlayerProvider: mediaPlayerProvider)
         
         timelineInteractionHandler = TimelineInteractionHandler(roomProxy: roomProxy,
                                                                 timelineController: timelineController,
@@ -81,7 +86,9 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
                                                                 analyticsService: analyticsService,
                                                                 emojiProvider: emojiProvider,
                                                                 linkMetadataProvider: linkMetadataProvider,
-                                                                timelineControllerFactory: timelineControllerFactory)
+                                                                timelineControllerFactory: timelineControllerFactory,
+                                                                nitroTranscriptionService: nitroTranscriptionService,
+                                                                nitroReminderService: nitroReminderService)
         
         let hideTimelineMedia = switch userSession.clientProxy.timelineMediaVisibilityPublisher.value {
         case .always:
@@ -214,6 +221,12 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
             handlePollAction(pollAction)
         case .handleAudioPlayerAction(let audioPlayerAction):
             handleAudioPlayerAction(audioPlayerAction)
+        case .sendTranscriptToThread(let info):
+            state.bindings.nitroTranscriptInfo = nil
+            Task { await timelineInteractionHandler.sendTranscriptToThread(info) }
+        case .dismissNitroReminderCreate:
+            state.bindings.nitroReminderCreateViewModel = nil
+            nitroReminderCreateCancellable = nil
         case .stopLiveLocationSharing(let id):
             state.stoppedLiveLocationIDs.insert(id)
             Task { await stopLiveLocationSharing() }
@@ -415,6 +428,8 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
             Task { await timelineInteractionHandler.deleteCurrentVoiceMessage() }
         case .send:
             Task { await timelineInteractionHandler.sendCurrentVoiceMessage() }
+        case .transcribe:
+            timelineInteractionHandler.transcribeCurrentVoiceMessage()
         case .startPlayback:
             Task { await timelineInteractionHandler.startPlayingRecordedVoiceMessage() }
         case .pausePlayback:
@@ -424,6 +439,10 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         case .scrubPlayback(let scrubbing):
             Task { await timelineInteractionHandler.scrubVoiceMessagePlayback(scrubbing: scrubbing) }
         }
+    }
+    
+    func stop() {
+        timelineInteractionHandler.cancelTranscription()
     }
     
     private func updateMembers(_ members: [RoomMemberProxyProtocol]) {
@@ -542,6 +561,20 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
                 case .showTranslation(let text):
                     self.state.bindings.textToBeTranslated = text
                     self.state.bindings.showTranslation = true
+                case .requestNitroAudioTranscriptionConsent(let request):
+                    self.displayAlert(.audioTranscriptionConsent(request))
+                case .showNitroTranscript(let info):
+                    self.state.bindings.nitroTranscriptInfo = info
+                case .showNitroReminderCreate(let viewModel):
+                    self.state.bindings.nitroReminderCreateViewModel = viewModel
+                    self.nitroReminderCreateCancellable = viewModel.actionsPublisher
+                        .sink { [weak self] action in
+                            switch action {
+                            case .dismiss:
+                                self?.state.bindings.nitroReminderCreateViewModel = nil
+                                self?.nitroReminderCreateCancellable = nil
+                            }
+                        }
                 }
             }
             .store(in: &cancellables)
@@ -1097,6 +1130,16 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
                                              message: L10n.dialogPermissionMicrophoneDescriptionIos,
                                              primaryButton: .init(title: L10n.commonSettings) { [weak self] in self?.appMediator.openAppSettings() },
                                              secondaryButton: .init(title: L10n.actionNotNow, role: .cancel, action: nil))
+        case .audioTranscriptionConsent(let request):
+            state.bindings.alertInfo = .init(id: type,
+                                             title: UntranslatedL10n.screenRoomAudioTranscriptionWarningTitleIos,
+                                             message: UntranslatedL10n.screenRoomAudioTranscriptionWarningMessageIos,
+                                             primaryButton: .init(title: L10n.actionCancel, role: .cancel, action: nil),
+                                             secondaryButton: .init(title: L10n.actionContinue) { [weak self] in
+                                                 guard let self else { return }
+                                                 state.bindings.alertInfo = nil
+                                                 timelineInteractionHandler.confirmAudioTranscription(request)
+                                             })
         case .pollEndConfirmation(let pollStartID):
             state.bindings.alertInfo = .init(id: type,
                                              title: L10n.actionEndPoll,

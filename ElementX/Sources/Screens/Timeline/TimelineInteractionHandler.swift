@@ -27,6 +27,9 @@ enum TimelineInteractionHandlerAction {
     case viewInRoomTimeline(eventID: String)
     case displayThread(itemID: TimelineItemIdentifier)
     case showTranslation(text: String)
+    case requestNitroAudioTranscriptionConsent(NitroAudioTranscriptionRequest)
+    case showNitroTranscript(NitroTranscriptInfo)
+    case showNitroReminderCreate(NitroReminderCreateScreenViewModel)
 }
 
 /// The interaction handler groups logic for dealing with various actions the user can take on a timeline's
@@ -45,6 +48,22 @@ class TimelineInteractionHandler {
     private let linkMetadataProvider: LinkMetadataProviderProtocol
     private let timelineControllerFactory: TimelineControllerFactoryProtocol
     private let pollInteractionHandler: PollInteractionHandlerProtocol
+    private let nitroTranscriptionService: NitroTranscriptionServiceProtocol
+    private let nitroReminderService: NitroReminderServiceProtocol
+    private lazy var nitroActionHandler = NitroTimelineActionHandler(roomProxy: roomProxy,
+                                                                     timelineController: timelineController,
+                                                                     userSession: userSession,
+                                                                     voiceMessageRecorder: voiceMessageRecorder,
+                                                                     userIndicatorController: userIndicatorController,
+                                                                     appSettings: appSettings,
+                                                                     transcriptionService: nitroTranscriptionService,
+                                                                     reminderService: nitroReminderService,
+                                                                     sendAction: { [weak self] action in
+                                                                         self?.actionsSubject.send(action)
+                                                                     },
+                                                                     didFinishCurrentVoiceMessage: { [weak self] in
+                                                                         self?.voiceMessageRecorderObserver = nil
+                                                                     })
     
     private let actionsSubject: PassthroughSubject<TimelineInteractionHandlerAction, Never> = .init()
     var actions: AnyPublisher<TimelineInteractionHandlerAction, Never> {
@@ -72,7 +91,9 @@ class TimelineInteractionHandler {
          analyticsService: AnalyticsServiceProtocol,
          emojiProvider: EmojiProviderProtocol,
          linkMetadataProvider: LinkMetadataProviderProtocol,
-         timelineControllerFactory: TimelineControllerFactoryProtocol) {
+         timelineControllerFactory: TimelineControllerFactoryProtocol,
+         nitroTranscriptionService: NitroTranscriptionServiceProtocol? = nil,
+         nitroReminderService: NitroReminderServiceProtocol? = nil) {
         self.roomProxy = roomProxy
         self.timelineController = timelineController
         self.userSession = userSession
@@ -85,6 +106,8 @@ class TimelineInteractionHandler {
         self.emojiProvider = emojiProvider
         self.linkMetadataProvider = linkMetadataProvider
         self.timelineControllerFactory = timelineControllerFactory
+        self.nitroTranscriptionService = nitroTranscriptionService ?? NitroTranscriptionService(baseURL: appSettings.nitroTranscriptionBaseURL)
+        self.nitroReminderService = nitroReminderService ?? NitroReminderService(baseURL: appSettings.nitroReminderBaseURL)
         
         pollInteractionHandler = PollInteractionHandler(analyticsService: analyticsService,
                                                         timelineController: timelineController)
@@ -105,7 +128,7 @@ class TimelineInteractionHandler {
         }
     }
     
-    // swiftlint:disable:next cyclomatic_complexity
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     func handleTimelineItemMenuAction(_ action: TimelineItemMenuAction, itemID: TimelineItemIdentifier) {
         // Redacting needs the event alone, so it works even when the item isn't part of this timeline,
         // such as one held by a media preview that was built from a different one.
@@ -205,9 +228,13 @@ class TimelineInteractionHandler {
             actionsSubject.send(.viewInRoomTimeline(eventID: eventID))
         case .downloadMedia:
             break // Handled inline in the media preview screen.
+        case .remindMe:
+            nitroActionHandler.presentReminderCreate(for: eventTimelineItem)
         case .translate:
             guard let messageTimelineItem = timelineItem as? EventBasedMessageTimelineItemProtocol else { return }
             actionsSubject.send(.showTranslation(text: messageTimelineItem.body))
+        case .transcribeAudio, .transcribeAudioToThread:
+            nitroActionHandler.transcribeTimelineAudio(itemID: itemID, sendToThread: action == .transcribeAudioToThread)
         }
         
         if action.switchToDefaultComposer {
@@ -391,6 +418,22 @@ class TimelineInteractionHandler {
             actionsSubject.send(.composer(action: .setMode(mode: .previewVoiceMessage(state: audioPlayerState, waveform: .url(recordingURL), isUploading: false))))
             actionsSubject.send(.displayErrorToast(L10n.errorFailedUploadingVoiceMessage))
         }
+    }
+    
+    func transcribeCurrentVoiceMessage() {
+        nitroActionHandler.transcribeCurrentVoiceMessage()
+    }
+    
+    func confirmAudioTranscription(_ request: NitroAudioTranscriptionRequest) {
+        nitroActionHandler.confirmAudioTranscription(request)
+    }
+    
+    func cancelTranscription() {
+        nitroActionHandler.cancelAll()
+    }
+    
+    func sendTranscriptToThread(_ info: NitroTranscriptInfo) async {
+        await nitroActionHandler.sendTranscriptToThread(info)
     }
     
     func startPlayingRecordedVoiceMessage() async {

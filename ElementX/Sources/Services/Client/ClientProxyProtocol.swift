@@ -38,6 +38,7 @@ enum ClientProxyPresence: Equatable, Sendable {
 enum ClientProxyError: Error {
     case sdkError(Error)
     case forbiddenAccess
+    case invalidResponse
     
     case invalidMedia
     case invalidServerName
@@ -121,6 +122,8 @@ protocol ClientProxyProtocol: AnyObject {
     var deviceID: String? { get }
     
     var homeserver: String { get }
+    
+    func requestOpenIDToken() async -> Result<NitroOpenIDToken, ClientProxyError>
     
     var canDeactivateAccount: Bool { get }
     

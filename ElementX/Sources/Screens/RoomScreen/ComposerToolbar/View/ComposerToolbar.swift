@@ -288,6 +288,7 @@ struct ComposerToolbar: View {
                 voiceMessageTrashButton
                     .scaledPadding(.vertical, buttonVerticalPadding, relativeTo: .compound.headingLG)
                 voiceMessagePreviewComposer(audioPlayerState: state, waveform: waveform)
+                transcribeVoiceMessageButton
             }
             .disabled(isUploading)
         default:
@@ -308,6 +309,18 @@ struct ComposerToolbar: View {
             context.send(viewAction: .voiceMessage(.deleteRecording))
         }
         .accessibilityLabel(L10n.a11yDelete)
+    }
+    
+    private var transcribeVoiceMessageButton: some View {
+        Button {
+            context.send(viewAction: .voiceMessage(.transcribe))
+        } label: {
+            CompoundIcon(\.chat,
+                         size: Compound.supportsGlass ? .medium : .small,
+                         relativeTo: .compound.headingLG)
+        }
+        .buttonStyle(ComposerToolbarButtonStyle())
+        .accessibilityLabel(UntranslatedL10n.actionTranscribeAndInsertIos)
     }
     
     private func voiceMessagePreviewComposer(audioPlayerState: AudioPlayerState, waveform: WaveformSource) -> some View {

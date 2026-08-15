@@ -87,6 +87,29 @@ class UserSessionScreenTests: XCTestCase {
         try await app.assertScreenshot(delay: .seconds(1))
     }
     
+    func testCreateReminderDialog() {
+        let app = Application.launch(.userSessionScreen, disableTimelineAccessibility: false)
+        app.buttons[A11yIdentifiers.homeScreen.roomName(firstRoomName)].tap()
+        XCTAssert(app.buttons[firstRoomName].waitForExistence(timeout: 5.0))
+        
+        let composer = app.textViews[A11yIdentifiers.roomScreen.messageComposer]
+        composer.tap(.center)
+        composer.typeText("Remember this")
+        app.buttons[A11yIdentifiers.roomScreen.sendButton].tap()
+        
+        let latestEventSender = app.staticTexts["@test.matrix.org"]
+        XCTAssert(latestEventSender.waitForExistence(timeout: 5.0))
+        latestEventSender.press(forDuration: 5.0)
+        
+        let remindMeButton = app.buttons["Remind me…"]
+        XCTAssert(remindMeButton.waitForExistence(timeout: 5.0))
+        remindMeButton.tap()
+        
+        XCTAssert(app.navigationBars["Remind me"].waitForExistence(timeout: 5.0))
+        XCTAssert(app.buttons["In 20 minutes"].exists)
+        XCTAssert(app.buttons["Set reminder"].exists)
+    }
+    
     func testElementCall() {
         let app = Application.launch(.userSessionScreen)
         

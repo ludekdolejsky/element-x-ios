@@ -239,6 +239,7 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
     }
     
     func stop() {
+        timelineViewModel.stop()
         composerViewModel.stop()
         roomViewModel.stop()
     }

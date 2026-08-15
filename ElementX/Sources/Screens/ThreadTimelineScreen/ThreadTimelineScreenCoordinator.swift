@@ -164,6 +164,7 @@ final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
     }
     
     func stop() {
+        timelineViewModel.stop()
         composerViewModel.stop()
         viewModel.stop()
     }

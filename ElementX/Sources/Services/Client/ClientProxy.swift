@@ -18,6 +18,7 @@ class ClientProxy: ClientProxyProtocol {
     private let networkMonitor: NetworkMonitorProtocol
     private let appSettings: AppSettings
     private let analyticsService: AnalyticsServiceProtocol
+    private lazy var nitroClientAPI = NitroClientAPI(client: client)
     
     let mediaLoader: MediaLoaderProtocol
     let contentScanner: ContentScannerProxyProtocol?
@@ -343,6 +344,10 @@ class ClientProxy: ClientProxyProtocol {
         client.homeserver()
     }
     
+    func requestOpenIDToken() async -> Result<NitroOpenIDToken, ClientProxyError> {
+        await nitroClientAPI.requestOpenIDToken()
+    }
+    
     var canDeactivateAccount: Bool {
         client.canDeactivateAccount()
     }
@@ -426,6 +431,18 @@ class ClientProxy: ClientProxyProtocol {
             MXLog.error("Failed checking hasDevicesToVerifyAgainst with error: \(error)")
             return .failure(.sdkError(error))
         }
+    }
+    
+    func rawAccountData(eventType: String) async -> Result<String?, ClientProxyError> {
+        await nitroClientAPI.rawAccountData(eventType: eventType)
+    }
+    
+    func setRawAccountData(eventType: String, content: String) async -> Result<Void, ClientProxyError> {
+        await nitroClientAPI.setRawAccountData(eventType: eventType, content: content)
+    }
+    
+    func rawRoomStateEvents(roomID: String) async -> Result<[RoomStateEventProxy], ClientProxyError> {
+        await nitroClientAPI.rawRoomStateEvents(roomID: roomID)
     }
     
     func resumeServices() async {

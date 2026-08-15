@@ -20,6 +20,7 @@ enum ComposerToolbarVoiceMessageAction {
     case pausePlayback
     case scrubPlayback(scrubbing: Bool)
     case seekPlayback(progress: Double)
+    case transcribe
     case send
 }
 

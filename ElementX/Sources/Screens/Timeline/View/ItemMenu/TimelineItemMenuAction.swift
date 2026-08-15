@@ -77,6 +77,9 @@ enum TimelineItemMenuAction: Identifiable, Hashable {
     case unpin
     case viewInRoomTimeline
     case downloadMedia
+    case remindMe
+    case transcribeAudio
+    case transcribeAudioToThread
     
     var id: Self {
         self
@@ -85,7 +88,7 @@ enum TimelineItemMenuAction: Identifiable, Hashable {
     /// Whether the item should cancel a reply/edit occurring in the composer.
     var switchToDefaultComposer: Bool {
         switch self {
-        case .reply, .edit, .addCaption, .editCaption, .editPoll:
+        case .reply, .edit, .addCaption, .editCaption, .editPoll, .transcribeAudio, .transcribeAudioToThread:
             false
         default:
             true
@@ -124,7 +127,7 @@ enum TimelineItemMenuAction: Identifiable, Hashable {
     
     var canAppearInPinnedEventsTimeline: Bool {
         switch self {
-        case .viewInRoomTimeline, .pin, .unpin, .forward:
+        case .viewInRoomTimeline, .pin, .unpin, .forward, .remindMe, .transcribeAudio, .transcribeAudioToThread:
             true
         default:
             false
@@ -133,7 +136,7 @@ enum TimelineItemMenuAction: Identifiable, Hashable {
     
     var canAppearInMediaDetails: Bool {
         switch self {
-        case .viewInRoomTimeline, .downloadMedia, .redact, .forward:
+        case .viewInRoomTimeline, .downloadMedia, .redact, .forward, .remindMe:
             true
         default:
             false
@@ -190,6 +193,12 @@ enum TimelineItemMenuAction: Identifiable, Hashable {
             Label(L10n.actionViewInTimeline, icon: \.visibilityOn)
         case .downloadMedia:
             Label(L10n.actionDownload, icon: \.downloadIos)
+        case .remindMe:
+            Label(UntranslatedL10n.actionRemindMeIos, icon: \.notifications)
+        case .transcribeAudio:
+            Label(UntranslatedL10n.actionTranscribeAudioIos, icon: \.chat)
+        case .transcribeAudioToThread:
+            Label(UntranslatedL10n.actionTranscribeAudioToThreadIos, icon: \.threads)
         }
     }
 }

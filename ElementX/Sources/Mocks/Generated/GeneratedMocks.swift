@@ -2356,6 +2356,34 @@ nonisolated class ClientProxyMock: ClientProxyProtocol, @unchecked Sendable {
     }
     nonisolated(unsafe) var underlyingLiveLocationOwnInfoUpdatesPublisher: AnyPublisher<LiveLocationOwnInfoUpdate, Never>!
 
+    //MARK: - requestOpenIDToken
+
+    private let requestOpenIDTokenCallsCountLock = NSLock()
+    private nonisolated(unsafe) var requestOpenIDTokenUnderlyingCallsCount = 0
+    var requestOpenIDTokenCallsCount: Int {
+        get { requestOpenIDTokenCallsCountLock.withLock { requestOpenIDTokenUnderlyingCallsCount } }
+        set { requestOpenIDTokenCallsCountLock.withLock { requestOpenIDTokenUnderlyingCallsCount = newValue } }
+    }
+    var requestOpenIDTokenCalled: Bool {
+        return requestOpenIDTokenCallsCount > 0
+    }
+
+    private let requestOpenIDTokenReturnValueLock = NSLock()
+    private nonisolated(unsafe) var requestOpenIDTokenUnderlyingReturnValue: Result<NitroOpenIDToken, ClientProxyError>!
+    var requestOpenIDTokenReturnValue: Result<NitroOpenIDToken, ClientProxyError>! {
+        get { requestOpenIDTokenReturnValueLock.withLock { requestOpenIDTokenUnderlyingReturnValue } }
+        set { requestOpenIDTokenReturnValueLock.withLock { requestOpenIDTokenUnderlyingReturnValue = newValue } }
+    }
+    nonisolated(unsafe) var requestOpenIDTokenClosure: (() async -> Result<NitroOpenIDToken, ClientProxyError>)?
+
+    @concurrent func requestOpenIDToken() async -> Result<NitroOpenIDToken, ClientProxyError> {
+        requestOpenIDTokenCallsCountLock.withLock { requestOpenIDTokenUnderlyingCallsCount += 1 }
+        if let requestOpenIDTokenClosure = requestOpenIDTokenClosure {
+            return await requestOpenIDTokenClosure()
+        } else {
+            return requestOpenIDTokenReturnValue
+        }
+    }
     //MARK: - isOnlyDeviceLeft
 
     private let isOnlyDeviceLeftCallsCountLock = NSLock()
@@ -8252,6 +8280,264 @@ nonisolated class NetworkMonitorMock: NetworkMonitorProtocol, @unchecked Sendabl
     }
     nonisolated(unsafe) var underlyingReachabilityPublisher: CurrentValuePublisher<NetworkMonitorReachability, Never>!
 
+}
+nonisolated class NitroReminderServiceMock: NitroReminderServiceProtocol, @unchecked Sendable {
+
+    //MARK: - createReminder
+
+    private let createReminderAuthenticationCallsCountLock = NSLock()
+    private nonisolated(unsafe) var createReminderAuthenticationUnderlyingCallsCount = 0
+    var createReminderAuthenticationCallsCount: Int {
+        get { createReminderAuthenticationCallsCountLock.withLock { createReminderAuthenticationUnderlyingCallsCount } }
+        set { createReminderAuthenticationCallsCountLock.withLock { createReminderAuthenticationUnderlyingCallsCount = newValue } }
+    }
+    var createReminderAuthenticationCalled: Bool {
+        return createReminderAuthenticationCallsCount > 0
+    }
+    private let createReminderAuthenticationReceivedArgumentsLock = NSLock()
+    private nonisolated(unsafe) var createReminderAuthenticationUnderlyingReceivedArguments: (schedule: NitroReminderSchedule, authentication: NitroReminderAuthentication)?
+    var createReminderAuthenticationReceivedArguments: (schedule: NitroReminderSchedule, authentication: NitroReminderAuthentication)? {
+        get { createReminderAuthenticationReceivedArgumentsLock.withLock { createReminderAuthenticationUnderlyingReceivedArguments } }
+        set { createReminderAuthenticationReceivedArgumentsLock.withLock { createReminderAuthenticationUnderlyingReceivedArguments = newValue } }
+    }
+    private let createReminderAuthenticationReceivedInvocationsLock = NSLock()
+    private nonisolated(unsafe) var createReminderAuthenticationUnderlyingReceivedInvocations: [(schedule: NitroReminderSchedule, authentication: NitroReminderAuthentication)] = []
+    var createReminderAuthenticationReceivedInvocations: [(schedule: NitroReminderSchedule, authentication: NitroReminderAuthentication)] {
+        get { createReminderAuthenticationReceivedInvocationsLock.withLock { createReminderAuthenticationUnderlyingReceivedInvocations } }
+        set { createReminderAuthenticationReceivedInvocationsLock.withLock { createReminderAuthenticationUnderlyingReceivedInvocations = newValue } }
+    }
+
+    private let createReminderAuthenticationReturnValueLock = NSLock()
+    private nonisolated(unsafe) var createReminderAuthenticationUnderlyingReturnValue: Result<NitroReminderCreation, NitroReminderError>!
+    var createReminderAuthenticationReturnValue: Result<NitroReminderCreation, NitroReminderError>! {
+        get { createReminderAuthenticationReturnValueLock.withLock { createReminderAuthenticationUnderlyingReturnValue } }
+        set { createReminderAuthenticationReturnValueLock.withLock { createReminderAuthenticationUnderlyingReturnValue = newValue } }
+    }
+    nonisolated(unsafe) var createReminderAuthenticationClosure: ((NitroReminderSchedule, NitroReminderAuthentication) async -> Result<NitroReminderCreation, NitroReminderError>)?
+
+    @concurrent func createReminder(_ schedule: NitroReminderSchedule, authentication: NitroReminderAuthentication) async -> Result<NitroReminderCreation, NitroReminderError> {
+        createReminderAuthenticationCallsCountLock.withLock { createReminderAuthenticationUnderlyingCallsCount += 1 }
+        createReminderAuthenticationReceivedArguments = (schedule: schedule, authentication: authentication)
+        createReminderAuthenticationReceivedInvocationsLock.withLock { createReminderAuthenticationUnderlyingReceivedInvocations.append((schedule: schedule, authentication: authentication)) }
+        if let createReminderAuthenticationClosure = createReminderAuthenticationClosure {
+            return await createReminderAuthenticationClosure(schedule, authentication)
+        } else {
+            return createReminderAuthenticationReturnValue
+        }
+    }
+    //MARK: - reminders
+
+    private let remindersFilterAuthenticationCallsCountLock = NSLock()
+    private nonisolated(unsafe) var remindersFilterAuthenticationUnderlyingCallsCount = 0
+    var remindersFilterAuthenticationCallsCount: Int {
+        get { remindersFilterAuthenticationCallsCountLock.withLock { remindersFilterAuthenticationUnderlyingCallsCount } }
+        set { remindersFilterAuthenticationCallsCountLock.withLock { remindersFilterAuthenticationUnderlyingCallsCount = newValue } }
+    }
+    var remindersFilterAuthenticationCalled: Bool {
+        return remindersFilterAuthenticationCallsCount > 0
+    }
+    private let remindersFilterAuthenticationReceivedArgumentsLock = NSLock()
+    private nonisolated(unsafe) var remindersFilterAuthenticationUnderlyingReceivedArguments: (filter: NitroReminderFilter, authentication: NitroReminderAuthentication)?
+    var remindersFilterAuthenticationReceivedArguments: (filter: NitroReminderFilter, authentication: NitroReminderAuthentication)? {
+        get { remindersFilterAuthenticationReceivedArgumentsLock.withLock { remindersFilterAuthenticationUnderlyingReceivedArguments } }
+        set { remindersFilterAuthenticationReceivedArgumentsLock.withLock { remindersFilterAuthenticationUnderlyingReceivedArguments = newValue } }
+    }
+    private let remindersFilterAuthenticationReceivedInvocationsLock = NSLock()
+    private nonisolated(unsafe) var remindersFilterAuthenticationUnderlyingReceivedInvocations: [(filter: NitroReminderFilter, authentication: NitroReminderAuthentication)] = []
+    var remindersFilterAuthenticationReceivedInvocations: [(filter: NitroReminderFilter, authentication: NitroReminderAuthentication)] {
+        get { remindersFilterAuthenticationReceivedInvocationsLock.withLock { remindersFilterAuthenticationUnderlyingReceivedInvocations } }
+        set { remindersFilterAuthenticationReceivedInvocationsLock.withLock { remindersFilterAuthenticationUnderlyingReceivedInvocations = newValue } }
+    }
+
+    private let remindersFilterAuthenticationReturnValueLock = NSLock()
+    private nonisolated(unsafe) var remindersFilterAuthenticationUnderlyingReturnValue: Result<NitroReminderList, NitroReminderError>!
+    var remindersFilterAuthenticationReturnValue: Result<NitroReminderList, NitroReminderError>! {
+        get { remindersFilterAuthenticationReturnValueLock.withLock { remindersFilterAuthenticationUnderlyingReturnValue } }
+        set { remindersFilterAuthenticationReturnValueLock.withLock { remindersFilterAuthenticationUnderlyingReturnValue = newValue } }
+    }
+    nonisolated(unsafe) var remindersFilterAuthenticationClosure: ((NitroReminderFilter, NitroReminderAuthentication) async -> Result<NitroReminderList, NitroReminderError>)?
+
+    @concurrent func reminders(filter: NitroReminderFilter, authentication: NitroReminderAuthentication) async -> Result<NitroReminderList, NitroReminderError> {
+        remindersFilterAuthenticationCallsCountLock.withLock { remindersFilterAuthenticationUnderlyingCallsCount += 1 }
+        remindersFilterAuthenticationReceivedArguments = (filter: filter, authentication: authentication)
+        remindersFilterAuthenticationReceivedInvocationsLock.withLock { remindersFilterAuthenticationUnderlyingReceivedInvocations.append((filter: filter, authentication: authentication)) }
+        if let remindersFilterAuthenticationClosure = remindersFilterAuthenticationClosure {
+            return await remindersFilterAuthenticationClosure(filter, authentication)
+        } else {
+            return remindersFilterAuthenticationReturnValue
+        }
+    }
+    //MARK: - markDone
+
+    private let markDoneReminderIDAuthenticationCallsCountLock = NSLock()
+    private nonisolated(unsafe) var markDoneReminderIDAuthenticationUnderlyingCallsCount = 0
+    var markDoneReminderIDAuthenticationCallsCount: Int {
+        get { markDoneReminderIDAuthenticationCallsCountLock.withLock { markDoneReminderIDAuthenticationUnderlyingCallsCount } }
+        set { markDoneReminderIDAuthenticationCallsCountLock.withLock { markDoneReminderIDAuthenticationUnderlyingCallsCount = newValue } }
+    }
+    var markDoneReminderIDAuthenticationCalled: Bool {
+        return markDoneReminderIDAuthenticationCallsCount > 0
+    }
+    private let markDoneReminderIDAuthenticationReceivedArgumentsLock = NSLock()
+    private nonisolated(unsafe) var markDoneReminderIDAuthenticationUnderlyingReceivedArguments: (reminderID: String, authentication: NitroReminderAuthentication)?
+    var markDoneReminderIDAuthenticationReceivedArguments: (reminderID: String, authentication: NitroReminderAuthentication)? {
+        get { markDoneReminderIDAuthenticationReceivedArgumentsLock.withLock { markDoneReminderIDAuthenticationUnderlyingReceivedArguments } }
+        set { markDoneReminderIDAuthenticationReceivedArgumentsLock.withLock { markDoneReminderIDAuthenticationUnderlyingReceivedArguments = newValue } }
+    }
+    private let markDoneReminderIDAuthenticationReceivedInvocationsLock = NSLock()
+    private nonisolated(unsafe) var markDoneReminderIDAuthenticationUnderlyingReceivedInvocations: [(reminderID: String, authentication: NitroReminderAuthentication)] = []
+    var markDoneReminderIDAuthenticationReceivedInvocations: [(reminderID: String, authentication: NitroReminderAuthentication)] {
+        get { markDoneReminderIDAuthenticationReceivedInvocationsLock.withLock { markDoneReminderIDAuthenticationUnderlyingReceivedInvocations } }
+        set { markDoneReminderIDAuthenticationReceivedInvocationsLock.withLock { markDoneReminderIDAuthenticationUnderlyingReceivedInvocations = newValue } }
+    }
+
+    private let markDoneReminderIDAuthenticationReturnValueLock = NSLock()
+    private nonisolated(unsafe) var markDoneReminderIDAuthenticationUnderlyingReturnValue: Result<NitroReminder, NitroReminderError>!
+    var markDoneReminderIDAuthenticationReturnValue: Result<NitroReminder, NitroReminderError>! {
+        get { markDoneReminderIDAuthenticationReturnValueLock.withLock { markDoneReminderIDAuthenticationUnderlyingReturnValue } }
+        set { markDoneReminderIDAuthenticationReturnValueLock.withLock { markDoneReminderIDAuthenticationUnderlyingReturnValue = newValue } }
+    }
+    nonisolated(unsafe) var markDoneReminderIDAuthenticationClosure: ((String, NitroReminderAuthentication) async -> Result<NitroReminder, NitroReminderError>)?
+
+    @concurrent func markDone(reminderID: String, authentication: NitroReminderAuthentication) async -> Result<NitroReminder, NitroReminderError> {
+        markDoneReminderIDAuthenticationCallsCountLock.withLock { markDoneReminderIDAuthenticationUnderlyingCallsCount += 1 }
+        markDoneReminderIDAuthenticationReceivedArguments = (reminderID: reminderID, authentication: authentication)
+        markDoneReminderIDAuthenticationReceivedInvocationsLock.withLock { markDoneReminderIDAuthenticationUnderlyingReceivedInvocations.append((reminderID: reminderID, authentication: authentication)) }
+        if let markDoneReminderIDAuthenticationClosure = markDoneReminderIDAuthenticationClosure {
+            return await markDoneReminderIDAuthenticationClosure(reminderID, authentication)
+        } else {
+            return markDoneReminderIDAuthenticationReturnValue
+        }
+    }
+    //MARK: - snooze
+
+    private let snoozeReminderIDUntilAuthenticationCallsCountLock = NSLock()
+    private nonisolated(unsafe) var snoozeReminderIDUntilAuthenticationUnderlyingCallsCount = 0
+    var snoozeReminderIDUntilAuthenticationCallsCount: Int {
+        get { snoozeReminderIDUntilAuthenticationCallsCountLock.withLock { snoozeReminderIDUntilAuthenticationUnderlyingCallsCount } }
+        set { snoozeReminderIDUntilAuthenticationCallsCountLock.withLock { snoozeReminderIDUntilAuthenticationUnderlyingCallsCount = newValue } }
+    }
+    var snoozeReminderIDUntilAuthenticationCalled: Bool {
+        return snoozeReminderIDUntilAuthenticationCallsCount > 0
+    }
+    private let snoozeReminderIDUntilAuthenticationReceivedArgumentsLock = NSLock()
+    private nonisolated(unsafe) var snoozeReminderIDUntilAuthenticationUnderlyingReceivedArguments: (reminderID: String, dueDate: Date, authentication: NitroReminderAuthentication)?
+    var snoozeReminderIDUntilAuthenticationReceivedArguments: (reminderID: String, dueDate: Date, authentication: NitroReminderAuthentication)? {
+        get { snoozeReminderIDUntilAuthenticationReceivedArgumentsLock.withLock { snoozeReminderIDUntilAuthenticationUnderlyingReceivedArguments } }
+        set { snoozeReminderIDUntilAuthenticationReceivedArgumentsLock.withLock { snoozeReminderIDUntilAuthenticationUnderlyingReceivedArguments = newValue } }
+    }
+    private let snoozeReminderIDUntilAuthenticationReceivedInvocationsLock = NSLock()
+    private nonisolated(unsafe) var snoozeReminderIDUntilAuthenticationUnderlyingReceivedInvocations: [(reminderID: String, dueDate: Date, authentication: NitroReminderAuthentication)] = []
+    var snoozeReminderIDUntilAuthenticationReceivedInvocations: [(reminderID: String, dueDate: Date, authentication: NitroReminderAuthentication)] {
+        get { snoozeReminderIDUntilAuthenticationReceivedInvocationsLock.withLock { snoozeReminderIDUntilAuthenticationUnderlyingReceivedInvocations } }
+        set { snoozeReminderIDUntilAuthenticationReceivedInvocationsLock.withLock { snoozeReminderIDUntilAuthenticationUnderlyingReceivedInvocations = newValue } }
+    }
+
+    private let snoozeReminderIDUntilAuthenticationReturnValueLock = NSLock()
+    private nonisolated(unsafe) var snoozeReminderIDUntilAuthenticationUnderlyingReturnValue: Result<NitroReminder, NitroReminderError>!
+    var snoozeReminderIDUntilAuthenticationReturnValue: Result<NitroReminder, NitroReminderError>! {
+        get { snoozeReminderIDUntilAuthenticationReturnValueLock.withLock { snoozeReminderIDUntilAuthenticationUnderlyingReturnValue } }
+        set { snoozeReminderIDUntilAuthenticationReturnValueLock.withLock { snoozeReminderIDUntilAuthenticationUnderlyingReturnValue = newValue } }
+    }
+    nonisolated(unsafe) var snoozeReminderIDUntilAuthenticationClosure: ((String, Date, NitroReminderAuthentication) async -> Result<NitroReminder, NitroReminderError>)?
+
+    @concurrent func snooze(reminderID: String, until dueDate: Date, authentication: NitroReminderAuthentication) async -> Result<NitroReminder, NitroReminderError> {
+        snoozeReminderIDUntilAuthenticationCallsCountLock.withLock { snoozeReminderIDUntilAuthenticationUnderlyingCallsCount += 1 }
+        snoozeReminderIDUntilAuthenticationReceivedArguments = (reminderID: reminderID, dueDate: dueDate, authentication: authentication)
+        snoozeReminderIDUntilAuthenticationReceivedInvocationsLock.withLock { snoozeReminderIDUntilAuthenticationUnderlyingReceivedInvocations.append((reminderID: reminderID, dueDate: dueDate, authentication: authentication)) }
+        if let snoozeReminderIDUntilAuthenticationClosure = snoozeReminderIDUntilAuthenticationClosure {
+            return await snoozeReminderIDUntilAuthenticationClosure(reminderID, dueDate, authentication)
+        } else {
+            return snoozeReminderIDUntilAuthenticationReturnValue
+        }
+    }
+    //MARK: - deleteReminder
+
+    private let deleteReminderReminderIDAuthenticationCallsCountLock = NSLock()
+    private nonisolated(unsafe) var deleteReminderReminderIDAuthenticationUnderlyingCallsCount = 0
+    var deleteReminderReminderIDAuthenticationCallsCount: Int {
+        get { deleteReminderReminderIDAuthenticationCallsCountLock.withLock { deleteReminderReminderIDAuthenticationUnderlyingCallsCount } }
+        set { deleteReminderReminderIDAuthenticationCallsCountLock.withLock { deleteReminderReminderIDAuthenticationUnderlyingCallsCount = newValue } }
+    }
+    var deleteReminderReminderIDAuthenticationCalled: Bool {
+        return deleteReminderReminderIDAuthenticationCallsCount > 0
+    }
+    private let deleteReminderReminderIDAuthenticationReceivedArgumentsLock = NSLock()
+    private nonisolated(unsafe) var deleteReminderReminderIDAuthenticationUnderlyingReceivedArguments: (reminderID: String, authentication: NitroReminderAuthentication)?
+    var deleteReminderReminderIDAuthenticationReceivedArguments: (reminderID: String, authentication: NitroReminderAuthentication)? {
+        get { deleteReminderReminderIDAuthenticationReceivedArgumentsLock.withLock { deleteReminderReminderIDAuthenticationUnderlyingReceivedArguments } }
+        set { deleteReminderReminderIDAuthenticationReceivedArgumentsLock.withLock { deleteReminderReminderIDAuthenticationUnderlyingReceivedArguments = newValue } }
+    }
+    private let deleteReminderReminderIDAuthenticationReceivedInvocationsLock = NSLock()
+    private nonisolated(unsafe) var deleteReminderReminderIDAuthenticationUnderlyingReceivedInvocations: [(reminderID: String, authentication: NitroReminderAuthentication)] = []
+    var deleteReminderReminderIDAuthenticationReceivedInvocations: [(reminderID: String, authentication: NitroReminderAuthentication)] {
+        get { deleteReminderReminderIDAuthenticationReceivedInvocationsLock.withLock { deleteReminderReminderIDAuthenticationUnderlyingReceivedInvocations } }
+        set { deleteReminderReminderIDAuthenticationReceivedInvocationsLock.withLock { deleteReminderReminderIDAuthenticationUnderlyingReceivedInvocations = newValue } }
+    }
+
+    private let deleteReminderReminderIDAuthenticationReturnValueLock = NSLock()
+    private nonisolated(unsafe) var deleteReminderReminderIDAuthenticationUnderlyingReturnValue: Result<Void, NitroReminderError>!
+    var deleteReminderReminderIDAuthenticationReturnValue: Result<Void, NitroReminderError>! {
+        get { deleteReminderReminderIDAuthenticationReturnValueLock.withLock { deleteReminderReminderIDAuthenticationUnderlyingReturnValue } }
+        set { deleteReminderReminderIDAuthenticationReturnValueLock.withLock { deleteReminderReminderIDAuthenticationUnderlyingReturnValue = newValue } }
+    }
+    nonisolated(unsafe) var deleteReminderReminderIDAuthenticationClosure: ((String, NitroReminderAuthentication) async -> Result<Void, NitroReminderError>)?
+
+    @concurrent func deleteReminder(reminderID: String, authentication: NitroReminderAuthentication) async -> Result<Void, NitroReminderError> {
+        deleteReminderReminderIDAuthenticationCallsCountLock.withLock { deleteReminderReminderIDAuthenticationUnderlyingCallsCount += 1 }
+        deleteReminderReminderIDAuthenticationReceivedArguments = (reminderID: reminderID, authentication: authentication)
+        deleteReminderReminderIDAuthenticationReceivedInvocationsLock.withLock { deleteReminderReminderIDAuthenticationUnderlyingReceivedInvocations.append((reminderID: reminderID, authentication: authentication)) }
+        if let deleteReminderReminderIDAuthenticationClosure = deleteReminderReminderIDAuthenticationClosure {
+            return await deleteReminderReminderIDAuthenticationClosure(reminderID, authentication)
+        } else {
+            return deleteReminderReminderIDAuthenticationReturnValue
+        }
+    }
+}
+nonisolated class NitroTranscriptionServiceMock: NitroTranscriptionServiceProtocol, @unchecked Sendable {
+
+    //MARK: - transcribeAudio
+
+    private let transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenCallsCountLock = NSLock()
+    private nonisolated(unsafe) var transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingCallsCount = 0
+    var transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenCallsCount: Int {
+        get { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenCallsCountLock.withLock { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingCallsCount } }
+        set { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenCallsCountLock.withLock { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingCallsCount = newValue } }
+    }
+    var transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenCalled: Bool {
+        return transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenCallsCount > 0
+    }
+    private let transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReceivedArgumentsLock = NSLock()
+    private nonisolated(unsafe) var transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingReceivedArguments: (fileURL: URL, filename: String, contentType: String, homeserverURL: URL, openIDToken: NitroOpenIDToken)?
+    var transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReceivedArguments: (fileURL: URL, filename: String, contentType: String, homeserverURL: URL, openIDToken: NitroOpenIDToken)? {
+        get { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReceivedArgumentsLock.withLock { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingReceivedArguments } }
+        set { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReceivedArgumentsLock.withLock { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingReceivedArguments = newValue } }
+    }
+    private let transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReceivedInvocationsLock = NSLock()
+    private nonisolated(unsafe) var transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingReceivedInvocations: [(fileURL: URL, filename: String, contentType: String, homeserverURL: URL, openIDToken: NitroOpenIDToken)] = []
+    var transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReceivedInvocations: [(fileURL: URL, filename: String, contentType: String, homeserverURL: URL, openIDToken: NitroOpenIDToken)] {
+        get { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReceivedInvocationsLock.withLock { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingReceivedInvocations } }
+        set { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReceivedInvocationsLock.withLock { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingReceivedInvocations = newValue } }
+    }
+
+    private let transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReturnValueLock = NSLock()
+    private nonisolated(unsafe) var transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingReturnValue: Result<String, NitroTranscriptionError>!
+    var transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReturnValue: Result<String, NitroTranscriptionError>! {
+        get { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReturnValueLock.withLock { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingReturnValue } }
+        set { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReturnValueLock.withLock { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingReturnValue = newValue } }
+    }
+    nonisolated(unsafe) var transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenClosure: ((URL, String, String, URL, NitroOpenIDToken) async -> Result<String, NitroTranscriptionError>)?
+
+    @concurrent func transcribeAudio(at fileURL: URL, filename: String, contentType: String, homeserverURL: URL, openIDToken: NitroOpenIDToken) async -> Result<String, NitroTranscriptionError> {
+        transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenCallsCountLock.withLock { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingCallsCount += 1 }
+        transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReceivedArguments = (fileURL: fileURL, filename: filename, contentType: contentType, homeserverURL: homeserverURL, openIDToken: openIDToken)
+        transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReceivedInvocationsLock.withLock { transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenUnderlyingReceivedInvocations.append((fileURL: fileURL, filename: filename, contentType: contentType, homeserverURL: homeserverURL, openIDToken: openIDToken)) }
+        if let transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenClosure = transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenClosure {
+            return await transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenClosure(fileURL, filename, contentType, homeserverURL, openIDToken)
+        } else {
+            return transcribeAudioAtFilenameContentTypeHomeserverURLOpenIDTokenReturnValue
+        }
+    }
 }
 nonisolated class NotificationItemProxyMock: NotificationItemProxyProtocol, @unchecked Sendable {
     nonisolated(unsafe) var event: NotificationEvent?
