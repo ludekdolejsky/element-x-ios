@@ -10,8 +10,110 @@ import Foundation
 // swiftlint:disable explicit_type_interface function_parameter_count identifier_name line_length
 // swiftlint:disable nesting type_body_length type_name vertical_whitespace_opening_braces
 internal nonisolated enum UntranslatedL10n {
+  /// Edit time
+  internal static var actionEditTimeIos: String { return UntranslatedL10n.tr("Untranslated", "action_edit_time_ios") }
+  /// Open
+  internal static var actionOpenIos: String { return UntranslatedL10n.tr("Untranslated", "action_open_ios") }
+  /// Refresh
+  internal static var actionRefreshIos: String { return UntranslatedL10n.tr("Untranslated", "action_refresh_ios") }
+  /// Remind me…
+  internal static var actionRemindMeIos: String { return UntranslatedL10n.tr("Untranslated", "action_remind_me_ios") }
+  /// Send transcript to thread
+  internal static var actionSendTranscriptToThreadIos: String { return UntranslatedL10n.tr("Untranslated", "action_send_transcript_to_thread_ios") }
+  /// Set reminder
+  internal static var actionSetReminderIos: String { return UntranslatedL10n.tr("Untranslated", "action_set_reminder_ios") }
+  /// Snooze 20 minutes
+  internal static var actionSnooze20MinutesIos: String { return UntranslatedL10n.tr("Untranslated", "action_snooze_20_minutes_ios") }
+  /// Snooze 24 hours
+  internal static var actionSnooze24HoursIos: String { return UntranslatedL10n.tr("Untranslated", "action_snooze_24_hours_ios") }
+  /// Snooze 1 week
+  internal static var actionSnoozeOneWeekIos: String { return UntranslatedL10n.tr("Untranslated", "action_snooze_one_week_ios") }
+  /// Transcribe & insert
+  internal static var actionTranscribeAndInsertIos: String { return UntranslatedL10n.tr("Untranslated", "action_transcribe_and_insert_ios") }
+  /// Transcribe audio
+  internal static var actionTranscribeAudioIos: String { return UntranslatedL10n.tr("Untranslated", "action_transcribe_audio_ios") }
+  /// Transcribe & reply to thread
+  internal static var actionTranscribeAudioToThreadIos: String { return UntranslatedL10n.tr("Untranslated", "action_transcribe_audio_to_thread_ios") }
+  /// Reminder set
+  internal static var commonReminderSetIos: String { return UntranslatedL10n.tr("Untranslated", "common_reminder_set_ios") }
+  /// Transcribing audio…
+  internal static var commonTranscribingAudioIos: String { return UntranslatedL10n.tr("Untranslated", "common_transcribing_audio_ios") }
+  /// Custom emoji files are not encrypted and may be visible to your homeserver, even though this room is encrypted.
+  internal static var customEmojiMediaWarningMessage: String { return UntranslatedL10n.tr("Untranslated", "custom_emoji_media_warning_message") }
+  /// Custom emoji media isn’t encrypted
+  internal static var customEmojiMediaWarningTitle: String { return UntranslatedL10n.tr("Untranslated", "custom_emoji_media_warning_title") }
+  /// Audio transcription failed.
+  internal static var errorAudioTranscriptionFailedIos: String { return UntranslatedL10n.tr("Untranslated", "error_audio_transcription_failed_ios") }
+  /// The reminder request failed. Try again.
+  internal static var errorReminderRequestFailedIos: String { return UntranslatedL10n.tr("Untranslated", "error_reminder_request_failed_ios") }
+  /// Choose a future date and time.
+  internal static var errorReminderTimeInPastIos: String { return UntranslatedL10n.tr("Untranslated", "error_reminder_time_in_past_ios") }
+  /// Audio transcript
+  internal static var screenAudioTranscriptTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_audio_transcript_title_ios") }
   /// Search
   internal static var screenHomeTabSearch: String { return UntranslatedL10n.tr("Untranslated", "screen_home_tab_search") }
+  /// Choose a quick reminder or set an exact local date and time.
+  internal static var screenNitroReminderCreateHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_create_hint_ios") }
+  /// Reminder time
+  internal static var screenNitroReminderCreateTimeHeaderIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_create_time_header_ios") }
+  /// Remind me
+  internal static var screenNitroReminderCreateTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_create_title_ios") }
+  /// Custom date and time
+  internal static var screenNitroReminderCustomTimeIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_custom_time_ios") }
+  /// In 20 minutes
+  internal static var screenNitroReminderIn20MinutesIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_in_20_minutes_ios") }
+  /// In 24 hours
+  internal static var screenNitroReminderIn24HoursIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_in_24_hours_ios") }
+  /// In 1 hour
+  internal static var screenNitroReminderInOneHourIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_in_one_hour_ios") }
+  /// In 1 minute
+  internal static var screenNitroReminderInOneMinuteIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_in_one_minute_ios") }
+  /// In 1 week
+  internal static var screenNitroReminderInOneWeekIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_in_one_week_ios") }
+  /// Monday at 09:00
+  internal static var screenNitroReminderMondayNineIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_monday_nine_ios") }
+  /// Tomorrow at 09:00
+  internal static var screenNitroReminderTomorrowNineIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_tomorrow_nine_ios") }
+  /// Done
+  internal static var screenNitroRemindersDoneIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_done_ios") }
+  /// Due
+  internal static var screenNitroRemindersDueIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_due_ios") }
+  /// Due now
+  internal static var screenNitroRemindersDueNowIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_due_now_ios") }
+  /// Set an exact local date and time for this reminder.
+  internal static var screenNitroRemindersEditHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_edit_hint_ios") }
+  /// Edit reminder time
+  internal static var screenNitroRemindersEditTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_edit_title_ios") }
+  /// Reminders you mark done will appear here.
+  internal static var screenNitroRemindersEmptyDoneMessageIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_empty_done_message_ios") }
+  /// No done reminders
+  internal static var screenNitroRemindersEmptyDoneTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_empty_done_title_ios") }
+  /// Reminders that are due now will appear here.
+  internal static var screenNitroRemindersEmptyDueMessageIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_empty_due_message_ios") }
+  /// No reminders due
+  internal static var screenNitroRemindersEmptyDueTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_empty_due_title_ios") }
+  /// Future reminders will appear here.
+  internal static var screenNitroRemindersEmptyUpcomingMessageIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_empty_upcoming_message_ios") }
+  /// No upcoming reminders
+  internal static var screenNitroRemindersEmptyUpcomingTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_empty_upcoming_title_ios") }
+  /// Set %1$@ · Due %2$@
+  internal static func screenNitroRemindersMetaIos(_ p1: Any, _ p2: Any) -> String {
+    return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_meta_ios", String(describing: p1), String(describing: p2))
+  }
+  /// Reminder %1$@
+  internal static func screenNitroRemindersReminderLabelIos(_ p1: Any) -> String {
+    return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_reminder_label_ios", String(describing: p1))
+  }
+  /// Reminders
+  internal static var screenNitroRemindersTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_title_ios") }
+  /// Upcoming
+  internal static var screenNitroRemindersUpcomingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_upcoming_ios") }
+  /// Custom emoji
+  internal static var screenRoomAttachmentSourceCustomEmoji: String { return UntranslatedL10n.tr("Untranslated", "screen_room_attachment_source_custom_emoji") }
+  /// A decrypted copy of this audio will be sent to Nitrovery’s transcription service for processing.
+  internal static var screenRoomAudioTranscriptionWarningMessageIos: String { return UntranslatedL10n.tr("Untranslated", "screen_room_audio_transcription_warning_message_ios") }
+  /// Send encrypted audio for transcription?
+  internal static var screenRoomAudioTranscriptionWarningTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_room_audio_transcription_warning_title_ios") }
   /// Search for chats and messages
   internal static var screenSearchEmptyStateMessage: String { return UntranslatedL10n.tr("Untranslated", "screen_search_empty_state_message") }
   /// Start searching...
