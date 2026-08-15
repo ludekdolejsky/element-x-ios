@@ -172,13 +172,14 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         case .itemSendInfoTapped(let itemID):
             handleItemSendInfoTapped(itemID: itemID)
         case .toggleReaction(let emoji, let itemID):
-            emojiProvider.markEmojiAsFrequentlyUsed(emoji)
-            
             guard case let .event(_, eventOrTransactionID) = itemID else {
                 fatalError()
             }
             
-            Task { await timelineController.toggleReaction(emoji, to: eventOrTransactionID) }
+            Task {
+                await timelineController.toggleReaction(emoji, to: eventOrTransactionID)
+                await emojiProvider.markEmojiAsRecentlyUsed(emoji, shortcode: nil)
+            }
         case .sendReadReceiptIfNeeded(let lastVisibleItemID):
             Task { await sendReadReceiptIfNeeded(for: lastVisibleItemID) }
         case .paginateBackwards:
@@ -380,6 +381,8 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         switch attachment {
         case .camera:
             actionsSubject.send(.displayCameraPicker)
+        case .customEmoji:
+            MXLog.failure("Custom emoji selection must be handled by the room coordinator")
         case .photoLibrary:
             actionsSubject.send(.displayMediaPicker)
         case .file:
@@ -1089,6 +1092,8 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
             }
         case .allUsers:
             pillContext.viewState = .mention(isOwnMention: true, displayText: PillUtilities.atRoom, statusEmoji: nil)
+        case .customEmoji:
+            pillContext.viewState = .undefined
         case .event(let room):
             let pillViewState: PillViewState
             switch room {

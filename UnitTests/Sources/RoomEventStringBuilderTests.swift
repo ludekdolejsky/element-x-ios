@@ -12,16 +12,17 @@ import Testing
 
 struct RoomEventStringBuilderTests {
     private let ownUserID: String
+    private let messageStringBuilder: RoomMessageEventStringBuilder
     private let stringBuilder: RoomEventStringBuilder
     
     init() {
         ownUserID = "@alice:matrix.org"
         let stateEventStringBuilder = RoomStateEventStringBuilder(userID: ownUserID)
         let attributedStringBuilder = AttributedStringBuilder(mentionBuilder: MentionBuilder())
-        
+        messageStringBuilder = RoomMessageEventStringBuilder(attributedStringBuilder: attributedStringBuilder,
+                                                             style: .senderPrefixed)
         stringBuilder = RoomEventStringBuilder(stateEventStringBuilder: stateEventStringBuilder,
-                                               messageEventStringBuilder: RoomMessageEventStringBuilder(attributedStringBuilder: attributedStringBuilder,
-                                                                                                        style: .senderPrefixed),
+                                               messageEventStringBuilder: messageStringBuilder,
                                                shouldPrefixSenderName: true)
     }
     
@@ -56,6 +57,28 @@ struct RoomEventStringBuilderTests {
         
         let otherPollString = stringBuilder.buildAttributedString(for: makePollItem(senderID: "@bob:matrix.org", senderDisplayName: "Bob"))
         #expect(otherPollString?.string == "Bob: Poll: Which is better?", "Everyone else's polls should be prefixed with their display name.")
+    }
+    
+    @Test
+    func customEmojiPreviewUsesShortcodeFallback() {
+        let formattedBody = FormattedBody(format: .html,
+                                          body: #"Look <strong>bold</strong> <img src="mxc://matrix.org/room-only" alt="Room only" title="room-only" height="32" /> now"#)
+        let message = MessageType.text(content: .init(body: "Look **bold** :room-only: now", formatted: formattedBody))
+        
+        let preview = messageStringBuilder.buildAttributedString(for: message, senderDisplayName: "Alice", isOutgoing: true)
+        
+        #expect(preview.string == "You: Look bold :room-only: now")
+    }
+    
+    @Test
+    func ordinaryImagePreviewIsNotTreatedAsCustomEmoji() {
+        let formattedBody = FormattedBody(format: .html,
+                                          body: #"Look <img src="mxc://matrix.org/image" alt="Room only" title="room-only" /> now"#)
+        let message = MessageType.text(content: .init(body: "Look at this image", formatted: formattedBody))
+        
+        let preview = messageStringBuilder.buildAttributedString(for: message, senderDisplayName: "Alice", isOutgoing: true)
+        
+        #expect(preview.string == "You: Look [img: Room only] now")
     }
     
     // MARK: - Helpers

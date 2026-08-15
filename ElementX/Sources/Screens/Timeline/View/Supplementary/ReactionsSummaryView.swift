@@ -33,7 +33,9 @@ struct ReactionsSummaryView: View {
             ScrollViewReader { scrollView in
                 HStack(spacing: 8) {
                     ForEach(reactions) { reaction in
-                        ReactionSummaryButton(reaction: reaction, highlighted: selectedReactionKey == reaction.key) { key in
+                        ReactionSummaryButton(reaction: reaction,
+                                              highlighted: selectedReactionKey == reaction.key,
+                                              mediaProvider: mediaProvider) { key in
                             selectedReactionKey = key
                         }
                     }
@@ -72,17 +74,25 @@ struct ReactionsSummaryView: View {
 private struct ReactionSummaryButton: View {
     let reaction: AggregatedReaction
     let highlighted: Bool
+    let mediaProvider: MediaProviderProtocol?
     let action: (String) -> Void
+    @ScaledMetric(relativeTo: .headline) private var reactionImageSize = 20
     
     var body: some View {
         Button { action(reaction.key) } label: { label }
+            .accessibilityLabel(L10n.tr("Localizable",
+                                        "screen_room_timeline_reaction_a11y",
+                                        reaction.count,
+                                        reaction.accessibilityDisplayKey))
     }
     
     var label: some View {
         HStack(spacing: 4) {
-            Text(reaction.displayKey)
-                .font(.compound.headingSM)
-                .foregroundColor(textColor)
+            TimelineReactionContentView(reaction: reaction,
+                                        mediaProvider: mediaProvider,
+                                        font: .compound.headingSM,
+                                        foregroundColor: textColor,
+                                        imageSize: reactionImageSize)
             if reaction.count > 1 {
                 Text(String(reaction.count))
                     .font(.compound.headingSM)

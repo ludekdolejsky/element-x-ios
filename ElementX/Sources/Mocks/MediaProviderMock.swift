@@ -45,7 +45,12 @@ extension MediaProviderMock {
             return UIImage(systemName: "photo")
         }
         
-        loadImageDataFromSourceClosure = { _ in
+        loadImageDataFromSourceClosure = { mediaSource in
+            if mediaSource.url == .mockMXCAnimatedImage,
+               let data = Data(base64Encoded: "R0lGODlhAgACAPAAAP8AAAAAACH5BAAKAAAAIf8LTkVUU0NBUEUyLjADAQAAACwAAAAAAgACAAACAoRRACH5BAAKAAAALAAAAAACAAIAgAAA/wAAAAIChFEAOw==") {
+                return .success(data)
+            }
+            
             guard let image = UIImage(systemName: "photo"),
                   let data = image.pngData() else {
                 fatalError()

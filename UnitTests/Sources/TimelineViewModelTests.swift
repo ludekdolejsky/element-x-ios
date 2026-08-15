@@ -540,6 +540,18 @@ final class TimelineViewModelTests {
     // MARK: - Tap Actions
     
     @Test
+    func customEmojiMessagePreviewUsesShortcodeFallback() throws {
+        let viewModel = makeViewModel(timelineController: TimelineControllerMock(.init()))
+        let builder = AttributedStringBuilder(mentionBuilder: MentionBuilder())
+        let formattedBody = try #require(builder.fromHTML("Before <img data-mx-emoticon src=\"mxc://example.org/meatspin\" alt=\"Meatspin\" title=\"meatspin\" height=\"32\" /> after"))
+        
+        let preview = viewModel.context.viewState.buildMessagePreview(formattedBody: formattedBody,
+                                                                      plainBody: "Before :meatspin: after")
+        
+        #expect(preview == "Before :meatspin: after")
+    }
+    
+    @Test
     func tapSendInfoEncryptionAuthentictyDisplaysAlert() {
         // Given a room with an event whose authenticity could not be verified
         let items = [TextRoomTimelineItem(eventID: "t1", encryptionAuthenticity: .verificationViolation(color: .red))]

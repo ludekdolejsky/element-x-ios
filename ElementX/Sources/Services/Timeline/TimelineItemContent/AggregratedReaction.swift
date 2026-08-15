@@ -36,6 +36,13 @@ nonisolated struct ReactionSender: Hashable, Identifiable {
 }
 
 nonisolated extension AggregatedReaction {
+    var customReactionURL: URL? {
+        guard let url = URL(string: key), url.scheme == "mxc", url.host != nil else {
+            return nil
+        }
+        return url
+    }
+    
     /// The number of times this reactions was sent.
     var count: Int {
         senders.count
@@ -49,5 +56,9 @@ nonisolated extension AggregatedReaction {
     /// The key to be displayed on screen. See `maxDisplayChars`.
     var displayKey: String {
         key.ellipsize(length: Self.maxDisplayChars)
+    }
+    
+    var accessibilityDisplayKey: String {
+        customReactionURL == nil ? displayKey : L10n.a11yCustomEmoji
     }
 }
