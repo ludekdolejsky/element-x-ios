@@ -71,6 +71,10 @@ protocol DeveloperOptionsProtocol: AnyObject {
     
     var jumpToReadMarkerEnabled: Bool { get set }
     
+    var timelineDiagnosticsEnabled: Bool { get set }
+    var timelineAnimationsDisabled: Bool { get set }
+    var topBannerCompositingDisabled: Bool { get set }
+    
     var linkNewDeviceEnabled: Bool { get set }
     var userStatusEnabled: Bool { get set }
     

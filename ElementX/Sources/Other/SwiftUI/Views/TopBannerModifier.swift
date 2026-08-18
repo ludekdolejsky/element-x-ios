@@ -47,7 +47,9 @@ extension View {
     /// in/out from the top edge. The shadow and bottom padding are applied to
     /// the VStack of each slot. The footer is shared and displayed below the
     /// topmost visible slot.
-    func topBanners(_ items: [TopBannerLayer], footer: some View = EmptyView()) -> some View {
+    func topBanners(_ items: [TopBannerLayer],
+                    footer: some View = EmptyView(),
+                    usesCompositing: Bool = true) -> some View {
         let anyBannerVisible = items.contains { $0.isVisible }
         return overlay(alignment: .top) {
             ZStack(alignment: .top) {
@@ -66,12 +68,12 @@ extension View {
                                                 // independently. Unlike `drawingGroup`, this
                                                 // doesn't rasterise — interactive children
                                                 // (Buttons) continue to render normally.
-                                                .geometryGroup()
+                                                .conditionalGeometryGroup(usesCompositing)
                                                 .transition(.move(edge: .top))
                                         }
                                     }
                                 }
-                                .compositingGroup()
+                                .conditionalCompositingGroup(usesCompositing)
                                 .shadow(color: Color(red: 0.11, green: 0.11, blue: 0.13).opacity(0.1), radius: 12, x: 0, y: 4)
                                 // To include the shadow in the size
                                 .padding(.bottom, 28)
@@ -91,6 +93,26 @@ extension View {
             }
             .animation(.elementDefault, value: items.map { $0.verticalBanners.map(\.isVisible) })
             .clipped()
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func conditionalGeometryGroup(_ isEnabled: Bool) -> some View {
+        if isEnabled {
+            geometryGroup()
+        } else {
+            self
+        }
+    }
+    
+    @ViewBuilder
+    func conditionalCompositingGroup(_ isEnabled: Bool) -> some View {
+        if isEnabled {
+            compositingGroup()
+        } else {
+            self
         }
     }
 }

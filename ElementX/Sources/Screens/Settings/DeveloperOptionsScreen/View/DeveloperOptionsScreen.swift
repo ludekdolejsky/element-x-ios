@@ -107,6 +107,21 @@ struct DeveloperOptionsScreen: View {
                     Text("Adds a button to jump to the read marker, plus a presence dot on the scroll-to-bottom button when new messages arrive while scrolled away.")
                 }
                 
+                if NitroConfiguration.isEnabled {
+                    Toggle(isOn: $context.timelineDiagnosticsEnabled) {
+                        Text(UntranslatedL10n.screenDeveloperOptionsTimelineDiagnosticsIos)
+                        Text(UntranslatedL10n.screenDeveloperOptionsTimelineDiagnosticsHintIos)
+                    }
+                    
+                    Toggle(isOn: $context.timelineAnimationsDisabled) {
+                        Text(UntranslatedL10n.screenDeveloperOptionsDisableTimelineAnimationsIos)
+                    }
+                    
+                    Toggle(isOn: $context.topBannerCompositingDisabled) {
+                        Text(UntranslatedL10n.screenDeveloperOptionsDisableTopBannerCompositingIos)
+                    }
+                }
+                
                 Toggle(isOn: $context.knockingEnabled) {
                     Text("Knocking")
                     Text("Ask to join rooms")

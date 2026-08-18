@@ -9,7 +9,7 @@ import Combine
 import SwiftUI
 
 struct NitroRemindersScreenCoordinatorParameters {
-    let clientProxy: ClientProxyProtocol
+    let clientProxy: NitroClientProxyProtocol
     let reminderService: NitroReminderServiceProtocol
 }
 

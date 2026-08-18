@@ -82,7 +82,7 @@ struct TimelineItemMenuActionProvider {
         }
         
         if item.isRemoteMessage {
-            actions.append(.remindMe)
+            actions.append(contentsOf: nitroActions())
             actions.append(.copyPermalink)
         }
         
@@ -91,13 +91,7 @@ struct TimelineItemMenuActionProvider {
         }
         
         if item.isCopyable {
-            actions.append(.copy)
-            
-            if !ProcessInfo.processInfo.isiOSAppOnMac {
-                // As of macOS 26.2, the sheet isn't presented, but it is easy enough
-                // to select some text and right click on Mac anyway so hide this one.
-                actions.append(.translate)
-            }
+            actions.append(contentsOf: copyActions())
         } else if item.hasMediaCaption {
             actions.append(.copyCaption)
         }
@@ -150,8 +144,19 @@ struct TimelineItemMenuActionProvider {
         return .init(isReactable: isReactable, actions: actions, secondaryActions: secondaryActions, emojiProvider: emojiProvider)
     }
     
+    private func copyActions() -> [TimelineItemMenuAction] {
+        var actions: [TimelineItemMenuAction] = [.copy]
+        if !ProcessInfo.processInfo.isiOSAppOnMac {
+            actions.append(.translate)
+        }
+        return actions
+    }
+    
     private func makeEncryptedItemActions() -> TimelineItemMenuActions? {
-        var actions: [TimelineItemMenuAction] = [.remindMe, .copyPermalink]
+        var actions: [TimelineItemMenuAction] = [.copyPermalink]
+        if NitroConfiguration.isEnabled {
+            actions.insert(.remindMe, at: 0)
+        }
         
         if isViewSourceEnabled {
             actions.append(.viewSource)
@@ -167,8 +172,14 @@ struct TimelineItemMenuActionProvider {
         item.isOutgoing ? canCurrentUserRedactSelf : canCurrentUserRedactOthers
     }
     
+    private func nitroActions() -> [TimelineItemMenuAction] {
+        guard NitroConfiguration.isEnabled else { return [] }
+        return canCurrentUserSendMessage && canCurrentUserPin ? [.addTask, .remindMe] : [.remindMe]
+    }
+    
     private func audioTranscriptionActions(for item: EventBasedTimelineItemProtocol) -> [TimelineItemMenuAction] {
-        guard let messageItem = item as? EventBasedMessageTimelineItemProtocol,
+        guard NitroConfiguration.isEnabled,
+              let messageItem = item as? EventBasedMessageTimelineItemProtocol,
               messageItem.audioContent?.source != nil else {
             return []
         }

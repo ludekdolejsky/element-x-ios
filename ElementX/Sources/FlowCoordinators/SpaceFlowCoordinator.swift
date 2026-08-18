@@ -12,6 +12,7 @@ import SwiftState
 
 enum SpaceFlowCoordinatorAction {
     case presentCallScreen(roomProxy: JoinedRoomProxyProtocol, isVoiceCall: Bool)
+    case presentNitroTasks(roomID: String, roomName: String)
     case verifyUser(userID: String)
     case finished
 }
@@ -507,6 +508,8 @@ class SpaceFlowCoordinator: FlowCoordinatorProtocol {
                 switch action {
                 case .presentCallScreen(let roomProxy, let isVoiceCall):
                     actionsSubject.send(.presentCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
+                case .presentNitroTasks(let roomID, let roomName):
+                    actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
                 case .verifyUser(let userID):
                     actionsSubject.send(.verifyUser(userID: userID))
                 case .finished:
@@ -532,6 +535,8 @@ class SpaceFlowCoordinator: FlowCoordinatorProtocol {
                 switch action {
                 case .presentCallScreen(let roomProxy, let isVoiceCall):
                     actionsSubject.send(.presentCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
+                case .presentNitroTasks(let roomID, let roomName):
+                    actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
                 case .verifyUser(let userID):
                     actionsSubject.send(.verifyUser(userID: userID))
                 case .continueWithSpaceFlow(let spaceRoomListProxy):
@@ -560,6 +565,8 @@ class SpaceFlowCoordinator: FlowCoordinatorProtocol {
                 stateMachine.tryEvent(.stopMembersFlow)
             case .presentCallScreen(let roomProxy, let isVoiceCall):
                 actionsSubject.send(.presentCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
+            case .presentNitroTasks(let roomID, let roomName):
+                actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
             case .verifyUser(let userID):
                 actionsSubject.send(.verifyUser(userID: userID))
             }
@@ -584,6 +591,8 @@ class SpaceFlowCoordinator: FlowCoordinatorProtocol {
                 }
             case .presentCallScreen(let roomProxy, let isVoiceCall):
                 actionsSubject.send(.presentCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
+            case .presentNitroTasks(let roomID, let roomName):
+                actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
             case .verifyUser(userID: let userID):
                 actionsSubject.send(.verifyUser(userID: userID))
             }

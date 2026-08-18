@@ -18,6 +18,8 @@ class AuthenticationFlowCoordinatorUITests: XCTestCase {
         guard let password = environment["NITRO_LIVE_MATRIX_PASSWORD"], !password.isEmpty else {
             throw XCTSkip("Set NITRO_LIVE_MATRIX_PASSWORD to the dedicated test account password.")
         }
+        let server = environment["NITRO_LIVE_MATRIX_SERVER"] ?? "mn.nitrovery.com"
+        let username = environment["NITRO_LIVE_MATRIX_USERNAME"] ?? "elementx_ios_test"
         
         let app = XCUIApplication()
         app.launch()
@@ -26,22 +28,27 @@ class AuthenticationFlowCoordinatorUITests: XCTestCase {
         XCTAssertTrue(signInButton.waitForExistence(timeout: 10))
         signInButton.tap()
         
-        let changeServerButton = app.buttons[A11yIdentifiers.serverConfirmationScreen.changeServer]
-        XCTAssertTrue(changeServerButton.waitForExistence(timeout: 10))
-        changeServerButton.tap()
-        
         let serverField = app.textFields[A11yIdentifiers.changeServerScreen.server]
+        if !serverField.waitForExistence(timeout: 2) {
+            let changeServerButton = app.buttons[A11yIdentifiers.serverConfirmationScreen.changeServer]
+            XCTAssertTrue(changeServerButton.waitForExistence(timeout: 10))
+            changeServerButton.tap()
+        }
         XCTAssertTrue(serverField.waitForExistence(timeout: 10))
-        serverField.clearAndTypeText("mn.nitrovery.com\n", app: app)
+        serverField.clearAndTypeText(server, app: app)
         
-        let serverContinueButton = app.buttons[A11yIdentifiers.serverConfirmationScreen.continue]
+        let serverContinueButton = app.buttons[A11yIdentifiers.changeServerScreen.continue]
         XCTAssertTrue(serverContinueButton.wait(for: \.isHittable, toEqual: true, timeout: 20))
         serverContinueButton.tap()
         
         let loginContinueButton = app.buttons[A11yIdentifiers.loginScreen.continue]
         XCTAssertTrue(loginContinueButton.waitForExistence(timeout: 20))
-        app.textFields[A11yIdentifiers.loginScreen.emailUsername].clearAndTypeText("elementx_ios_test\n", app: app)
-        app.secureTextFields[A11yIdentifiers.loginScreen.password].clearAndTypeText(password, app: app)
+        let usernameField = app.textFields[A11yIdentifiers.loginScreen.emailUsername]
+        let passwordField = app.secureTextFields[A11yIdentifiers.loginScreen.password]
+        XCTAssertTrue(usernameField.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        Thread.sleep(forTimeInterval: 1)
+        usernameField.clearAndTypeText(username, app: app)
+        passwordField.clearAndTypeText(password, app: app)
         loginContinueButton.tap()
         
         XCTAssertTrue(loginContinueButton.wait(for: \.exists, toEqual: false, timeout: 30))
@@ -58,6 +65,184 @@ class AuthenticationFlowCoordinatorUITests: XCTestCase {
         dismissLiveStartupPrompts(in: app)
         
         XCTAssertTrue(app.buttons[A11yIdentifiers.homeScreen.userAvatar].wait(for: \.isHittable, toEqual: true, timeout: 20))
+    }
+    
+    func testNitroLiveTasksBoard() throws {
+        guard ProcessInfo.processInfo.environment["NITRO_LIVE_MATRIX_TASKS"] == "1" else {
+            throw XCTSkip("Set NITRO_LIVE_MATRIX_TASKS=1 to inspect the live Nitro task board.")
+        }
+        
+        let app = XCUIApplication()
+        app.launch()
+        dismissLiveStartupPrompts(in: app)
+        unlockLiveAppIfNeeded(in: app)
+        
+        let tasksTab = app.buttons["Tasks"]
+        XCTAssertTrue(tasksTab.wait(for: \.isHittable, toEqual: true, timeout: 20))
+        tasksTab.tap()
+        
+        let statusPicker = app.segmentedControls.firstMatch
+        if !statusPicker.waitForExistence(timeout: 2) {
+            XCTAssertTrue(app.staticTexts["No active tasks"].waitForExistence(timeout: 30))
+            
+            let attachment = XCTAttachment(screenshot: app.screenshot())
+            attachment.name = "Nitro Tasks - Empty"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            return
+        }
+        for status in ["To do", "In progress", "Done"] {
+            let button = statusPicker.buttons[status]
+            XCTAssertTrue(button.exists)
+            button.tap()
+            
+            let attachment = XCTAttachment(screenshot: app.screenshot())
+            attachment.name = "Nitro Tasks - \(status)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+    }
+    
+    func testNitroLiveTasksLifecycle() throws {
+        guard ProcessInfo.processInfo.environment["NITRO_LIVE_MATRIX_TASKS_LIFECYCLE"] == "1" else {
+            throw XCTSkip("Set NITRO_LIVE_MATRIX_TASKS_LIFECYCLE=1 to exercise live Nitro task status changes.")
+        }
+        
+        let app = XCUIApplication()
+        let title = "iOS live task \(UUID().uuidString.prefix(8))"
+        app.launch()
+        unlockLiveAppIfNeeded(in: app)
+        openLiveTasks(in: app)
+        
+        let newTaskButton = app.navigationBars["Tasks"].buttons["New task"]
+        XCTAssertTrue(newTaskButton.wait(for: \.isHittable, toEqual: true, timeout: 20))
+        newTaskButton.tap()
+        
+        let createNavigationBar = app.navigationBars["New task"]
+        XCTAssertTrue(createNavigationBar.waitForExistence(timeout: 20))
+        let titleField = app.textFields["Task title"]
+        XCTAssertTrue(titleField.wait(for: \.isHittable, toEqual: true, timeout: 20))
+        Thread.sleep(forTimeInterval: 1)
+        titleField.clearAndTypeText(title, app: app, verifyingValue: false)
+        
+        let createButton = createNavigationBar.buttons["New task"]
+        XCTAssertTrue(createButton.wait(for: \.isEnabled, toEqual: true, timeout: 30))
+        createButton.tap()
+        
+        XCTAssertTrue(createNavigationBar.wait(for: \.exists, toEqual: false, timeout: 45))
+        
+        var statusPicker = app.segmentedControls.firstMatch
+        XCTAssertTrue(statusPicker.waitForExistence(timeout: 45))
+        let todoButton = statusPicker.buttons["To do"]
+        todoButton.tap()
+        
+        var taskButton = liveTaskButton(title: title, in: app)
+        XCTAssertTrue(taskButton.waitForExistence(timeout: 30))
+        attachLiveScreenshot(named: "Nitro Tasks lifecycle - To do", app: app)
+        
+        let roomFilterButton = app.navigationBars["Tasks"].buttons["Filter by room"]
+        XCTAssertTrue(roomFilterButton.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        roomFilterButton.tap()
+        let taskRoomFilter = app.buttons["Nitro task push test"]
+        XCTAssertTrue(taskRoomFilter.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        taskRoomFilter.tap()
+        XCTAssertTrue(taskButton.waitForExistence(timeout: 10))
+        attachLiveScreenshot(named: "Nitro Tasks lifecycle - Room filter active", app: app)
+        roomFilterButton.tap()
+        let allRoomsFilter = app.buttons["All rooms"]
+        XCTAssertTrue(allRoomsFilter.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        allRoomsFilter.tap()
+        
+        taskButton.press(forDuration: 1)
+        let openInRoomButton = app.buttons["Open in room"]
+        XCTAssertTrue(openInRoomButton.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        openInRoomButton.tap()
+        XCTAssertTrue(app.buttons[A11yIdentifiers.roomScreen.name].waitForExistence(timeout: 20))
+        let backButton = app.buttons.matching(NSPredicate(format: "identifier == 'BackButton'")).firstMatch
+        XCTAssertTrue(backButton.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        backButton.tap()
+        openLiveTasks(in: app)
+        statusPicker = app.segmentedControls.firstMatch
+        XCTAssertTrue(statusPicker.waitForExistence(timeout: 45))
+        statusPicker.buttons["To do"].tap()
+        taskButton = liveTaskButton(title: title, in: app)
+        XCTAssertTrue(taskButton.waitForExistence(timeout: 30))
+        
+        taskButton.swipeRight()
+        let startButton = app.buttons["Start"]
+        XCTAssertTrue(startButton.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        startButton.tap()
+        XCTAssertTrue(taskButton.wait(for: \.exists, toEqual: false, timeout: 30))
+        
+        statusPicker.buttons["In progress"].tap()
+        taskButton = liveTaskButton(title: title, in: app)
+        XCTAssertTrue(taskButton.waitForExistence(timeout: 30))
+        attachLiveScreenshot(named: "Nitro Tasks lifecycle - In progress", app: app)
+        
+        app.terminate()
+        app.launch()
+        unlockLiveAppIfNeeded(in: app)
+        openLiveTasks(in: app)
+        statusPicker = app.segmentedControls.firstMatch
+        XCTAssertTrue(statusPicker.waitForExistence(timeout: 45))
+        statusPicker.buttons["In progress"].tap()
+        taskButton = liveTaskButton(title: title, in: app)
+        XCTAssertTrue(taskButton.waitForExistence(timeout: 30))
+        attachLiveScreenshot(named: "Nitro Tasks lifecycle - In progress after reload", app: app)
+        
+        taskButton.swipeRight()
+        let doneButtons = app.buttons.matching(NSPredicate(format: "label == %@", "Done")).allElementsBoundByIndex
+        let doneAction = doneButtons.first { $0.frame.minY > statusPicker.frame.maxY }
+        XCTAssertNotNil(doneAction)
+        doneAction?.tap()
+        XCTAssertTrue(taskButton.wait(for: \.exists, toEqual: false, timeout: 30))
+        
+        statusPicker.buttons["Done"].tap()
+        taskButton = liveTaskButton(title: title, in: app)
+        XCTAssertTrue(taskButton.waitForExistence(timeout: 30))
+        attachLiveScreenshot(named: "Nitro Tasks lifecycle - Done", app: app)
+        
+        app.terminate()
+        app.launch()
+        unlockLiveAppIfNeeded(in: app)
+        openLiveTasks(in: app)
+        statusPicker = app.segmentedControls.firstMatch
+        XCTAssertTrue(statusPicker.waitForExistence(timeout: 45))
+        statusPicker.buttons["Done"].tap()
+        taskButton = liveTaskButton(title: title, in: app)
+        XCTAssertTrue(taskButton.waitForExistence(timeout: 30))
+        attachLiveScreenshot(named: "Nitro Tasks lifecycle - Done after reload", app: app)
+        
+        taskButton.swipeLeft()
+        let archiveButton = app.buttons["Archive"]
+        XCTAssertTrue(archiveButton.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        archiveButton.tap()
+        XCTAssertTrue(taskButton.wait(for: \.exists, toEqual: false, timeout: 30))
+    }
+    
+    func testNitroLiveTasksRoomFilter() throws {
+        guard ProcessInfo.processInfo.environment["NITRO_LIVE_MATRIX_TASKS_LIFECYCLE"] == "1" else {
+            throw XCTSkip("Set NITRO_LIVE_MATRIX_TASKS_LIFECYCLE=1 to exercise the live Nitro task room filter.")
+        }
+        
+        let app = XCUIApplication()
+        app.launch()
+        unlockLiveAppIfNeeded(in: app)
+        openLiveTasks(in: app)
+        
+        let roomFilterButton = app.navigationBars["Tasks"].buttons["Filter by room"]
+        XCTAssertTrue(roomFilterButton.wait(for: \.isHittable, toEqual: true, timeout: 20))
+        roomFilterButton.tap()
+        let taskRoomFilter = app.buttons["Nitro task push test"]
+        XCTAssertTrue(taskRoomFilter.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        taskRoomFilter.tap()
+        XCTAssertTrue(app.segmentedControls.firstMatch.waitForExistence(timeout: 10))
+        attachLiveScreenshot(named: "Nitro Tasks - Room filter active", app: app)
+        
+        roomFilterButton.tap()
+        let allRoomsFilter = app.buttons["All rooms"]
+        XCTAssertTrue(allRoomsFilter.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        allRoomsFilter.tap()
     }
     
     func testNitroLiveCustomEmojiRoomFlow() throws {
@@ -330,6 +515,34 @@ class AuthenticationFlowCoordinatorUITests: XCTestCase {
         XCTAssertTrue(roomButton.waitForExistence(timeout: 20))
         roomButton.tap()
         XCTAssertTrue(app.buttons[A11yIdentifiers.roomScreen.name].waitForExistence(timeout: 20))
+    }
+    
+    private func openLiveTasks(in app: XCUIApplication) {
+        let tasksNavigationBar = app.navigationBars["Tasks"]
+        if !tasksNavigationBar.exists {
+            let tasksTab = app.buttons["Tasks"]
+            var navigationAttempts = 0
+            while !tasksTab.isHittable, navigationAttempts < 3 {
+                let backButton = app.buttons.matching(NSPredicate(format: "identifier == 'BackButton'")).firstMatch
+                guard backButton.waitForExistence(timeout: 3) else { break }
+                backButton.tap()
+                navigationAttempts += 1
+            }
+            XCTAssertTrue(tasksTab.wait(for: \.isHittable, toEqual: true, timeout: 20))
+            tasksTab.tap()
+        }
+        XCTAssertTrue(tasksNavigationBar.waitForExistence(timeout: 20))
+    }
+    
+    private func liveTaskButton(title: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
+    }
+    
+    private func attachLiveScreenshot(named name: String, app: XCUIApplication) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
     
     private func unlockLiveAppIfNeeded(in app: XCUIApplication) {

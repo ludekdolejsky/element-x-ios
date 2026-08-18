@@ -49,6 +49,7 @@ class TimelineTableViewController: UIViewController {
     
     var timelineItemsDictionary = OrderedDictionary<TimelineItemIdentifier.UniqueID, RoomTimelineItemViewState>() {
         didSet {
+            diagnostics.modelItemCount = timelineItemsDictionary.count
             guard canApplySnapshot else {
                 hasPendingItems = true
                 return
@@ -163,7 +164,27 @@ class TimelineTableViewController: UIViewController {
     
     /// The table's diffable data source.
     private var dataSource: UITableViewDiffableDataSource<TimelineSection, TimelineItemIdentifier.UniqueID>?
+    private lazy var diagnostics = TimelineDiagnostics(tableView: tableView)
     private var cancellables = Set<AnyCancellable>()
+    
+    var diagnosticsEnabled: Bool {
+        didSet {
+            diagnostics.setEnabled(diagnosticsEnabled, in: isViewLoaded ? view : nil)
+        }
+    }
+    
+    var animationsDisabled: Bool {
+        didSet {
+            diagnostics.animationsDisabled = animationsDisabled
+            updateDefaultRowAnimation()
+        }
+    }
+    
+    var bannerCompositingDisabled: Bool {
+        didSet {
+            diagnostics.bannerCompositingDisabled = bannerCompositingDisabled
+        }
+    }
     
     /// A publisher used to throttle back pagination requests.
     ///
@@ -180,6 +201,9 @@ class TimelineTableViewController: UIViewController {
     private var hasAppearedOnce = false
     
     init(coordinator: TimelineViewRepresentable.Coordinator,
+         diagnosticsEnabled: Bool,
+         animationsDisabled: Bool,
+         bannerCompositingDisabled: Bool,
          isScrolledToBottom: Binding<Bool>,
          isReadMarkerVisible: Binding<Bool>,
          hasNewMessagesAtBottom: Binding<Bool>,
@@ -188,12 +212,18 @@ class TimelineTableViewController: UIViewController {
          scrollToFirstItemForDatePublisher: PassthroughSubject<Void, Never>,
          scrollToReadMarkerPublisher: PassthroughSubject<TimelineItemIdentifier.UniqueID, Never>) {
         self.coordinator = coordinator
+        self.diagnosticsEnabled = diagnosticsEnabled
+        self.animationsDisabled = animationsDisabled
+        self.bannerCompositingDisabled = bannerCompositingDisabled
         _isScrolledToBottom = isScrolledToBottom
         _isReadMarkerVisible = isReadMarkerVisible
         _hasNewMessagesAtBottom = hasNewMessagesAtBottom
         _floatingDate = floatingDate
         
         super.init(nibName: nil, bundle: nil)
+        
+        diagnostics.animationsDisabled = animationsDisabled
+        diagnostics.bannerCompositingDisabled = bannerCompositingDisabled
         
         tableView.register(TimelineItemCell.self, forCellReuseIdentifier: TimelineItemCell.reuseIdentifier)
         tableView.register(TimelineTypingIndicatorCell.self, forCellReuseIdentifier: TimelineTypingIndicatorCell.reuseIdentifier)
@@ -268,6 +298,16 @@ class TimelineTableViewController: UIViewController {
         paginatePublisher.send()
     }
     
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        diagnostics.setEnabled(diagnosticsEnabled, in: view)
+    }
+    
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        diagnostics.stop()
+    }
+    
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
         
@@ -330,7 +370,7 @@ class TimelineTableViewController: UIViewController {
         
         // We only animate when there's a new last message, so its safe
         // to animate from the bottom (which is the top as we're flipped).
-        dataSource?.defaultRowAnimation = (UIAccessibility.isReduceMotionEnabled ? .none : .top)
+        updateDefaultRowAnimation()
         tableView.delegate = self
         
         NotificationCenter.default.addObserver(self,
@@ -340,7 +380,11 @@ class TimelineTableViewController: UIViewController {
     }
     
     @objc private func accessibilityReduceMotionDidChange() {
-        dataSource?.defaultRowAnimation = (UIAccessibility.isReduceMotionEnabled ? .none : .top)
+        updateDefaultRowAnimation()
+    }
+    
+    private func updateDefaultRowAnimation() {
+        dataSource?.defaultRowAnimation = (animationsDisabled || UIAccessibility.isReduceMotionEnabled) ? .none : .top
     }
     
     /// Updates the table view with the latest items from the ``timelineItems`` array. After
@@ -358,6 +402,7 @@ class TimelineTableViewController: UIViewController {
         }
         snapshot.appendSections([.main])
         snapshot.appendItems(timelineItemsIDs)
+        diagnostics.snapshotItemCount = snapshot.numberOfMainItems
         
         let currentSnapshot = dataSource.snapshot()
         
@@ -365,7 +410,7 @@ class TimelineTableViewController: UIViewController {
         let newestItemIdentifier = snapshot.mainItemIdentifiers.first
         let currentNewestItemIdentifier = currentSnapshot.mainItemIdentifiers.first
         let newestItemIDChanged = snapshot.numberOfMainItems > 0 && currentSnapshot.numberOfMainItems > 0 && newestItemIdentifier != currentNewestItemIdentifier
-        let animated = isLive && !isSwitchingTimelines && newestItemIDChanged
+        let animated = !animationsDisabled && isLive && !isSwitchingTimelines && newestItemIDChanged
         
         let layout: Layout? = if !isLive, newestItemIDChanged {
             snapshotLayout()
@@ -374,6 +419,7 @@ class TimelineTableViewController: UIViewController {
         }
         
         dataSource.apply(snapshot, animatingDifferences: animated)
+        diagnostics.recordSnapshot(animated: animated)
         
         if let focussedEvent, focussedEvent.appearance != .hasAppeared {
             scrollToItem(eventID: focussedEvent.eventID, animated: focussedEvent.appearance == .animated)

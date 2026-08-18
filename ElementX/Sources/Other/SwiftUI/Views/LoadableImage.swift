@@ -306,7 +306,8 @@ final class LoadableImageContentLoader: ObservableObject {
     
     func load() async {
         if loadsOriginalImageData {
-            if case let .success(data) = await mediaProvider?.loadImageDataFromSource(mediaSource) {
+            if case let .success(data) = await mediaProvider?.loadImageDataFromSource(mediaSource),
+               !Task.isCancelled {
                 cachedContent = .imageData(data)
             }
         } else {

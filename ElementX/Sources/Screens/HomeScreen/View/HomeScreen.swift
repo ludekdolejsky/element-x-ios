@@ -58,15 +58,6 @@ struct HomeScreen: View {
         }
         
         ToolbarItem(placement: .primaryAction) {
-            Button {
-                context.send(viewAction: .showReminders)
-            } label: {
-                CompoundIcon(\.notifications)
-            }
-            .accessibilityLabel(UntranslatedL10n.screenNitroRemindersTitleIos)
-        }
-        
-        ToolbarItem(placement: .primaryAction) {
             if #available(iOS 26, *) {
                 newRoomButton
             } else {

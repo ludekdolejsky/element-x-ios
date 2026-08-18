@@ -698,6 +698,20 @@ extension PreviewTests {
     }
 
     @Test
+    func nitroTaskCreateScreen() async throws {
+        for (index, preview) in NitroTaskCreateScreen_Previews._allPreviews.enumerated() {
+            try await assertSnapshots(matching: preview, step: index)
+        }
+    }
+
+    @Test
+    func nitroTasksScreen() async throws {
+        for (index, preview) in NitroTasksScreen_Previews._allPreviews.enumerated() {
+            try await assertSnapshots(matching: preview, step: index)
+        }
+    }
+
+    @Test
     func nitroTranscriptView() async throws {
         for (index, preview) in NitroTranscriptView_Previews._allPreviews.enumerated() {
             try await assertSnapshots(matching: preview, step: index)

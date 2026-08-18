@@ -180,12 +180,36 @@ struct TimelineItemMenu: View {
     
     private func viewsForActions(_ actions: [TimelineItemMenuAction]) -> some View {
         ForEach(actions, id: \.self) { action in
-            Button(role: action.isDestructive ? .destructive : nil) {
-                send(action)
-            } label: {
-                action.label
+            if action.submenuActions.isEmpty {
+                actionButton(action)
+            } else {
+                Menu {
+                    ForEach(action.submenuActions) { submenuAction in
+                        submenuActionButton(submenuAction)
+                    }
+                } label: {
+                    action.submenuLabel
+                }
+                .menuOrder(.fixed)
+                .buttonStyle(.menuSheet)
             }
-            .buttonStyle(.menuSheet)
+        }
+    }
+    
+    private func actionButton(_ action: TimelineItemMenuAction) -> some View {
+        Button(role: action.isDestructive ? .destructive : nil) {
+            send(action)
+        } label: {
+            action.label
+        }
+        .buttonStyle(.menuSheet)
+    }
+    
+    private func submenuActionButton(_ action: TimelineItemMenuAction) -> some View {
+        Button {
+            send(action)
+        } label: {
+            action.label
         }
     }
     

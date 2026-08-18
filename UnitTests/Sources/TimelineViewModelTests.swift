@@ -593,6 +593,7 @@ final class TimelineViewModelTests {
                                       timelineController: timelineController,
                                       userSession: makeNitroUserSession(mediaProvider: mediaProvider),
                                       appSettings: appSettings,
+                                      nitroClientProxy: makeNitroClientProxy(),
                                       nitroTranscriptionService: transcriptionService)
         let consentDeferred = deferFulfillment(viewModel.context.$viewState) {
             $0.bindings.alertInfo?.id == .audioTranscriptionConsent(.timeline(itemID: item.id, sendToThread: false))
@@ -617,11 +618,8 @@ final class TimelineViewModelTests {
     
     @Test
     func transcribingRecordedVoiceMessageInsertsText() async throws {
-        let clientProxy = ClientProxyMock(.init(homeserver: "https://matrix.example.org"))
-        clientProxy.requestOpenIDTokenReturnValue = .success(.init(accessToken: "token",
-                                                                   tokenType: "Bearer",
-                                                                   matrixServerName: "example.org"))
-        let userSession = UserSessionMock(.init(clientProxy: clientProxy))
+        let nitroClientProxy = makeNitroClientProxy()
+        let userSession = UserSessionMock(.init())
         let recorder = VoiceMessageRecorderMock()
         recorder.previewAudioPlayerState = AudioPlayerState(id: .recorderPreview, title: "", duration: 1)
         recorder.recordingURL = URL(filePath: "/tmp/voice-message.m4a")
@@ -629,6 +627,7 @@ final class TimelineViewModelTests {
         let transcriptionService = TestNitroTranscriptionService(result: .success("Recorded transcript"))
         let viewModel = makeViewModel(timelineController: TimelineControllerMock(.init()),
                                       userSession: userSession,
+                                      nitroClientProxy: nitroClientProxy,
                                       nitroTranscriptionService: transcriptionService,
                                       voiceMessageRecorder: recorder)
         let deferred = deferFulfillment(viewModel.actions) { action in
@@ -661,11 +660,8 @@ final class TimelineViewModelTests {
     
     @Test
     func ignoresDuplicateRecordedVoiceMessageTranscription() async throws {
-        let clientProxy = ClientProxyMock(.init(homeserver: "https://matrix.example.org"))
-        clientProxy.requestOpenIDTokenReturnValue = .success(.init(accessToken: "token",
-                                                                   tokenType: "Bearer",
-                                                                   matrixServerName: "example.org"))
-        let userSession = UserSessionMock(.init(clientProxy: clientProxy))
+        let nitroClientProxy = makeNitroClientProxy()
+        let userSession = UserSessionMock(.init())
         let recorder = VoiceMessageRecorderMock()
         recorder.previewAudioPlayerState = AudioPlayerState(id: .recorderPreview, title: "", duration: 1)
         recorder.recordingURL = URL(filePath: "/tmp/voice-message.m4a")
@@ -674,6 +670,7 @@ final class TimelineViewModelTests {
         var starts = transcriptionService.starts.makeAsyncIterator()
         let viewModel = makeViewModel(timelineController: TimelineControllerMock(.init()),
                                       userSession: userSession,
+                                      nitroClientProxy: nitroClientProxy,
                                       nitroTranscriptionService: transcriptionService,
                                       voiceMessageRecorder: recorder)
         let deferred = deferFulfillment(viewModel.actions) { action in
@@ -694,11 +691,8 @@ final class TimelineViewModelTests {
     
     @Test
     func stoppingTimelineCancelsRecordedVoiceMessageTranscription() async {
-        let clientProxy = ClientProxyMock(.init(homeserver: "https://matrix.example.org"))
-        clientProxy.requestOpenIDTokenReturnValue = .success(.init(accessToken: "token",
-                                                                   tokenType: "Bearer",
-                                                                   matrixServerName: "example.org"))
-        let userSession = UserSessionMock(.init(clientProxy: clientProxy))
+        let nitroClientProxy = makeNitroClientProxy()
+        let userSession = UserSessionMock(.init())
         let recorder = VoiceMessageRecorderMock()
         recorder.previewAudioPlayerState = AudioPlayerState(id: .recorderPreview, title: "", duration: 1)
         recorder.recordingURL = URL(filePath: "/tmp/voice-message.m4a")
@@ -709,6 +703,7 @@ final class TimelineViewModelTests {
         let userIndicatorController = UserIndicatorControllerMock()
         let viewModel = makeViewModel(timelineController: TimelineControllerMock(.init()),
                                       userSession: userSession,
+                                      nitroClientProxy: nitroClientProxy,
                                       nitroTranscriptionService: transcriptionService,
                                       voiceMessageRecorder: recorder,
                                       userIndicatorController: userIndicatorController)
@@ -744,6 +739,7 @@ final class TimelineViewModelTests {
         let transcriptionService = TestNitroTranscriptionService(result: .success("Timeline transcript"))
         let viewModel = makeViewModel(timelineController: timelineController,
                                       userSession: userSession,
+                                      nitroClientProxy: makeNitroClientProxy(),
                                       nitroTranscriptionService: transcriptionService)
         let deferred = deferFulfillment(viewModel.context.$viewState) {
             $0.bindings.nitroTranscriptInfo?.text == "Timeline transcript"
@@ -770,6 +766,7 @@ final class TimelineViewModelTests {
         let viewModel = makeViewModel(roomProxy: roomProxy,
                                       timelineController: timelineController,
                                       userSession: userSession,
+                                      nitroClientProxy: makeNitroClientProxy(),
                                       nitroTranscriptionService: transcriptionService)
         let (sentStream, sentContinuation) = AsyncStream<Bool>.makeStream()
         let deferred = deferFulfillment(sentStream) { $0 }
@@ -795,6 +792,7 @@ final class TimelineViewModelTests {
                                timelineController: TimelineControllerProtocol,
                                userSession: UserSessionProtocol? = nil,
                                appSettings: AppSettings? = nil,
+                               nitroClientProxy: NitroClientProxyProtocol? = nil,
                                nitroTranscriptionService: NitroTranscriptionServiceProtocol? = nil,
                                voiceMessageRecorder: VoiceMessageRecorderProtocol? = nil,
                                userIndicatorController: UserIndicatorControllerProtocol = UserIndicatorControllerMock()) -> TimelineViewModel {
@@ -817,18 +815,23 @@ final class TimelineViewModelTests {
                                  emojiProvider: EmojiProvider(appSettings: appSettings),
                                  linkMetadataProvider: LinkMetadataProvider(),
                                  timelineControllerFactory: TimelineControllerFactoryMock(.init()),
+                                 nitroClientProxy: nitroClientProxy,
                                  nitroTranscriptionService: nitroTranscriptionService,
                                  voiceMessageRecorder: voiceMessageRecorder)
     }
     
     private func makeNitroUserSession(mediaProvider: MediaProviderProtocol) -> UserSessionMock {
-        let clientProxy = ClientProxyMock(.init(homeserver: "https://matrix.example.org"))
+        let userSession = UserSessionMock(.init())
+        userSession.mediaProvider = mediaProvider
+        return userSession
+    }
+    
+    private func makeNitroClientProxy() -> NitroClientProxyMock {
+        let clientProxy = NitroClientProxyMock(homeserver: "https://matrix.example.org")
         clientProxy.requestOpenIDTokenReturnValue = .success(.init(accessToken: "token",
                                                                    tokenType: "Bearer",
                                                                    matrixServerName: "example.org"))
-        let userSession = UserSessionMock(.init(clientProxy: clientProxy))
-        userSession.mediaProvider = mediaProvider
-        return userSession
+        return clientProxy
     }
     
     private func makeAudioItem(eventID: String) throws -> AudioRoomTimelineItem {

@@ -8,7 +8,8 @@
 import Foundation
 
 nonisolated enum NitroConfiguration {
-    private static let defaultPushGatewayBaseURL: URL = "https://push.nitrovery.com"
+    private static let defaultPushGatewayBaseURL: URL = "https://matrix.org"
+    private static let defaultNitroPushGatewayBaseURL: URL = "https://push.nitrovery.com"
     private static let defaultReminderBaseURL: URL = "https://matrix-bot.nitrovery.com"
     private static let defaultTranscriptionBaseURL: URL = "https://matrix-bot.nitrovery.com"
     
@@ -17,14 +18,31 @@ nonisolated enum NitroConfiguration {
     }
     
     static var pushGatewayBaseURL: URL {
-        InfoPlistReader.main.nitroPushGatewayBaseURL ?? defaultPushGatewayBaseURL
+        resolvedPushGatewayBaseURL(isNitroBuild: isEnabled,
+                                   configuredURL: InfoPlistReader.main.nitroPushGatewayBaseURL)
     }
     
-    static var reminderBaseURL: URL {
-        InfoPlistReader.main.nitroReminderBaseURL ?? defaultReminderBaseURL
+    static var reminderBaseURL: URL? {
+        resolvedNitroServiceBaseURL(isNitroBuild: isEnabled,
+                                    configuredURL: InfoPlistReader.main.nitroReminderBaseURL,
+                                    defaultURL: defaultReminderBaseURL)
     }
     
-    static var transcriptionBaseURL: URL {
-        InfoPlistReader.main.nitroTranscriptionBaseURL ?? defaultTranscriptionBaseURL
+    static var transcriptionBaseURL: URL? {
+        resolvedNitroServiceBaseURL(isNitroBuild: isEnabled,
+                                    configuredURL: InfoPlistReader.main.nitroTranscriptionBaseURL,
+                                    defaultURL: defaultTranscriptionBaseURL)
+    }
+    
+    static func resolvedPushGatewayBaseURL(isNitroBuild: Bool, configuredURL: URL?) -> URL {
+        guard isNitroBuild else { return defaultPushGatewayBaseURL }
+        return configuredURL ?? defaultNitroPushGatewayBaseURL
+    }
+    
+    static func resolvedNitroServiceBaseURL(isNitroBuild: Bool,
+                                            configuredURL: URL?,
+                                            defaultURL: URL) -> URL? {
+        guard isNitroBuild else { return nil }
+        return configuredURL ?? defaultURL
     }
 }

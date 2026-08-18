@@ -13,6 +13,7 @@ import UserNotifications
 
 enum RoomFlowCoordinatorAction: Equatable {
     case presentCallScreen(roomProxy: JoinedRoomProxyProtocol, isVoiceCall: Bool)
+    case presentNitroTasks(roomID: String, roomName: String)
     case verifyUser(userID: String)
     /// The requested room was actually a space. The room flow has been dismissed
     /// and a space flow should be started to continue.
@@ -23,6 +24,8 @@ enum RoomFlowCoordinatorAction: Equatable {
         switch (lhs, rhs) {
         case (.presentCallScreen(let lhsRoomProxy, let lhsIsVoiceCall), .presentCallScreen(let rhsRoomProxy, let rhsIsVoiceCall)):
             lhsRoomProxy.id == rhsRoomProxy.id && lhsIsVoiceCall == rhsIsVoiceCall
+        case (.presentNitroTasks(let lhsRoomID, let lhsRoomName), .presentNitroTasks(let rhsRoomID, let rhsRoomName)):
+            lhsRoomID == rhsRoomID && lhsRoomName == rhsRoomName
         case (.finished, .finished):
             true
         default:
@@ -107,7 +110,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     private var timelineController: TimelineControllerProtocol?
     
     private lazy var emojiProvider: EmojiProviderProtocol = {
-        guard let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol else {
+        guard NitroConfiguration.isEnabled,
+              let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol else {
             return flowParameters.emojiProvider
         }
         
@@ -121,7 +125,7 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                                            await clientProxy.setRawAccountData(eventType: eventType, content: content)
                                        },
                                        roomStateProvider: { roomID in
-                                           await clientProxy.rawRoomStateEvents(roomID: roomID)
+                                           await clientProxy.emojiRoomStateEvents(roomID: roomID)
                                        })
     }()
     
@@ -756,6 +760,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                     stateMachine.tryEvent(.presentKnockRequestsListScreen)
                 case .presentThreadList:
                     stateMachine.tryEvent(.presentThreadList, userInfo: EventUserInfo(animated: animated))
+                case .presentNitroTasks(let roomID, let roomName):
+                    actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
                 case .presentThread(let threadRootEventID, let focussedEventID):
                     stateMachine.tryEvent(.presentThread(threadRootEventID: threadRootEventID, focusEventID: focussedEventID))
                 case .presentRoom(let roomID, let via):
@@ -1561,6 +1567,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
             switch action {
             case .presentCallScreen(let roomProxy, let isVoiceCall):
                 actionsSubject.send(.presentCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
+            case .presentNitroTasks(let roomID, let roomName):
+                actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
             case .verifyUser(let userID):
                 actionsSubject.send(.verifyUser(userID: userID))
             case .continueWithSpaceFlow(let spaceRoomListProxy):
@@ -1671,6 +1679,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                 switch action {
                 case .presentCallScreen(let roomProxy, let isVoiceCall):
                     actionsSubject.send(.presentCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
+                case .presentNitroTasks(let roomID, let roomName):
+                    actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
                 case .verifyUser(let userID):
                     actionsSubject.send(.verifyUser(userID: userID))
                 case .finished:
@@ -1697,6 +1707,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                 stateMachine.tryEvent(.stopMembersFlow)
             case .presentCallScreen(let roomProxy, let isVoiceCall):
                 actionsSubject.send(.presentCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
+            case .presentNitroTasks(let roomID, let roomName):
+                actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
             case .verifyUser(let userID):
                 actionsSubject.send(.verifyUser(userID: userID))
             }

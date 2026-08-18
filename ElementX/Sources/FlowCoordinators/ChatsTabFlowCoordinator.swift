@@ -17,6 +17,7 @@ enum ChatsTabFlowCoordinatorAction {
     case showChatBackupSettings
     case sessionVerification(SessionVerificationScreenFlow)
     case showCallScreen(roomProxy: JoinedRoomProxyProtocol, isVoiceCall: Bool)
+    case showNitroTasks(roomID: String, roomName: String)
     case hideCallScreenOverlay
     case logout
 }
@@ -436,8 +437,13 @@ class ChatsTabFlowCoordinator: FlowCoordinatorProtocol {
     }
     
     private func presentReminders() {
-        let coordinator = NitroRemindersScreenCoordinator(parameters: .init(clientProxy: userSession.clientProxy,
-                                                                            reminderService: NitroReminderService(baseURL: flowParameters.appSettings.nitroReminderBaseURL)))
+        guard NitroConfiguration.isEnabled,
+              let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol,
+              let reminderBaseURL = flowParameters.appSettings.nitroReminderBaseURL else {
+            return
+        }
+        let coordinator = NitroRemindersScreenCoordinator(parameters: .init(clientProxy: clientProxy,
+                                                                            reminderService: NitroReminderService(baseURL: reminderBaseURL)))
         coordinator.actionsPublisher
             .sink { [weak self] action in
                 guard let self else { return }
@@ -559,6 +565,8 @@ class ChatsTabFlowCoordinator: FlowCoordinatorProtocol {
             switch action {
             case .presentCallScreen(let roomProxy, let isVoiceCall):
                 actionsSubject.send(.showCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
+            case .presentNitroTasks(let roomID, let roomName):
+                actionsSubject.send(.showNitroTasks(roomID: roomID, roomName: roomName))
             case .verifyUser(let userID):
                 actionsSubject.send(.sessionVerification(.userInitiator(userID: userID)))
             case .continueWithSpaceFlow(let spaceRoomListProxy):
@@ -621,6 +629,8 @@ class ChatsTabFlowCoordinator: FlowCoordinatorProtocol {
                 switch action {
                 case .presentCallScreen(let roomProxy, let isVoiceCall):
                     actionsSubject.send(.showCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
+                case .presentNitroTasks(let roomID, let roomName):
+                    actionsSubject.send(.showNitroTasks(roomID: roomID, roomName: roomName))
                 case .verifyUser(let userID):
                     actionsSubject.send(.sessionVerification(.userInitiator(userID: userID)))
                 case .finished:

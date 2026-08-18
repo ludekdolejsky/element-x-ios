@@ -6,6 +6,11 @@ settings:
   ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: "colors/accent-color"
   DEVELOPMENT_TEAM: 7J4U792NQT
   IS_NIGHTLY_BUILD: false
+  IS_NITRO_BUILD: false
+  NOTIFICATION_FILTERING_ENABLED: true
+  NITRO_PUSH_GATEWAY_BASE_URL: ""
+  NITRO_REMINDER_BASE_URL: ""
+  NITRO_TRANSCRIPTION_BASE_URL: ""
 
   # Optional configuration to load accounts from Element Classic.
   CLASSIC_APP_GROUP_IDENTIFIER: group.im.vector

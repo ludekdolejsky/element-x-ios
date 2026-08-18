@@ -2356,34 +2356,6 @@ nonisolated class ClientProxyMock: ClientProxyProtocol, @unchecked Sendable {
     }
     nonisolated(unsafe) var underlyingLiveLocationOwnInfoUpdatesPublisher: AnyPublisher<LiveLocationOwnInfoUpdate, Never>!
 
-    //MARK: - requestOpenIDToken
-
-    private let requestOpenIDTokenCallsCountLock = NSLock()
-    private nonisolated(unsafe) var requestOpenIDTokenUnderlyingCallsCount = 0
-    var requestOpenIDTokenCallsCount: Int {
-        get { requestOpenIDTokenCallsCountLock.withLock { requestOpenIDTokenUnderlyingCallsCount } }
-        set { requestOpenIDTokenCallsCountLock.withLock { requestOpenIDTokenUnderlyingCallsCount = newValue } }
-    }
-    var requestOpenIDTokenCalled: Bool {
-        return requestOpenIDTokenCallsCount > 0
-    }
-
-    private let requestOpenIDTokenReturnValueLock = NSLock()
-    private nonisolated(unsafe) var requestOpenIDTokenUnderlyingReturnValue: Result<NitroOpenIDToken, ClientProxyError>!
-    var requestOpenIDTokenReturnValue: Result<NitroOpenIDToken, ClientProxyError>! {
-        get { requestOpenIDTokenReturnValueLock.withLock { requestOpenIDTokenUnderlyingReturnValue } }
-        set { requestOpenIDTokenReturnValueLock.withLock { requestOpenIDTokenUnderlyingReturnValue = newValue } }
-    }
-    nonisolated(unsafe) var requestOpenIDTokenClosure: (() async -> Result<NitroOpenIDToken, ClientProxyError>)?
-
-    @concurrent func requestOpenIDToken() async -> Result<NitroOpenIDToken, ClientProxyError> {
-        requestOpenIDTokenCallsCountLock.withLock { requestOpenIDTokenUnderlyingCallsCount += 1 }
-        if let requestOpenIDTokenClosure = requestOpenIDTokenClosure {
-            return await requestOpenIDTokenClosure()
-        } else {
-            return requestOpenIDTokenReturnValue
-        }
-    }
     //MARK: - isOnlyDeviceLeft
 
     private let isOnlyDeviceLeftCallsCountLock = NSLock()

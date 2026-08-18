@@ -12,6 +12,7 @@ import OrderedCollections
 enum RoomScreenViewModelAction: Equatable {
     case focusEvent(eventID: String)
     case displayThreadList
+    case displayNitroTasks(roomID: String, roomName: String)
     case displayThread(threadRootEventID: String, focussedEventID: String)
     case displayPinnedEventsTimeline
     case displayRoomDetails
@@ -35,6 +36,7 @@ enum RoomScreenViewAction {
     case viewKnockRequests
     case displaySuccessorRoom
     case displayThreadList
+    case displayNitroTasks
     case tappedOpenLiveLocation
     case tappedStopLiveLocation
 }
@@ -73,6 +75,7 @@ struct RoomScreenViewState: BindableState {
     var isDM: Bool
     
     var roomThreadListEnabled = false
+    var nitroTasksEnabled = false
     var isKnockableRoom = false
     var canAcceptKnocks = false
     var canDeclineKnocks = false
@@ -81,6 +84,10 @@ struct RoomScreenViewState: BindableState {
     var handledEventIDs: Set<String> = []
     
     var hasSuccessor: Bool
+    
+    var shouldShowNitroTasksButton: Bool {
+        nitroTasksEnabled && !hasSuccessor
+    }
     
     var displayedKnockRequests: [KnockRequestInfo] {
         unseenKnockRequests.filter { !handledEventIDs.contains($0.eventID) }

@@ -17,7 +17,7 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
         case delete
     }
     
-    private let clientProxy: ClientProxyProtocol
+    private let clientProxy: NitroClientProxyProtocol
     private let reminderService: NitroReminderServiceProtocol
     private let now: () -> Date
     
@@ -31,7 +31,7 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
         actionsSubject.eraseToAnyPublisher()
     }
     
-    init(clientProxy: ClientProxyProtocol,
+    init(clientProxy: NitroClientProxyProtocol,
          reminderService: NitroReminderServiceProtocol,
          now: @escaping () -> Date = Date.init) {
         self.clientProxy = clientProxy

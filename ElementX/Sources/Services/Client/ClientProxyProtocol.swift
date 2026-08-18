@@ -123,8 +123,6 @@ protocol ClientProxyProtocol: AnyObject {
     
     var homeserver: String { get }
     
-    func requestOpenIDToken() async -> Result<NitroOpenIDToken, ClientProxyError>
-    
     var canDeactivateAccount: Bool { get }
     
     var userIDServerName: String? { get }

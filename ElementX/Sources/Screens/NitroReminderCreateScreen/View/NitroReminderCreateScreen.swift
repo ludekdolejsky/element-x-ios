@@ -80,7 +80,7 @@ struct NitroReminderCreateScreen_Previews: PreviewProvider, TestablePreview {
     static let viewModel = NitroReminderCreateScreenViewModel(eventID: "$event:example.com",
                                                               threadRootID: nil,
                                                               roomProxy: JoinedRoomProxyMock(.init(name: "Nitro team")),
-                                                              clientProxy: ClientProxyMock(.init(homeserver: "https://example.com")),
+                                                              clientProxy: NitroClientProxyMock(homeserver: "https://example.com"),
                                                               reminderService: NitroReminderService(baseURL: .homeDirectory),
                                                               userIndicatorController: UserIndicatorControllerMock())
     

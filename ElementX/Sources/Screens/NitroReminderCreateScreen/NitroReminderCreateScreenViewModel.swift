@@ -14,7 +14,7 @@ final class NitroReminderCreateScreenViewModel: NitroReminderCreateScreenViewMod
     private let eventID: String
     private let threadRootID: String?
     private let roomProxy: JoinedRoomProxyProtocol
-    private let clientProxy: ClientProxyProtocol
+    private let clientProxy: NitroClientProxyProtocol
     private let reminderService: NitroReminderServiceProtocol
     private let userIndicatorController: UserIndicatorControllerProtocol
     private let calendar: Calendar
@@ -30,7 +30,7 @@ final class NitroReminderCreateScreenViewModel: NitroReminderCreateScreenViewMod
     init(eventID: String,
          threadRootID: String?,
          roomProxy: JoinedRoomProxyProtocol,
-         clientProxy: ClientProxyProtocol,
+         clientProxy: NitroClientProxyProtocol,
          reminderService: NitroReminderServiceProtocol,
          userIndicatorController: UserIndicatorControllerProtocol,
          calendar: Calendar = .current,

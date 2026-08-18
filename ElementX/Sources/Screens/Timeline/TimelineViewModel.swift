@@ -35,6 +35,7 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
     
     private let timelineInteractionHandler: TimelineInteractionHandler
     private var nitroReminderCreateCancellable: AnyCancellable?
+    private var nitroTaskCreateCancellable: AnyCancellable?
     
     private let composerFocusedSubject = PassthroughSubject<Bool, Never>()
     
@@ -60,6 +61,7 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
          emojiProvider: EmojiProviderProtocol,
          linkMetadataProvider: LinkMetadataProviderProtocol,
          timelineControllerFactory: TimelineControllerFactoryProtocol,
+         nitroClientProxy: NitroClientProxyProtocol? = nil,
          nitroTranscriptionService: NitroTranscriptionServiceProtocol? = nil,
          nitroReminderService: NitroReminderServiceProtocol? = nil,
          voiceMessageRecorder: VoiceMessageRecorderProtocol? = nil) {
@@ -87,6 +89,7 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
                                                                 emojiProvider: emojiProvider,
                                                                 linkMetadataProvider: linkMetadataProvider,
                                                                 timelineControllerFactory: timelineControllerFactory,
+                                                                nitroClientProxy: nitroClientProxy,
                                                                 nitroTranscriptionService: nitroTranscriptionService,
                                                                 nitroReminderService: nitroReminderService)
         
@@ -109,6 +112,9 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
                                                        areThreadsEnabled: appSettings.threadsEnabled,
                                                        linkPreviewsEnabled: appSettings.linkPreviewsEnabled,
                                                        jumpToReadMarkerEnabled: appSettings.jumpToReadMarkerEnabled,
+                                                       timelineDiagnosticsEnabled: appSettings.timelineDiagnosticsEnabled,
+                                                       timelineAnimationsDisabled: appSettings.timelineAnimationsDisabled,
+                                                       topBannerCompositingDisabled: appSettings.topBannerCompositingDisabled,
                                                        hasPredecessor: roomProxy.predecessorRoom != nil,
                                                        pinnedEventIDs: roomProxy.infoPublisher.value.pinnedEventIDs,
                                                        emojiProvider: emojiProvider,
@@ -228,6 +234,9 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         case .dismissNitroReminderCreate:
             state.bindings.nitroReminderCreateViewModel = nil
             nitroReminderCreateCancellable = nil
+        case .dismissNitroTaskCreate:
+            state.bindings.nitroTaskCreateViewModel = nil
+            nitroTaskCreateCancellable = nil
         case .stopLiveLocationSharing(let id):
             state.stoppedLiveLocationIDs.insert(id)
             Task { await stopLiveLocationSharing() }
@@ -529,58 +538,70 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         timelineInteractionHandler.actions
             .receive(on: DispatchQueue.main)
             .sink { [weak self] action in
-                guard let self else { return }
-                
-                switch action {
-                case .composer(let action):
-                    actionsSubject.send(.composer(action: action))
-                case .displayAudioRecorderPermissionError:
-                    displayAlert(.audioRecodingPermissionError)
-                case .displayErrorToast(let title):
-                    displayErrorToast(title)
-                case .displayEmojiPicker(let selectedEmojis, let continuation):
-                    actionsSubject.send(.displayEmojiPicker(selectedEmojis: selectedEmojis, continuation: continuation))
-                case .displayMessageForwarding(let itemID):
-                    Task { await self.forwardMessage(itemID: itemID) }
-                case .displayEditPollForm(let eventID, let poll):
-                    actionsSubject.send(.displayEditPollForm(eventID: eventID, poll: poll))
-                case .displayReportContent(let itemID, let senderID):
-                    actionsSubject.send(.displayReportContent(itemID: itemID, senderID: senderID))
-                case .displayMediaUploadPreviewScreen(let mediaURLs):
-                    actionsSubject.send(.displayMediaUploadPreviewScreen(mediaURLs: mediaURLs))
-                case .showActionMenu(let actionMenuInfo):
-                    if case .media(.mediaFilesScreen) = timelineController.timelineKind,
-                       let item = actionMenuInfo.item as? EventBasedMessageTimelineItemProtocol {
-                        actionsSubject.send(.displayMediaDetails(item: item))
-                    } else {
-                        self.state.bindings.actionMenuInfo = actionMenuInfo
-                    }
-                case .showDebugInfo(let debugInfo):
-                    state.bindings.debugInfo = debugInfo
-                case .viewInRoomTimeline(let eventID):
-                    Task { await self.viewInRoomTimeline(eventID: eventID) }
-                case .displayThread(let itemID):
-                    actionsSubject.send(.displayThread(itemID: itemID))
-                case .showTranslation(let text):
-                    self.state.bindings.textToBeTranslated = text
-                    self.state.bindings.showTranslation = true
-                case .requestNitroAudioTranscriptionConsent(let request):
-                    self.displayAlert(.audioTranscriptionConsent(request))
-                case .showNitroTranscript(let info):
-                    self.state.bindings.nitroTranscriptInfo = info
-                case .showNitroReminderCreate(let viewModel):
-                    self.state.bindings.nitroReminderCreateViewModel = viewModel
-                    self.nitroReminderCreateCancellable = viewModel.actionsPublisher
-                        .sink { [weak self] action in
-                            switch action {
-                            case .dismiss:
-                                self?.state.bindings.nitroReminderCreateViewModel = nil
-                                self?.nitroReminderCreateCancellable = nil
-                            }
-                        }
-                }
+                self?.handleTimelineInteractionAction(action)
             }
             .store(in: &cancellables)
+    }
+    
+    private func handleTimelineInteractionAction(_ action: TimelineInteractionHandlerAction) {
+        switch action {
+        case .composer(let action):
+            actionsSubject.send(.composer(action: action))
+        case .displayAudioRecorderPermissionError:
+            displayAlert(.audioRecodingPermissionError)
+        case .displayErrorToast(let title):
+            displayErrorToast(title)
+        case .displayEmojiPicker(let selectedEmojis, let continuation):
+            actionsSubject.send(.displayEmojiPicker(selectedEmojis: selectedEmojis, continuation: continuation))
+        case .displayMessageForwarding(let itemID):
+            Task { await forwardMessage(itemID: itemID) }
+        case .displayEditPollForm(let eventID, let poll):
+            actionsSubject.send(.displayEditPollForm(eventID: eventID, poll: poll))
+        case .displayReportContent(let itemID, let senderID):
+            actionsSubject.send(.displayReportContent(itemID: itemID, senderID: senderID))
+        case .displayMediaUploadPreviewScreen(let mediaURLs):
+            actionsSubject.send(.displayMediaUploadPreviewScreen(mediaURLs: mediaURLs))
+        case .showActionMenu(let actionMenuInfo):
+            if case .media(.mediaFilesScreen) = timelineController.timelineKind,
+               let item = actionMenuInfo.item as? EventBasedMessageTimelineItemProtocol {
+                actionsSubject.send(.displayMediaDetails(item: item))
+            } else {
+                state.bindings.actionMenuInfo = actionMenuInfo
+            }
+        case .showDebugInfo(let debugInfo):
+            state.bindings.debugInfo = debugInfo
+        case .viewInRoomTimeline(let eventID):
+            Task { await viewInRoomTimeline(eventID: eventID) }
+        case .displayThread(let itemID):
+            actionsSubject.send(.displayThread(itemID: itemID))
+        case .showTranslation(let text):
+            state.bindings.textToBeTranslated = text
+            state.bindings.showTranslation = true
+        case .requestNitroAudioTranscriptionConsent(let request):
+            displayAlert(.audioTranscriptionConsent(request))
+        case .showNitroTranscript(let info):
+            state.bindings.nitroTranscriptInfo = info
+        case .showNitroReminderCreate(let viewModel):
+            state.bindings.nitroReminderCreateViewModel = viewModel
+            nitroReminderCreateCancellable = viewModel.actionsPublisher
+                .sink { [weak self] action in
+                    switch action {
+                    case .dismiss:
+                        self?.state.bindings.nitroReminderCreateViewModel = nil
+                        self?.nitroReminderCreateCancellable = nil
+                    }
+                }
+        case .showNitroTaskCreate(let viewModel):
+            state.bindings.nitroTaskCreateViewModel = viewModel
+            nitroTaskCreateCancellable = viewModel.actionsPublisher
+                .sink { [weak self] action in
+                    switch action {
+                    case .dismiss:
+                        self?.state.bindings.nitroTaskCreateViewModel = nil
+                        self?.nitroTaskCreateCancellable = nil
+                    }
+                }
+        }
     }
     
     func viewInRoomTimeline(eventID: String) async {
@@ -612,6 +633,18 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         
         appSettings.jumpToReadMarkerEnabledPublisher
             .weakAssign(to: \.state.jumpToReadMarkerEnabled, on: self)
+            .store(in: &cancellables)
+        
+        appSettings.timelineDiagnosticsEnabledPublisher
+            .weakAssign(to: \.state.timelineDiagnosticsEnabled, on: self)
+            .store(in: &cancellables)
+        
+        appSettings.timelineAnimationsDisabledPublisher
+            .weakAssign(to: \.state.timelineAnimationsDisabled, on: self)
+            .store(in: &cancellables)
+        
+        appSettings.topBannerCompositingDisabledPublisher
+            .weakAssign(to: \.state.topBannerCompositingDisabled, on: self)
             .store(in: &cancellables)
         
         userSession.clientProxy.timelineMediaVisibilityPublisher

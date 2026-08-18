@@ -37,10 +37,16 @@ struct TimelineItemMacContextMenu: View {
                     }
                     
                     ForEach(menuActions.actions) { action in
-                        Button(role: action.isDestructive ? .destructive : nil) {
-                            send(action)
-                        } label: {
-                            action.label
+                        if action.submenuActions.isEmpty {
+                            actionButton(action)
+                        } else {
+                            Menu {
+                                ForEach(action.submenuActions) { submenuAction in
+                                    actionButton(submenuAction)
+                                }
+                            } label: {
+                                action.submenuLabel
+                            }
                         }
                     }
                 }
@@ -55,6 +61,14 @@ struct TimelineItemMacContextMenu: View {
                     }
                 }
             }
+        }
+    }
+    
+    private func actionButton(_ action: TimelineItemMenuAction) -> some View {
+        Button(role: action.isDestructive ? .destructive : nil) {
+            send(action)
+        } label: {
+            action.label
         }
     }
 }

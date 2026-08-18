@@ -56,6 +56,8 @@ struct TimelineItemMenuReaction: Hashable {
 
 enum TimelineItemMenuAction: Identifiable, Hashable {
     case copy
+    case copyAsMarkdown
+    case copyAsHTML
     case translate
     case copyCaption
     case edit
@@ -77,12 +79,22 @@ enum TimelineItemMenuAction: Identifiable, Hashable {
     case unpin
     case viewInRoomTimeline
     case downloadMedia
+    case addTask
     case remindMe
     case transcribeAudio
     case transcribeAudioToThread
     
     var id: Self {
         self
+    }
+    
+    var submenuActions: [Self] {
+        switch self {
+        case .copy where NitroConfiguration.isEnabled:
+            [.copy, .copyAsMarkdown, .copyAsHTML]
+        default:
+            []
+        }
     }
     
     /// Whether the item should cancel a reply/edit occurring in the composer.
@@ -98,7 +110,7 @@ enum TimelineItemMenuAction: Identifiable, Hashable {
     /// Whether the action should be shown for an item that failed to send.
     var canAppearInFailedEcho: Bool {
         switch self {
-        case .copy, .edit, .redact, .viewSource, .editPoll:
+        case .copy, .copyAsMarkdown, .copyAsHTML, .edit, .redact, .viewSource, .editPoll:
             true
         default:
             false
@@ -127,7 +139,7 @@ enum TimelineItemMenuAction: Identifiable, Hashable {
     
     var canAppearInPinnedEventsTimeline: Bool {
         switch self {
-        case .viewInRoomTimeline, .pin, .unpin, .forward, .remindMe, .transcribeAudio, .transcribeAudioToThread:
+        case .viewInRoomTimeline, .pin, .unpin, .forward, .addTask, .remindMe, .transcribeAudio, .transcribeAudioToThread:
             true
         default:
             false
@@ -136,7 +148,7 @@ enum TimelineItemMenuAction: Identifiable, Hashable {
     
     var canAppearInMediaDetails: Bool {
         switch self {
-        case .viewInRoomTimeline, .downloadMedia, .redact, .forward, .remindMe:
+        case .viewInRoomTimeline, .downloadMedia, .redact, .forward, .addTask, .remindMe:
             true
         default:
             false
@@ -149,6 +161,10 @@ enum TimelineItemMenuAction: Identifiable, Hashable {
         switch self {
         case .copy:
             Label(L10n.actionCopyText, icon: \.copy)
+        case .copyAsMarkdown:
+            Label(UntranslatedL10n.actionCopyAsMarkdownIos, icon: \.copy)
+        case .copyAsHTML:
+            Label(UntranslatedL10n.actionCopyAsHtmlIos, icon: \.copy)
         case .translate:
             Label(L10n.actionTranslate, icon: \.translate)
         case .copyCaption:
@@ -193,12 +209,24 @@ enum TimelineItemMenuAction: Identifiable, Hashable {
             Label(L10n.actionViewInTimeline, icon: \.visibilityOn)
         case .downloadMedia:
             Label(L10n.actionDownload, icon: \.downloadIos)
+        case .addTask:
+            Label(UntranslatedL10n.actionAddNitroTaskIos, icon: \.checkCircle)
         case .remindMe:
             Label(UntranslatedL10n.actionRemindMeIos, icon: \.notifications)
         case .transcribeAudio:
             Label(UntranslatedL10n.actionTranscribeAudioIos, icon: \.chat)
         case .transcribeAudioToThread:
             Label(UntranslatedL10n.actionTranscribeAudioToThreadIos, icon: \.threads)
+        }
+    }
+    
+    @ViewBuilder
+    var submenuLabel: some View {
+        switch self {
+        case .copy:
+            Label(L10n.actionCopy, icon: \.copy)
+        default:
+            label
         }
     }
 }

@@ -91,8 +91,8 @@ struct NitroRemindersScreenViewModelTests {
         try await finished.fulfill()
     }
     
-    private func makeClientProxy() -> ClientProxyMock {
-        let clientProxy = ClientProxyMock(.init(homeserver: "https://matrix.example.org"))
+    private func makeClientProxy() -> NitroClientProxyMock {
+        let clientProxy = NitroClientProxyMock(homeserver: "https://matrix.example.org")
         clientProxy.requestOpenIDTokenReturnValue = .success(.init(accessToken: "secret-token",
                                                                    tokenType: "Bearer",
                                                                    matrixServerName: "example.org"))

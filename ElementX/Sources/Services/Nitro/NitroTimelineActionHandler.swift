@@ -12,6 +12,7 @@ final class NitroTimelineActionHandler {
     private let roomProxy: JoinedRoomProxyProtocol
     private let timelineController: TimelineControllerProtocol
     private let userSession: UserSessionProtocol
+    private let clientProxy: NitroClientProxyProtocol
     private let voiceMessageRecorder: VoiceMessageRecorderProtocol
     private let userIndicatorController: UserIndicatorControllerProtocol
     private let appSettings: AppSettings
@@ -22,12 +23,15 @@ final class NitroTimelineActionHandler {
     
     private var reminderTask: Task<Void, Never>?
     private var reminderTaskID: UUID?
+    private var taskCreateTask: Task<Void, Never>?
+    private var taskCreateTaskID: UUID?
     private var transcriptionTask: Task<Void, Never>?
     private var transcriptionTaskID: UUID?
     
     init(roomProxy: JoinedRoomProxyProtocol,
          timelineController: TimelineControllerProtocol,
          userSession: UserSessionProtocol,
+         clientProxy: NitroClientProxyProtocol,
          voiceMessageRecorder: VoiceMessageRecorderProtocol,
          userIndicatorController: UserIndicatorControllerProtocol,
          appSettings: AppSettings,
@@ -38,6 +42,7 @@ final class NitroTimelineActionHandler {
         self.roomProxy = roomProxy
         self.timelineController = timelineController
         self.userSession = userSession
+        self.clientProxy = clientProxy
         self.voiceMessageRecorder = voiceMessageRecorder
         self.userIndicatorController = userIndicatorController
         self.appSettings = appSettings
@@ -73,10 +78,63 @@ final class NitroTimelineActionHandler {
             let viewModel = NitroReminderCreateScreenViewModel(eventID: eventID,
                                                                threadRootID: threadRootID,
                                                                roomProxy: roomProxy,
-                                                               clientProxy: userSession.clientProxy,
+                                                               clientProxy: clientProxy,
                                                                reminderService: reminderService,
                                                                userIndicatorController: userIndicatorController)
             sendAction(.showNitroReminderCreate(viewModel))
+        }
+    }
+    
+    func presentTaskCreate(for item: EventBasedTimelineItemProtocol) {
+        guard let eventID = item.id.eventID else {
+            sendAction(.displayErrorToast(UntranslatedL10n.errorNitroTaskRequestFailedIos))
+            return
+        }
+        
+        taskCreateTask?.cancel()
+        let taskID = UUID()
+        taskCreateTaskID = taskID
+        taskCreateTask = Task { [weak self] in
+            guard let self else { return }
+            defer { finishTaskCreateTask(taskID: taskID) }
+            
+            let threadRootID: String?
+            if let activeThreadRootID = timelineController.timelineKind.threadRootEventID {
+                threadRootID = activeThreadRootID
+            } else if case let .success(event) = await roomProxy.loadOrFetchEventDetails(for: eventID) {
+                threadRootID = event.threadRootEventId()
+            } else {
+                threadRootID = nil
+            }
+            guard !Task.isCancelled else { return }
+            
+            let permalink: String?
+            if case let .success(value) = await roomProxy.matrixToEventPermalink(eventID) {
+                permalink = value.absoluteString
+            } else {
+                permalink = nil
+            }
+            guard !Task.isCancelled else { return }
+            
+            let sourceText = item.timelineMenuDescription
+            let debugInfo = timelineController.debugInfo(for: item.id)
+            let mentionedUserIDs = NitroTaskEventParser.mentionedUserIDs(from: debugInfo.latestEditJSON ?? debugInfo.originalJSON)
+            let joinedUserIDs = Set(roomProxy.membersPublisher.value.map(\.userID))
+            let joinedMentions = Set(mentionedUserIDs.filter(joinedUserIDs.contains))
+            let suggestedAssigneeID = joinedMentions.count == 1 ? joinedMentions.first : nil
+            let draft = NitroTaskCreateDraft(title: NitroTaskEventParser.normalizedTitle(sourceText),
+                                             description: NitroTaskEventParser.normalizedDescription(sourceText),
+                                             fixedRoomID: roomProxy.id,
+                                             initialRoomID: nil,
+                                             suggestedAssigneeID: suggestedAssigneeID,
+                                             origin: .init(roomID: roomProxy.id,
+                                                           eventID: eventID,
+                                                           threadRootID: threadRootID,
+                                                           permalink: permalink))
+            let viewModel = NitroTaskCreateScreenViewModel(taskService: clientProxy.nitroTaskService,
+                                                           draft: draft,
+                                                           userIndicatorController: userIndicatorController)
+            sendAction(.showNitroTaskCreate(viewModel))
         }
     }
     
@@ -120,6 +178,9 @@ final class NitroTimelineActionHandler {
         reminderTaskID = nil
         reminderTask?.cancel()
         reminderTask = nil
+        taskCreateTaskID = nil
+        taskCreateTask?.cancel()
+        taskCreateTask = nil
         transcriptionTaskID = nil
         transcriptionTask?.cancel()
         transcriptionTask = nil
@@ -223,8 +284,8 @@ final class NitroTimelineActionHandler {
                                      filename: String,
                                      contentType: String) async -> Result<String, NitroTranscriptionError> {
         guard !Task.isCancelled else { return .failure(.cancelled) }
-        guard let homeserverURL = URL(string: userSession.clientProxy.homeserver),
-              case let .success(openIDToken) = await userSession.clientProxy.requestOpenIDToken() else {
+        guard let homeserverURL = URL(string: clientProxy.homeserver),
+              case let .success(openIDToken) = await clientProxy.requestOpenIDToken() else {
             if Task.isCancelled {
                 return .failure(.cancelled)
             }
@@ -262,6 +323,12 @@ final class NitroTimelineActionHandler {
         guard reminderTaskID == taskID else { return }
         reminderTaskID = nil
         reminderTask = nil
+    }
+    
+    private func finishTaskCreateTask(taskID: UUID) {
+        guard taskCreateTaskID == taskID else { return }
+        taskCreateTaskID = nil
+        taskCreateTask = nil
     }
     
     private func finishTranscription(taskID: UUID) {

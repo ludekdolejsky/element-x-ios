@@ -20,4 +20,13 @@ struct NitroConfigurationTests {
         #expect(InfoPlistReader.main.classicAppKeychainAccessGroupIdentifier == nil)
         #expect(InfoPlistReader.main.classicAppDeepLinkURL == nil)
     }
+    
+    @Test
+    func nonNitroBuildUsesUpstreamServices() {
+        #expect(NitroConfiguration.resolvedPushGatewayBaseURL(isNitroBuild: false,
+                                                              configuredURL: "https://push.nitrovery.com") == "https://matrix.org")
+        #expect(NitroConfiguration.resolvedNitroServiceBaseURL(isNitroBuild: false,
+                                                               configuredURL: "https://matrix-bot.nitrovery.com",
+                                                               defaultURL: "https://matrix-bot.nitrovery.com") == nil)
+    }
 }

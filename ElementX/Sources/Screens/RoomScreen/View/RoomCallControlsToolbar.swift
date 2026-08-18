@@ -23,9 +23,8 @@ struct RoomCallControlsToolbar: ToolbarContent {
             }
         } else {
             if viewState.isDM {
-                if viewState.roomThreadListEnabled {
-                    // If the developer mode room thread list option is enabled there
-                    // is not enough place for 2 calls buttons
+                if viewState.roomThreadListEnabled || viewState.shouldShowNitroTasksButton {
+                    // Extra room actions leave insufficient space for two call buttons.
                     ToolbarItem(placement: .primaryAction) {
                         Menu {
                             Button {

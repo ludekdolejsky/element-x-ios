@@ -10,9 +10,27 @@ import Combine
 import Kingfisher
 import UIKit
 
+private actor ImageDataCache {
+    private let cache: NSCache<NSString, NSData> = {
+        let cache = NSCache<NSString, NSData>()
+        cache.countLimit = 256
+        cache.totalCostLimit = 32 * 1024 * 1024
+        return cache
+    }()
+    
+    func data(for key: String) -> Data? {
+        cache.object(forKey: key as NSString).map { Data(referencing: $0) }
+    }
+    
+    func store(_ data: Data, for key: String) {
+        cache.setObject(data as NSData, forKey: key as NSString, cost: data.count)
+    }
+}
+
 nonisolated struct MediaProvider: MediaProviderProtocol {
     private let mediaLoader: MediaLoaderProtocol
     private let imageCache: Kingfisher.ImageCache
+    private let imageDataCache = ImageDataCache()
     private let homeserverReachabilityPublisher: CurrentValuePublisher<HomeserverReachability, Never>?
     
     init(mediaLoader: MediaLoaderProtocol,
@@ -107,10 +125,37 @@ nonisolated struct MediaProvider: MediaProviderProtocol {
     }
     
     func loadImageDataFromSource(_ source: MediaSourceProxy) async -> Result<Data, MediaProviderError> {
+        let initialResult = await loadImageDataOnce(from: source)
+        guard case .failure(.failedRetrievingImage) = initialResult,
+              let homeserverReachabilityPublisher else {
+            return initialResult
+        }
+        
+        for await reachability in homeserverReachabilityPublisher.values {
+            guard !Task.isCancelled else { return .failure(.cancelled) }
+            guard reachability == .reachable else { continue }
+            return await loadImageDataOnce(from: source)
+        }
+        
+        return Task.isCancelled ? .failure(.cancelled) : initialResult
+    }
+    
+    private func loadImageDataOnce(from source: MediaSourceProxy) async -> Result<Data, MediaProviderError> {
+        let cacheKey = source.url.absoluteString
+        if let imageData = await imageDataCache.data(for: cacheKey) {
+            return .success(imageData)
+        }
+        guard !Task.isCancelled else { return .failure(.cancelled) }
+        
         do {
             let imageData = try await mediaLoader.loadMediaContentForSource(source)
+            guard !Task.isCancelled else { return .failure(.cancelled) }
+            await imageDataCache.store(imageData, for: cacheKey)
             return .success(imageData)
+        } catch is CancellationError {
+            return .failure(.cancelled)
         } catch {
+            guard !Task.isCancelled else { return .failure(.cancelled) }
             MXLog.error("Failed retrieving image with error: \(error)")
             return .failure(.failedRetrievingImage)
         }

@@ -78,6 +78,7 @@ enum TimelineViewAction {
     case handleAudioPlayerAction(TimelineAudioPlayerAction)
     case sendTranscriptToThread(NitroTranscriptInfo)
     case dismissNitroReminderCreate
+    case dismissNitroTaskCreate
     
     case stopLiveLocationSharing(TimelineItemIdentifier)
     
@@ -130,6 +131,9 @@ struct TimelineViewState: BindableState {
     var areThreadsEnabled: Bool
     var linkPreviewsEnabled: Bool
     var jumpToReadMarkerEnabled: Bool
+    var timelineDiagnosticsEnabled: Bool
+    var timelineAnimationsDisabled: Bool
+    var topBannerCompositingDisabled: Bool
     
     let hasPredecessor: Bool
     
@@ -196,6 +200,7 @@ struct TimelineViewStateBindings {
     
     var nitroTranscriptInfo: NitroTranscriptInfo?
     var nitroReminderCreateViewModel: NitroReminderCreateScreenViewModel?
+    var nitroTaskCreateViewModel: NitroTaskCreateScreenViewModel?
 }
 
 struct TimelineItemActionMenuInfo: Equatable, Identifiable {

@@ -20,7 +20,10 @@ enum UserSessionFlowCoordinatorAction {
 }
 
 class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
-    enum HomeTab: Hashable { case chats, spaces, search }
+    enum HomeTab: Hashable, Sendable { case chats, spaces, tasks, search }
+    
+    private static let tasksAutomaticRefreshDebounceSeconds = 1
+    private static let tasksAutomaticRefreshIntervalSeconds = 30
     
     private let navigationRootCoordinator: NavigationRootCoordinator
     private let navigationTabCoordinator: NavigationTabCoordinator<HomeTab>
@@ -39,6 +42,10 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
     private let chatsTabDetails: NavigationTabCoordinator<HomeTab>.TabDetails
     private let spacesTabFlowCoordinator: SpacesTabFlowCoordinator
     private let spacesTabDetails: NavigationTabCoordinator<HomeTab>.TabDetails
+    
+    private let tasksScreenCoordinator: NitroTasksScreenCoordinator?
+    private let tasksTabNavigationStackCoordinator: NavigationStackCoordinator?
+    private let tasksTabDetails: NavigationTabCoordinator<HomeTab>.TabDetails?
     
     private let searchScreenCoordinator: SearchScreenCoordinator?
     private let searchTabNavigationStackCoordinator: NavigationStackCoordinator?
@@ -67,6 +74,7 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
     
     private let stateMachine: StateMachine<State, Event>
     private var cancellables: Set<AnyCancellable> = []
+    private var tasksTabObservationTask: Task<Void, Never>?
     
     private let actionsSubject: PassthroughSubject<UserSessionFlowCoordinatorAction, Never> = .init()
     var actionsPublisher: AnyPublisher<UserSessionFlowCoordinatorAction, Never> {
@@ -98,6 +106,24 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
         spacesTabDetails = .init(tag: HomeTab.spaces, title: L10n.screenHomeTabSpaces, icon: \.space, selectedIcon: \.spaceSolid)
         spacesTabDetails.navigationSplitCoordinator = spacesSplitCoordinator
         
+        if NitroConfiguration.isEnabled,
+           let clientProxy = flowParameters.userSession.clientProxy as? NitroClientProxyProtocol {
+            let coordinator = NitroTasksScreenCoordinator(parameters: .init(taskService: clientProxy.nitroTaskService))
+            let stackCoordinator = NavigationStackCoordinator()
+            stackCoordinator.setRootCoordinator(coordinator)
+            
+            tasksScreenCoordinator = coordinator
+            tasksTabNavigationStackCoordinator = stackCoordinator
+            tasksTabDetails = .init(tag: HomeTab.tasks,
+                                    title: UntranslatedL10n.screenNitroTasksTitleIos,
+                                    icon: \.checkCircle,
+                                    selectedIcon: \.checkCircleSolid)
+        } else {
+            tasksScreenCoordinator = nil
+            tasksTabNavigationStackCoordinator = nil
+            tasksTabDetails = nil
+        }
+        
         if flowParameters.appSettings.globalSearchEnabled, #available(iOS 26.0, *) {
             let searchCoordinator = SearchScreenCoordinator(parameters: .init(roomSummaryProvider: flowParameters.userSession.clientProxy.alternateRoomSummaryProvider,
                                                                               clientProxy: flowParameters.userSession.clientProxy,
@@ -125,6 +151,9 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
             .init(coordinator: chatsSplitCoordinator, details: chatsTabDetails),
             .init(coordinator: spacesSplitCoordinator, details: spacesTabDetails)
         ]
+        if let tasksTabNavigationStackCoordinator, let tasksTabDetails {
+            tabs.append(.init(coordinator: tasksTabNavigationStackCoordinator, details: tasksTabDetails))
+        }
         if let searchTabNavigationStackCoordinator, let searchTabDetails {
             tabs.append(.init(coordinator: searchTabNavigationStackCoordinator, details: searchTabDetails))
         }
@@ -141,7 +170,13 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
     }
     
     func stop() {
+        tasksTabObservationTask?.cancel()
+        tasksTabObservationTask = nil
         chatsTabFlowCoordinator.stop()
+    }
+    
+    isolated deinit {
+        tasksTabObservationTask?.cancel()
     }
     
     func handleAppRoute(_ appRoute: AppRoute, animated: Bool) {
@@ -242,6 +277,8 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
                     presentSessionVerificationScreen(flow: flow)
                 case .showCallScreen(let roomProxy, let isVoiceCall):
                     presentCallScreen(roomProxy: roomProxy, voiceOnly: isVoiceCall)
+                case .showNitroTasks(let roomID, let roomName):
+                    showNitroTasks(roomID: roomID, roomName: roomName)
                 case .hideCallScreenOverlay:
                     hideCallScreenOverlay()
                 case .logout:
@@ -256,6 +293,8 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
                 switch action {
                 case .presentCallScreen(let roomProxy, let isVoiceCall):
                     presentCallScreen(roomProxy: roomProxy, voiceOnly: isVoiceCall)
+                case .showNitroTasks(let roomID, let roomName):
+                    showNitroTasks(roomID: roomID, roomName: roomName)
                 case .verifyUser(let userID):
                     presentSessionVerificationScreen(flow: .userInitiator(userID: userID))
                 case .showSettings:
@@ -263,6 +302,46 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
                 }
             }
             .store(in: &cancellables)
+        
+        if let tasksScreenCoordinator {
+            tasksScreenCoordinator.actionsPublisher
+                .sink { [weak self] action in
+                    guard let self else { return }
+                    switch action {
+                    case .presentCreate(let initialRoomID):
+                        presentNitroTaskCreate(initialRoomID: initialRoomID)
+                    case .presentReminders:
+                        presentNitroReminders()
+                    case .presentReminder(let task):
+                        Task { await self.presentNitroTaskReminder(task) }
+                    case .openTask(let task):
+                        tasksTabNavigationStackCoordinator?.popToRoot(animated: false)
+                        handleAppRoute(.event(eventID: task.id, roomID: task.roomID, via: []), animated: true)
+                    case .openSource(let task):
+                        openNitroTaskSource(task)
+                    }
+                }
+                .store(in: &cancellables)
+            
+            let selectedTabs = navigationTabCoordinator.observe(\.selectedTab)
+            tasksTabObservationTask = Task { [weak tasksScreenCoordinator] in
+                for await selectedTab in selectedTabs {
+                    guard !Task.isCancelled else { return }
+                    guard selectedTab == .tasks else { continue }
+                    tasksScreenCoordinator?.refresh()
+                }
+            }
+            
+            userSession.clientProxy.staticRoomSummaryProvider.roomListPublisher
+                .dropFirst()
+                .debounce(for: .seconds(Self.tasksAutomaticRefreshDebounceSeconds), scheduler: DispatchQueue.main)
+                .throttle(for: .seconds(Self.tasksAutomaticRefreshIntervalSeconds), scheduler: DispatchQueue.main, latest: true)
+                .sink { [weak self, weak tasksScreenCoordinator] _ in
+                    guard self?.navigationTabCoordinator.selectedTab == .tasks else { return }
+                    tasksScreenCoordinator?.refresh()
+                }
+                .store(in: &cancellables)
+        }
         
         userSession.sessionSecurityStatePublisher
             .map(\.verificationState)
@@ -343,6 +422,108 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
                 }
             }
             .store(in: &cancellables)
+    }
+    
+    // MARK: - Nitro Tasks
+    
+    private func presentNitroTaskCreate(initialRoomID: String?) {
+        guard let tasksTabNavigationStackCoordinator,
+              let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol else {
+            return
+        }
+        let coordinator = NitroTaskCreateScreenCoordinator(parameters: .init(taskService: clientProxy.nitroTaskService,
+                                                                             draft: .init(title: "",
+                                                                                          description: "",
+                                                                                          fixedRoomID: nil,
+                                                                                          initialRoomID: initialRoomID,
+                                                                                          suggestedAssigneeID: nil,
+                                                                                          origin: nil),
+                                                                             userIndicatorController: flowParameters.userIndicatorController))
+        coordinator.actionsPublisher
+            .sink { action in
+                switch action {
+                case .dismiss:
+                    tasksTabNavigationStackCoordinator.setSheetCoordinator(nil)
+                }
+            }
+            .store(in: &cancellables)
+        tasksTabNavigationStackCoordinator.setSheetCoordinator(coordinator)
+    }
+    
+    private func showNitroTasks(roomID: String, roomName: String) {
+        guard let tasksScreenCoordinator, let tasksTabNavigationStackCoordinator else { return }
+        tasksTabNavigationStackCoordinator.setSheetCoordinator(nil)
+        tasksTabNavigationStackCoordinator.popToRoot(animated: false)
+        tasksScreenCoordinator.show(room: .init(id: roomID, name: roomName))
+        navigationTabCoordinator.selectedTab = .tasks
+    }
+    
+    private func presentNitroReminders() {
+        guard let tasksTabNavigationStackCoordinator,
+              let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol,
+              let reminderBaseURL = flowParameters.appSettings.nitroReminderBaseURL else {
+            return
+        }
+        let coordinator = NitroRemindersScreenCoordinator(parameters: .init(clientProxy: clientProxy,
+                                                                            reminderService: NitroReminderService(baseURL: reminderBaseURL)))
+        coordinator.actionsPublisher
+            .sink { [weak self] action in
+                guard let self else { return }
+                tasksTabNavigationStackCoordinator.popToRoot(animated: false)
+                switch action {
+                case .openReminder(let roomID, let eventID, let threadRootID):
+                    if let threadRootID {
+                        handleAppRoute(.thread(roomID: roomID,
+                                               threadRootEventID: threadRootID,
+                                               focusEventID: eventID),
+                                       animated: true)
+                    } else {
+                        handleAppRoute(.event(eventID: eventID, roomID: roomID, via: []), animated: true)
+                    }
+                }
+            }
+            .store(in: &cancellables)
+        tasksTabNavigationStackCoordinator.push(coordinator)
+    }
+    
+    private func presentNitroTaskReminder(_ task: NitroTask) async {
+        guard let tasksTabNavigationStackCoordinator,
+              let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol,
+              let reminderBaseURL = flowParameters.appSettings.nitroReminderBaseURL,
+              case let .joined(roomProxy) = await userSession.clientProxy.roomForIdentifier(task.roomID) else {
+            return
+        }
+        let coordinator = NitroReminderCreateScreenCoordinator(parameters: .init(eventID: task.id,
+                                                                                 threadRootID: nil,
+                                                                                 roomProxy: roomProxy,
+                                                                                 clientProxy: clientProxy,
+                                                                                 reminderService: NitroReminderService(baseURL: reminderBaseURL),
+                                                                                 userIndicatorController: flowParameters.userIndicatorController))
+        coordinator.actionsPublisher
+            .sink { [weak tasksTabNavigationStackCoordinator] action in
+                switch action {
+                case .dismiss:
+                    tasksTabNavigationStackCoordinator?.setSheetCoordinator(nil)
+                }
+            }
+            .store(in: &cancellables)
+        tasksTabNavigationStackCoordinator.setSheetCoordinator(coordinator)
+    }
+    
+    private func openNitroTaskSource(_ task: NitroTask) {
+        guard let roomID = task.metadata.sourceRoomID,
+              let eventID = task.metadata.sourceEventID else {
+            return
+        }
+        tasksTabNavigationStackCoordinator?.popToRoot(animated: false)
+        if let threadRootID = task.metadata.sourceThreadRootID {
+            handleAppRoute(.thread(roomID: roomID,
+                                   threadRootEventID: threadRootID,
+                                   focusEventID: eventID),
+                           animated: true)
+        } else {
+            handleAppRoute(.event(eventID: eventID, roomID: roomID, via: []), animated: true)
+        }
     }
     
     // MARK: - Onboarding

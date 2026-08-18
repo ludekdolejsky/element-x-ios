@@ -250,7 +250,7 @@ struct NitroRemindersScreen: View {
 
 struct NitroRemindersScreen_Previews: PreviewProvider, TestablePreview {
     static let viewModel: NitroRemindersScreenViewModel = {
-        let clientProxy = ClientProxyMock(.init(homeserver: "https://example.com"))
+        let clientProxy = NitroClientProxyMock(homeserver: "https://example.com")
         clientProxy.requestOpenIDTokenReturnValue = .failure(.invalidResponse)
         return NitroRemindersScreenViewModel(clientProxy: clientProxy,
                                              reminderService: NitroReminderService(baseURL: .homeDirectory))

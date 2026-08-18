@@ -71,6 +71,7 @@ class RoomScreenViewModel: RoomScreenViewModelType, RoomScreenViewModelProtocol 
                                             roomAvatar: roomProxy.infoPublisher.value.avatar,
                                             hasOngoingCall: roomProxy.infoPublisher.value.hasRoomCall,
                                             isDM: roomProxy.infoPublisher.value.isDM,
+                                            nitroTasksEnabled: NitroConfiguration.isEnabled && userSession.clientProxy is NitroClientProxyProtocol,
                                             hasSuccessor: roomProxy.infoPublisher.value.successor != nil,
                                             roomHistorySharingState: roomProxy.infoPublisher.value.historySharingState)
         super.init(initialViewState: appHooks.roomScreenHook.update(viewState),
@@ -116,6 +117,8 @@ class RoomScreenViewModel: RoomScreenViewModelType, RoomScreenViewModelProtocol 
             actionsSubject.send(.displayRoom(roomID: successorID, via: Array(serverNames)))
         case .displayThreadList:
             actionsSubject.send(.displayThreadList)
+        case .displayNitroTasks:
+            actionsSubject.send(.displayNitroTasks(roomID: roomProxy.id, roomName: state.roomTitle))
         case .tappedStopLiveLocation:
             actionsSubject.send(.stopLiveLocationSharing)
         case .tappedOpenLiveLocation:

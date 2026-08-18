@@ -9,9 +9,13 @@ import Foundation
 import MatrixRustSDK
 
 protocol NitroClientProxyProtocol: AnyObject {
+    var homeserver: String { get }
+    var userID: String { get }
+    var nitroTaskService: NitroTaskServiceProtocol { get }
+    func requestOpenIDToken() async -> Result<NitroOpenIDToken, ClientProxyError>
     func rawAccountData(eventType: String) async -> Result<String?, ClientProxyError>
     func setRawAccountData(eventType: String, content: String) async -> Result<Void, ClientProxyError>
-    func rawRoomStateEvents(roomID: String) async -> Result<[RoomStateEventProxy], ClientProxyError>
+    func emojiRoomStateEvents(roomID: String) async -> Result<[RoomStateEventProxy], ClientProxyError>
 }
 
 extension ClientProxy: NitroClientProxyProtocol { }
@@ -86,13 +90,14 @@ final class NitroClientAPI {
         }
     }
     
-    func rawRoomStateEvents(roomID: String) async -> Result<[RoomStateEventProxy], ClientProxyError> {
+    func emojiRoomStateEvents(roomID: String) async -> Result<[RoomStateEventProxy], ClientProxyError> {
         if let cachedEvents = await roomStateEventsCache.events(for: roomID) {
             return .success(cachedEvents)
         }
         
         do {
             let session = try client.session()
+            let ownUserID = try client.userId()
             guard let url = roomStateURL(homeserver: session.homeserverUrl, roomID: roomID) else {
                 return .failure(.invalidResponse)
             }
@@ -109,7 +114,9 @@ final class NitroClientAPI {
             
             switch response.statusCode {
             case 200:
-                let roomStateEvents = try await Self.decodeRoomStateEvents(data, roomID: roomID)
+                let roomStateEvents = try await Self.decodeEmojiRoomStateEvents(data,
+                                                                                roomID: roomID,
+                                                                                ownUserID: ownUserID)
                 await roomStateEventsCache.store(roomStateEvents, for: roomID)
                 return .success(roomStateEvents)
             case 403:
@@ -149,7 +156,9 @@ final class NitroClientAPI {
         return components.url
     }
     
-    @concurrent private static func decodeRoomStateEvents(_ data: Data, roomID: String) async throws -> [RoomStateEventProxy] {
+    @concurrent static func decodeEmojiRoomStateEvents(_ data: Data,
+                                                       roomID: String,
+                                                       ownUserID: String) async throws -> [RoomStateEventProxy] {
         try Task.checkCancellation()
         guard let events = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             throw ClientProxyError.invalidResponse
@@ -158,6 +167,8 @@ final class NitroClientAPI {
         return try events.compactMap { event in
             try Task.checkCancellation()
             guard let type = event["type"] as? String,
+                  let stateKey = event["state_key"] as? String,
+                  shouldKeepEmojiRoomStateEvent(type: type, stateKey: stateKey, ownUserID: ownUserID),
                   let content = event["content"] else {
                 return nil
             }
@@ -169,8 +180,21 @@ final class NitroClientAPI {
             
             return RoomStateEventProxy(roomID: roomID,
                                        type: type,
-                                       stateKey: event["state_key"] as? String ?? "",
+                                       stateKey: stateKey,
                                        content: contentString)
+        }
+    }
+    
+    private nonisolated static func shouldKeepEmojiRoomStateEvent(type: String,
+                                                                  stateKey: String,
+                                                                  ownUserID: String) -> Bool {
+        switch type {
+        case "m.room.image_pack", "im.ponies.room_emotes", "m.room.name", "m.space.parent":
+            true
+        case "m.room.member":
+            stateKey == ownUserID
+        default:
+            false
         }
     }
 }

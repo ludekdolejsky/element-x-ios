@@ -79,7 +79,7 @@ struct RoomScreen: View {
                 ]),
                 // This can overlay on top of the stacked banners
                 TopBannerLayer(knockRequestsBanner, isVisible: context.viewState.shouldSeeKnockRequests)
-            ], footer: dateBadge)
+            ], footer: dateBadge, usesCompositing: !timelineContext.viewState.topBannerCompositingDisabled)
             .safeAreaInset(edge: .top) {
                 // When VoiceOver is enabled the scroll gestures don't trigger, so the banner never
                 // hides itself and the .overlay layout above would permanently obscure the top of
@@ -307,11 +307,24 @@ struct RoomScreen: View {
             }
         }
         
-        if context.viewState.roomThreadListEnabled {
+        if context.viewState.shouldShowNitroTasksButton || context.viewState.roomThreadListEnabled {
             if #available(iOS 26, *) {
                 ToolbarSpacer(.fixed, placement: .primaryAction)
             }
-            
+        }
+        
+        if context.viewState.shouldShowNitroTasksButton {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    context.send(viewAction: .displayNitroTasks)
+                } label: {
+                    CompoundIcon(\.checkCircle)
+                }
+                .accessibilityLabel(UntranslatedL10n.screenNitroTasksTitleIos)
+            }
+        }
+        
+        if context.viewState.roomThreadListEnabled {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     context.send(viewAction: .displayThreadList)

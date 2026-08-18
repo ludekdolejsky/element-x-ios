@@ -248,6 +248,55 @@ struct RoomScopedEmojiProviderTests {
     }
     
     @Test
+    func limitsConcurrentGlobalRoomStateLoads() async throws {
+        let globalRoomIDs = (0..<6).map { "!global-\($0):example.org" }
+        let roomReferences = globalRoomIDs.map { "\"\($0)\":{}" }.joined(separator: ",")
+        let (startedRoomIDs, startedRoomIDsContinuation) = AsyncStream<String>.makeStream()
+        var startedRoomIDsIterator = startedRoomIDs.makeAsyncIterator()
+        var waiters = [String: CheckedContinuation<Void, Never>]()
+        var activeRoomStateLoads = 0
+        var maximumActiveRoomStateLoads = 0
+        let provider = RoomScopedEmojiProvider(roomID: currentRoomID,
+                                               userID: userID,
+                                               baseProvider: TestRoomEmojiProvider(categories: []),
+                                               accountDataProvider: { eventType in
+                                                   guard eventType == "m.image_pack.rooms" else { return .success(nil) }
+                                                   return .success(#"{"rooms":{\#(roomReferences)}}"#)
+                                               },
+                                               roomStateProvider: { roomID in
+                                                   guard roomID != currentRoomID else { return .success([]) }
+                                                   activeRoomStateLoads += 1
+                                                   maximumActiveRoomStateLoads = max(maximumActiveRoomStateLoads, activeRoomStateLoads)
+                                                   startedRoomIDsContinuation.yield(roomID)
+                                                   await withCheckedContinuation { waiters[roomID] = $0 }
+                                                   activeRoomStateLoads -= 1
+                                                   return .success([])
+                                               })
+        let loadTask = Task { await provider.customEmojis() }
+        
+        var firstBatch = [String]()
+        for _ in 0..<4 {
+            try firstBatch.append(#require(await startedRoomIDsIterator.next()))
+        }
+        #expect(activeRoomStateLoads == 4)
+        #expect(maximumActiveRoomStateLoads == 4)
+        
+        waiters.removeValue(forKey: firstBatch[0])?.resume()
+        _ = try #require(await startedRoomIDsIterator.next())
+        #expect(maximumActiveRoomStateLoads == 4)
+        
+        for roomID in Array(waiters.keys) {
+            waiters.removeValue(forKey: roomID)?.resume()
+        }
+        let finalRoomID = try #require(await startedRoomIDsIterator.next())
+        waiters.removeValue(forKey: finalRoomID)?.resume()
+        _ = await loadTask.value
+        startedRoomIDsContinuation.finish()
+        
+        #expect(maximumActiveRoomStateLoads == 4)
+    }
+    
+    @Test
     func ignoresUnjoinedSpaceAndInvalidOrStickerOnlyImages() async {
         let provider = makeProvider(roomStates: [
             currentRoomID: [

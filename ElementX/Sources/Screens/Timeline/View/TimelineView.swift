@@ -65,6 +65,9 @@ struct TimelineView: View {
             .sheet(item: $timelineContext.nitroReminderCreateViewModel,
                    onDismiss: { timelineContext.send(viewAction: .dismissNitroReminderCreate) },
                    content: { viewModel in NitroReminderCreateScreen(context: viewModel.context) })
+            .sheet(item: $timelineContext.nitroTaskCreateViewModel,
+                   onDismiss: { timelineContext.send(viewAction: .dismissNitroTaskCreate) },
+                   content: { viewModel in NitroTaskCreateScreen(context: viewModel.context) })
             .translationPresentation(isPresented: $timelineContext.showTranslation, text: timelineContext.textToBeTranslated ?? "")
             .onChange(of: timelineContext.showTranslation) { oldValue, newValue in
                 if oldValue, !newValue {
@@ -91,6 +94,9 @@ struct TimelineViewRepresentable: UIViewControllerRepresentable {
     
     func makeUIViewController(context: Context) -> TimelineTableViewController {
         TimelineTableViewController(coordinator: context.coordinator,
+                                    diagnosticsEnabled: viewModelContext.viewState.timelineDiagnosticsEnabled,
+                                    animationsDisabled: viewModelContext.viewState.timelineAnimationsDisabled,
+                                    bannerCompositingDisabled: viewModelContext.viewState.topBannerCompositingDisabled,
                                     isScrolledToBottom: $viewModelContext.isScrolledToBottom,
                                     isReadMarkerVisible: $viewModelContext.isReadMarkerVisible,
                                     hasNewMessagesAtBottom: $viewModelContext.hasNewMessagesAtBottom,
@@ -119,6 +125,8 @@ struct TimelineViewRepresentable: UIViewControllerRepresentable {
         
         /// Updates the specified table view's properties from the current view state.
         func update(tableViewController: TimelineTableViewController) {
+            updateDiagnosticsConfiguration(tableViewController)
+            
             if tableViewController.isSwitchingTimelines != context.viewState.timelineState.isSwitchingTimelines {
                 // Must come before timelineItemsDictionary in order to disable animations.
                 tableViewController.isSwitchingTimelines = context.viewState.timelineState.isSwitchingTimelines
@@ -144,6 +152,18 @@ struct TimelineViewRepresentable: UIViewControllerRepresentable {
             
             if tableViewController.typingMembers.members != context.viewState.typingMembers {
                 tableViewController.setTypingMembers(context.viewState.typingMembers)
+            }
+        }
+        
+        private func updateDiagnosticsConfiguration(_ tableViewController: TimelineTableViewController) {
+            if tableViewController.diagnosticsEnabled != context.viewState.timelineDiagnosticsEnabled {
+                tableViewController.diagnosticsEnabled = context.viewState.timelineDiagnosticsEnabled
+            }
+            if tableViewController.animationsDisabled != context.viewState.timelineAnimationsDisabled {
+                tableViewController.animationsDisabled = context.viewState.timelineAnimationsDisabled
+            }
+            if tableViewController.bannerCompositingDisabled != context.viewState.topBannerCompositingDisabled {
+                tableViewController.bannerCompositingDisabled = context.viewState.topBannerCompositingDisabled
             }
         }
         

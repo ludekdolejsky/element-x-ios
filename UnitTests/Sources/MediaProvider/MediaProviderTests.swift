@@ -68,6 +68,39 @@ struct MediaProviderTests {
     }
     
     @Test
+    func originalImageDataIsCached() async throws {
+        let expectedData = Data([0, 1, 2, 3])
+        let source = try MediaSourceProxy(url: .mockMXCAnimatedImage, mimeType: nil)
+        mediaLoader.loadMediaContentForSourceReturnValue = expectedData
+        
+        let firstResult = await mediaProvider.loadImageDataFromSource(source)
+        let secondResult = await mediaProvider.loadImageDataFromSource(source)
+        
+        #expect(firstResult == .success(expectedData))
+        #expect(secondResult == .success(expectedData))
+        #expect(mediaLoader.loadMediaContentForSourceCallsCount == 1)
+    }
+    
+    @Test
+    func originalImageDataLoadingRetriesOnReconnection() async throws {
+        let expectedData = Data([0, 1, 2, 3])
+        let source = try MediaSourceProxy(url: .mockMXCAnimatedImage, mimeType: nil)
+        reachabilitySubject.send(.unreachable)
+        mediaLoader.loadMediaContentForSourceClosure = { [reachabilitySubject] _ in
+            guard reachabilitySubject.value == .reachable else {
+                reachabilitySubject.send(.reachable)
+                throw MediaProviderTestsError.error
+            }
+            return expectedData
+        }
+        
+        let result = await mediaProvider.loadImageDataFromSource(source)
+        
+        #expect(result == .success(expectedData))
+        #expect(mediaLoader.loadMediaContentForSourceCallsCount == 2)
+    }
+    
+    @Test
     func whenImageFromSourceWithSourceNil_nilReturned() {
         let image = mediaProvider.imageFromSource(nil, size: Avatars.Size.room(on: .timeline).scaledSize)
         #expect(image == nil)

@@ -28,6 +28,8 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
         static let cacheLifetime: TimeInterval = 5 * 60
         static let failureRetryDelay: TimeInterval = 30
         static let maximumSpaceHierarchyDepth = 5
+        static let maximumGlobalPackRoomCount = 64
+        static let maximumConcurrentRoomStateRequests = 4
         static let globalPackPriority = 0
         static let currentRoomPackPriority = 1
         static let recentEmojiDisplayLimit = 24
@@ -331,16 +333,14 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
         async let legacyContent = loadAccountData(eventType: Constants.legacyGlobalImagePackEventType)
         let accountData = await [(Constants.stableGlobalImagePackEventType, stableContent),
                                  (Constants.legacyGlobalImagePackEventType, legacyContent)]
-        let referencedRoomIDs = Set(accountData.flatMap { _, content in
+        let allReferencedRoomIDs = Set(accountData.flatMap { _, content in
             content.flatMap { decode(GlobalPackRoomsContent.self, from: $0).map { Array($0.rooms.keys) } } ?? []
         })
-        let roomStateTasks = referencedRoomIDs.sorted().map { referencedRoomID in
-            (referencedRoomID, Task { await loadRoomState(roomID: referencedRoomID, isOptional: true) })
+        let referencedRoomIDs = Array(allReferencedRoomIDs.sorted().prefix(Constants.maximumGlobalPackRoomCount))
+        if allReferencedRoomIDs.count > referencedRoomIDs.count {
+            MXLog.error("Ignoring global image-pack rooms above the supported limit of \(Constants.maximumGlobalPackRoomCount)")
         }
-        var roomStateCache = [String: [RoomStateEventProxy]]()
-        for (referencedRoomID, task) in roomStateTasks {
-            roomStateCache[referencedRoomID] = await task.value
-        }
+        let roomStateCache = await loadRoomStates(roomIDs: referencedRoomIDs)
         
         var sources = [PackSource]()
         var seenPacks = Set<PackIdentity>()
@@ -372,6 +372,31 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
         }
         
         return sources
+    }
+    
+    private func loadRoomStates(roomIDs: [String]) async -> [String: [RoomStateEventProxy]] {
+        await withTaskGroup(of: (String, [RoomStateEventProxy]).self) { group in
+            var roomIDIterator = roomIDs.makeIterator()
+            for _ in 0..<Constants.maximumConcurrentRoomStateRequests {
+                guard let roomID = roomIDIterator.next() else { break }
+                group.addTask {
+                    await (roomID, self.loadRoomState(roomID: roomID, isOptional: true))
+                }
+            }
+            
+            var roomStates = [String: [RoomStateEventProxy]]()
+            while let (roomID, events) = await group.next() {
+                roomStates[roomID] = events
+                guard !Task.isCancelled,
+                      let nextRoomID = roomIDIterator.next() else {
+                    continue
+                }
+                group.addTask {
+                    await (nextRoomID, self.loadRoomState(roomID: nextRoomID, isOptional: true))
+                }
+            }
+            return roomStates
+        }
     }
     
     private func parentSpacePackSources(childRoomEvents: [RoomStateEventProxy],
@@ -541,7 +566,10 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
     }
     
     private func loadRoomState(roomID: String, isOptional: Bool = false) async -> [RoomStateEventProxy] {
-        switch await roomStateProvider(roomID) {
+        guard !Task.isCancelled else { return [] }
+        let result = await roomStateProvider(roomID)
+        guard !Task.isCancelled else { return [] }
+        switch result {
         case .success(let events):
             return events
         case .failure(let error):

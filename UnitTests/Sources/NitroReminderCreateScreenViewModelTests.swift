@@ -15,7 +15,7 @@ struct NitroReminderCreateScreenViewModelTests {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let roomProxy = JoinedRoomProxyMock(.init(id: "!room:example.org", name: "Nitro team"))
         roomProxy.matrixToEventPermalinkReturnValue = .success("https://matrix.to/#/!room:example.org/$event:example.org")
-        let clientProxy = ClientProxyMock(.init(homeserver: "https://matrix.example.org"))
+        let clientProxy = NitroClientProxyMock(homeserver: "https://matrix.example.org")
         clientProxy.requestOpenIDTokenReturnValue = .success(.init(accessToken: "secret-token",
                                                                    tokenType: "Bearer",
                                                                    matrixServerName: "example.org"))
@@ -51,7 +51,7 @@ struct NitroReminderCreateScreenViewModelTests {
     @Test
     func rejectsPastCustomDate() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let clientProxy = ClientProxyMock(.init(homeserver: "https://matrix.example.org"))
+        let clientProxy = NitroClientProxyMock(homeserver: "https://matrix.example.org")
         let reminderService = NitroReminderServiceMock()
         let viewModel = NitroReminderCreateScreenViewModel(eventID: "$event:example.org",
                                                            threadRootID: nil,

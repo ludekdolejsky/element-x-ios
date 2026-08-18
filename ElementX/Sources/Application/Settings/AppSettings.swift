@@ -446,6 +446,15 @@ final nonisolated class AppSettings: @unchecked Sendable {
     var jumpToReadMarkerEnabled: Bool
     
     @UserPreference(defaultValue: false)
+    var timelineDiagnosticsEnabled: Bool
+    
+    @UserPreference(defaultValue: false)
+    var timelineAnimationsDisabled: Bool
+    
+    @UserPreference(defaultValue: false)
+    var topBannerCompositingDisabled: Bool
+    
+    @UserPreference(defaultValue: false)
     var linkNewDeviceEnabled: Bool
     
     @UserPreference(defaultValue: false)

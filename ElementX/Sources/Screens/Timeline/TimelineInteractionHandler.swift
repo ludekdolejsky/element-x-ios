@@ -30,6 +30,7 @@ enum TimelineInteractionHandlerAction {
     case requestNitroAudioTranscriptionConsent(NitroAudioTranscriptionRequest)
     case showNitroTranscript(NitroTranscriptInfo)
     case showNitroReminderCreate(NitroReminderCreateScreenViewModel)
+    case showNitroTaskCreate(NitroTaskCreateScreenViewModel)
 }
 
 /// The interaction handler groups logic for dealing with various actions the user can take on a timeline's
@@ -48,22 +49,32 @@ class TimelineInteractionHandler {
     private let linkMetadataProvider: LinkMetadataProviderProtocol
     private let timelineControllerFactory: TimelineControllerFactoryProtocol
     private let pollInteractionHandler: PollInteractionHandlerProtocol
-    private let nitroTranscriptionService: NitroTranscriptionServiceProtocol
-    private let nitroReminderService: NitroReminderServiceProtocol
-    private lazy var nitroActionHandler = NitroTimelineActionHandler(roomProxy: roomProxy,
-                                                                     timelineController: timelineController,
-                                                                     userSession: userSession,
-                                                                     voiceMessageRecorder: voiceMessageRecorder,
-                                                                     userIndicatorController: userIndicatorController,
-                                                                     appSettings: appSettings,
-                                                                     transcriptionService: nitroTranscriptionService,
-                                                                     reminderService: nitroReminderService,
-                                                                     sendAction: { [weak self] action in
-                                                                         self?.actionsSubject.send(action)
-                                                                     },
-                                                                     didFinishCurrentVoiceMessage: { [weak self] in
-                                                                         self?.voiceMessageRecorderObserver = nil
-                                                                     })
+    private let nitroClientProxy: NitroClientProxyProtocol?
+    private let nitroTranscriptionService: NitroTranscriptionServiceProtocol?
+    private let nitroReminderService: NitroReminderServiceProtocol?
+    private lazy var nitroActionHandler: NitroTimelineActionHandler? = {
+        guard NitroConfiguration.isEnabled,
+              let clientProxy = nitroClientProxy ?? userSession.clientProxy as? NitroClientProxyProtocol,
+              let transcriptionService = nitroTranscriptionService ?? appSettings.nitroTranscriptionBaseURL.map({ NitroTranscriptionService(baseURL: $0) }),
+              let reminderService = nitroReminderService ?? appSettings.nitroReminderBaseURL.map({ NitroReminderService(baseURL: $0) }) else {
+            return nil
+        }
+        return NitroTimelineActionHandler(roomProxy: roomProxy,
+                                          timelineController: timelineController,
+                                          userSession: userSession,
+                                          clientProxy: clientProxy,
+                                          voiceMessageRecorder: voiceMessageRecorder,
+                                          userIndicatorController: userIndicatorController,
+                                          appSettings: appSettings,
+                                          transcriptionService: transcriptionService,
+                                          reminderService: reminderService,
+                                          sendAction: { [weak self] action in
+                                              self?.actionsSubject.send(action)
+                                          },
+                                          didFinishCurrentVoiceMessage: { [weak self] in
+                                              self?.voiceMessageRecorderObserver = nil
+                                          })
+    }()
     
     private let actionsSubject: PassthroughSubject<TimelineInteractionHandlerAction, Never> = .init()
     var actions: AnyPublisher<TimelineInteractionHandlerAction, Never> {
@@ -92,6 +103,7 @@ class TimelineInteractionHandler {
          emojiProvider: EmojiProviderProtocol,
          linkMetadataProvider: LinkMetadataProviderProtocol,
          timelineControllerFactory: TimelineControllerFactoryProtocol,
+         nitroClientProxy: NitroClientProxyProtocol? = nil,
          nitroTranscriptionService: NitroTranscriptionServiceProtocol? = nil,
          nitroReminderService: NitroReminderServiceProtocol? = nil) {
         self.roomProxy = roomProxy
@@ -106,8 +118,9 @@ class TimelineInteractionHandler {
         self.emojiProvider = emojiProvider
         self.linkMetadataProvider = linkMetadataProvider
         self.timelineControllerFactory = timelineControllerFactory
-        self.nitroTranscriptionService = nitroTranscriptionService ?? NitroTranscriptionService(baseURL: appSettings.nitroTranscriptionBaseURL)
-        self.nitroReminderService = nitroReminderService ?? NitroReminderService(baseURL: appSettings.nitroReminderBaseURL)
+        self.nitroClientProxy = nitroClientProxy
+        self.nitroTranscriptionService = nitroTranscriptionService
+        self.nitroReminderService = nitroReminderService
         
         pollInteractionHandler = PollInteractionHandler(analyticsService: analyticsService,
                                                         timelineController: timelineController)
@@ -147,6 +160,12 @@ class TimelineInteractionHandler {
         case .copy:
             guard let messageTimelineItem = timelineItem as? EventBasedMessageTimelineItemProtocol else { return }
             UIPasteboard.general.string = messageTimelineItem.body
+        case .copyAsMarkdown:
+            guard let messageTimelineItem = timelineItem as? EventBasedMessageTimelineItemProtocol else { return }
+            UIPasteboard.general.string = NitroMessageCopyFormatter.markdown(for: messageTimelineItem)
+        case .copyAsHTML:
+            guard let messageTimelineItem = timelineItem as? EventBasedMessageTimelineItemProtocol else { return }
+            UIPasteboard.general.string = NitroMessageCopyFormatter.html(for: messageTimelineItem)
         case .copyCaption:
             guard let messageTimelineItem = timelineItem as? EventBasedMessageTimelineItemProtocol,
                   let caption = messageTimelineItem.mediaCaption else {
@@ -228,13 +247,15 @@ class TimelineInteractionHandler {
             actionsSubject.send(.viewInRoomTimeline(eventID: eventID))
         case .downloadMedia:
             break // Handled inline in the media preview screen.
+        case .addTask:
+            nitroActionHandler?.presentTaskCreate(for: eventTimelineItem)
         case .remindMe:
-            nitroActionHandler.presentReminderCreate(for: eventTimelineItem)
+            nitroActionHandler?.presentReminderCreate(for: eventTimelineItem)
         case .translate:
             guard let messageTimelineItem = timelineItem as? EventBasedMessageTimelineItemProtocol else { return }
             actionsSubject.send(.showTranslation(text: messageTimelineItem.body))
         case .transcribeAudio, .transcribeAudioToThread:
-            nitroActionHandler.transcribeTimelineAudio(itemID: itemID, sendToThread: action == .transcribeAudioToThread)
+            nitroActionHandler?.transcribeTimelineAudio(itemID: itemID, sendToThread: action == .transcribeAudioToThread)
         }
         
         if action.switchToDefaultComposer {
@@ -421,19 +442,19 @@ class TimelineInteractionHandler {
     }
     
     func transcribeCurrentVoiceMessage() {
-        nitroActionHandler.transcribeCurrentVoiceMessage()
+        nitroActionHandler?.transcribeCurrentVoiceMessage()
     }
     
     func confirmAudioTranscription(_ request: NitroAudioTranscriptionRequest) {
-        nitroActionHandler.confirmAudioTranscription(request)
+        nitroActionHandler?.confirmAudioTranscription(request)
     }
     
     func cancelTranscription() {
-        nitroActionHandler.cancelAll()
+        nitroActionHandler?.cancelAll()
     }
     
     func sendTranscriptToThread(_ info: NitroTranscriptInfo) async {
-        await nitroActionHandler.sendTranscriptToThread(info)
+        await nitroActionHandler?.sendTranscriptToThread(info)
     }
     
     func startPlayingRecordedVoiceMessage() async {

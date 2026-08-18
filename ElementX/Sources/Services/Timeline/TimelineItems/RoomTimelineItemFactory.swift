@@ -762,7 +762,7 @@ nonisolated struct RoomTimelineItemFactory: RoomTimelineItemFactoryProtocol {
         let htmlBody = messageContent.formatted?.format == .html ? messageContent.formatted?.body : nil
         let formattedBody = (htmlBody != nil ? attributedStringBuilder.fromHTML(htmlBody, customEmojiFallbackBody: messageContent.body) : attributedStringBuilder.fromPlain(messageContent.body))
         
-        return .init(body: messageContent.body, formattedBody: formattedBody)
+        return .init(body: messageContent.body, formattedBody: formattedBody, formattedBodyHTMLString: htmlBody)
     }
     
     private func buildEmoteTimelineItemContent(senderDisplayName: String?, senderID: String, messageContent: EmoteMessageContent) -> EmoteRoomTimelineItemContent {

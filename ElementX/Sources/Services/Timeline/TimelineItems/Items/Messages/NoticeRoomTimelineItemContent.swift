@@ -11,4 +11,5 @@ import UIKit
 nonisolated struct NoticeRoomTimelineItemContent: Hashable {
     let body: String
     var formattedBody: AttributedString?
+    var formattedBodyHTMLString: String?
 }

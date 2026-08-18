@@ -19,6 +19,7 @@ class ClientProxy: ClientProxyProtocol {
     private let appSettings: AppSettings
     private let analyticsService: AnalyticsServiceProtocol
     private lazy var nitroClientAPI = NitroClientAPI(client: client)
+    private(set) lazy var nitroTaskService: NitroTaskServiceProtocol = NitroTaskService(client: client)
     
     let mediaLoader: MediaLoaderProtocol
     let contentScanner: ContentScannerProxyProtocol?
@@ -441,8 +442,8 @@ class ClientProxy: ClientProxyProtocol {
         await nitroClientAPI.setRawAccountData(eventType: eventType, content: content)
     }
     
-    func rawRoomStateEvents(roomID: String) async -> Result<[RoomStateEventProxy], ClientProxyError> {
-        await nitroClientAPI.rawRoomStateEvents(roomID: roomID)
+    func emojiRoomStateEvents(roomID: String) async -> Result<[RoomStateEventProxy], ClientProxyError> {
+        await nitroClientAPI.emojiRoomStateEvents(roomID: roomID)
     }
     
     func resumeServices() async {

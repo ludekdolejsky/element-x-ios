@@ -10,14 +10,30 @@ import Foundation
 // swiftlint:disable explicit_type_interface function_parameter_count identifier_name line_length
 // swiftlint:disable nesting type_body_length type_name vertical_whitespace_opening_braces
 internal nonisolated enum UntranslatedL10n {
+  /// Add task
+  internal static var actionAddNitroTaskIos: String { return UntranslatedL10n.tr("Untranslated", "action_add_nitro_task_ios") }
+  /// Archive
+  internal static var actionArchiveNitroTaskIos: String { return UntranslatedL10n.tr("Untranslated", "action_archive_nitro_task_ios") }
+  /// Copy as HTML
+  internal static var actionCopyAsHtmlIos: String { return UntranslatedL10n.tr("Untranslated", "action_copy_as_html_ios") }
+  /// Copy as Markdown
+  internal static var actionCopyAsMarkdownIos: String { return UntranslatedL10n.tr("Untranslated", "action_copy_as_markdown_ios") }
+  /// New task
+  internal static var actionCreateNitroTaskIos: String { return UntranslatedL10n.tr("Untranslated", "action_create_nitro_task_ios") }
   /// Edit time
   internal static var actionEditTimeIos: String { return UntranslatedL10n.tr("Untranslated", "action_edit_time_ios") }
   /// Open
   internal static var actionOpenIos: String { return UntranslatedL10n.tr("Untranslated", "action_open_ios") }
+  /// Open in room
+  internal static var actionOpenNitroTaskInRoomIos: String { return UntranslatedL10n.tr("Untranslated", "action_open_nitro_task_in_room_ios") }
+  /// Open source message
+  internal static var actionOpenNitroTaskSourceIos: String { return UntranslatedL10n.tr("Untranslated", "action_open_nitro_task_source_ios") }
   /// Refresh
   internal static var actionRefreshIos: String { return UntranslatedL10n.tr("Untranslated", "action_refresh_ios") }
   /// Remind me…
   internal static var actionRemindMeIos: String { return UntranslatedL10n.tr("Untranslated", "action_remind_me_ios") }
+  /// Reopen
+  internal static var actionReopenNitroTaskIos: String { return UntranslatedL10n.tr("Untranslated", "action_reopen_nitro_task_ios") }
   /// Send transcript to thread
   internal static var actionSendTranscriptToThreadIos: String { return UntranslatedL10n.tr("Untranslated", "action_send_transcript_to_thread_ios") }
   /// Set reminder
@@ -28,12 +44,16 @@ internal nonisolated enum UntranslatedL10n {
   internal static var actionSnooze24HoursIos: String { return UntranslatedL10n.tr("Untranslated", "action_snooze_24_hours_ios") }
   /// Snooze 1 week
   internal static var actionSnoozeOneWeekIos: String { return UntranslatedL10n.tr("Untranslated", "action_snooze_one_week_ios") }
+  /// Start
+  internal static var actionStartNitroTaskIos: String { return UntranslatedL10n.tr("Untranslated", "action_start_nitro_task_ios") }
   /// Transcribe & insert
   internal static var actionTranscribeAndInsertIos: String { return UntranslatedL10n.tr("Untranslated", "action_transcribe_and_insert_ios") }
   /// Transcribe audio
   internal static var actionTranscribeAudioIos: String { return UntranslatedL10n.tr("Untranslated", "action_transcribe_audio_ios") }
   /// Transcribe & reply to thread
   internal static var actionTranscribeAudioToThreadIos: String { return UntranslatedL10n.tr("Untranslated", "action_transcribe_audio_to_thread_ios") }
+  /// Task created
+  internal static var commonNitroTaskCreatedIos: String { return UntranslatedL10n.tr("Untranslated", "common_nitro_task_created_ios") }
   /// Reminder set
   internal static var commonReminderSetIos: String { return UntranslatedL10n.tr("Untranslated", "common_reminder_set_ios") }
   /// Transcribing audio…
@@ -44,12 +64,22 @@ internal nonisolated enum UntranslatedL10n {
   internal static var customEmojiMediaWarningTitle: String { return UntranslatedL10n.tr("Untranslated", "custom_emoji_media_warning_title") }
   /// Audio transcription failed.
   internal static var errorAudioTranscriptionFailedIos: String { return UntranslatedL10n.tr("Untranslated", "error_audio_transcription_failed_ios") }
+  /// The task request failed. Refresh Tasks and try again.
+  internal static var errorNitroTaskRequestFailedIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_task_request_failed_ios") }
   /// The reminder request failed. Try again.
   internal static var errorReminderRequestFailedIos: String { return UntranslatedL10n.tr("Untranslated", "error_reminder_request_failed_ios") }
   /// Choose a future date and time.
   internal static var errorReminderTimeInPastIos: String { return UntranslatedL10n.tr("Untranslated", "error_reminder_time_in_past_ios") }
   /// Audio transcript
   internal static var screenAudioTranscriptTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_audio_transcript_title_ios") }
+  /// Disable timeline animations
+  internal static var screenDeveloperOptionsDisableTimelineAnimationsIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_disable_timeline_animations_ios") }
+  /// Disable top banner compositing
+  internal static var screenDeveloperOptionsDisableTopBannerCompositingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_disable_top_banner_compositing_ios") }
+  /// Shows a status overlay and records rendering state in bug report logs.
+  internal static var screenDeveloperOptionsTimelineDiagnosticsHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_timeline_diagnostics_hint_ios") }
+  /// Timeline diagnostics
+  internal static var screenDeveloperOptionsTimelineDiagnosticsIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_timeline_diagnostics_ios") }
   /// Search
   internal static var screenHomeTabSearch: String { return UntranslatedL10n.tr("Untranslated", "screen_home_tab_search") }
   /// Choose a quick reminder or set an exact local date and time.
@@ -108,6 +138,52 @@ internal nonisolated enum UntranslatedL10n {
   internal static var screenNitroRemindersTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_title_ios") }
   /// Upcoming
   internal static var screenNitroRemindersUpcomingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_upcoming_ios") }
+  /// Assignee
+  internal static var screenNitroTaskAssigneeIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_assignee_ios") }
+  /// New task
+  internal static var screenNitroTaskCreateTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_create_title_ios") }
+  /// Created
+  internal static var screenNitroTaskCreatedIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_created_ios") }
+  /// Description
+  internal static var screenNitroTaskDescriptionIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_description_ios") }
+  /// Task details
+  internal static var screenNitroTaskDetailsTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_details_title_ios") }
+  /// Room
+  internal static var screenNitroTaskRoomIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_room_ios") }
+  /// Current state unavailable
+  internal static var screenNitroTaskStateUnavailableIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_state_unavailable_ios") }
+  /// Done
+  internal static var screenNitroTaskStatusDoneIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_status_done_ios") }
+  /// In progress
+  internal static var screenNitroTaskStatusInProgressIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_status_in_progress_ios") }
+  /// Status
+  internal static var screenNitroTaskStatusIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_status_ios") }
+  /// To do
+  internal static var screenNitroTaskStatusTodoIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_status_todo_ios") }
+  /// Task title
+  internal static var screenNitroTaskTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_title_ios") }
+  /// Unassigned
+  internal static var screenNitroTaskUnassignedIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_unassigned_ios") }
+  /// Updated
+  internal static var screenNitroTaskUpdatedIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_updated_ios") }
+  /// All rooms
+  internal static var screenNitroTasksAllRoomsIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_all_rooms_ios") }
+  /// No tasks in this column.
+  internal static var screenNitroTasksColumnEmptyIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_column_empty_ios") }
+  /// Create a task here or from any message.
+  internal static var screenNitroTasksEmptyMessageIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_empty_message_ios") }
+  /// No active tasks
+  internal static var screenNitroTasksEmptyTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_empty_title_ios") }
+  /// Filter by room
+  internal static var screenNitroTasksFilterRoomIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_filter_room_ios") }
+  /// Some older tasks could not be loaded.
+  internal static var screenNitroTasksLoadingOlderFailedIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_loading_older_failed_ios") }
+  /// Loading older tasks…
+  internal static var screenNitroTasksLoadingOlderIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_loading_older_ios") }
+  /// Tasks
+  internal static var screenNitroTasksTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_title_ios") }
+  /// Some task state could not be loaded. Refresh before changing those tasks.
+  internal static var screenNitroTasksUnavailableMessageIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_unavailable_message_ios") }
   /// Custom emoji
   internal static var screenRoomAttachmentSourceCustomEmoji: String { return UntranslatedL10n.tr("Untranslated", "screen_room_attachment_source_custom_emoji") }
   /// A decrypted copy of this audio will be sent to Nitrovery’s transcription service for processing.
