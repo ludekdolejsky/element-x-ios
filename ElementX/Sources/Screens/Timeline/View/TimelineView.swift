@@ -16,7 +16,8 @@ struct TimelineView: View {
     
     var body: some View {
         TimelineViewRepresentable()
-            .id(timelineContext.viewState.roomID)
+            .id(TimelineViewIdentity(roomID: timelineContext.viewState.roomID,
+                                     rebuildRequestID: timelineContext.viewState.timelineViewRebuildRequestID))
             // It is tempting to inject these environment values last to avoid also injecting them into the sheets,
             // and that approach works great on iOS. But it doesn't work on macOS (as of 15.5) where the app goes 💥
             .environmentObject(timelineContext)
@@ -97,6 +98,8 @@ struct TimelineViewRepresentable: UIViewControllerRepresentable {
                                     diagnosticsEnabled: viewModelContext.viewState.timelineDiagnosticsEnabled,
                                     animationsDisabled: viewModelContext.viewState.timelineAnimationsDisabled,
                                     bannerCompositingDisabled: viewModelContext.viewState.topBannerCompositingDisabled,
+                                    cellReloadRequestID: viewModelContext.viewState.timelineCellReloadRequestID,
+                                    viewRebuildRequestID: viewModelContext.viewState.timelineViewRebuildRequestID,
                                     isScrolledToBottom: $viewModelContext.isScrolledToBottom,
                                     isReadMarkerVisible: $viewModelContext.isReadMarkerVisible,
                                     hasNewMessagesAtBottom: $viewModelContext.hasNewMessagesAtBottom,
@@ -165,12 +168,20 @@ struct TimelineViewRepresentable: UIViewControllerRepresentable {
             if tableViewController.bannerCompositingDisabled != context.viewState.topBannerCompositingDisabled {
                 tableViewController.bannerCompositingDisabled = context.viewState.topBannerCompositingDisabled
             }
+            if tableViewController.cellReloadRequestID != context.viewState.timelineCellReloadRequestID {
+                tableViewController.cellReloadRequestID = context.viewState.timelineCellReloadRequestID
+            }
         }
         
         func send(viewAction: TimelineViewAction) {
             context.send(viewAction: viewAction)
         }
     }
+}
+
+private struct TimelineViewIdentity: Hashable {
+    let roomID: String
+    let rebuildRequestID: Int
 }
 
 // MARK: - Previews

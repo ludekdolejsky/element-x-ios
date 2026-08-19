@@ -16,7 +16,7 @@ import SwiftUI
 /// to be configured to display a SwiftUI view and not use any UIKit.
 class TimelineItemCell: UITableViewCell {
     static let reuseIdentifier = "TimelineItemCell"
-    
+
     var item: RoomTimelineItemViewState?
     
     override func prepareForReuse() {
@@ -186,6 +186,13 @@ class TimelineTableViewController: UIViewController {
         }
     }
     
+    var cellReloadRequestID: Int {
+        didSet {
+            guard cellReloadRequestID != oldValue else { return }
+            forceReloadTimelineCells()
+        }
+    }
+
     /// A publisher used to throttle back pagination requests.
     ///
     /// Our view actions get wrapped in a `Task` so it is possible that a second call in
@@ -204,6 +211,8 @@ class TimelineTableViewController: UIViewController {
          diagnosticsEnabled: Bool,
          animationsDisabled: Bool,
          bannerCompositingDisabled: Bool,
+         cellReloadRequestID: Int,
+         viewRebuildRequestID: Int,
          isScrolledToBottom: Binding<Bool>,
          isReadMarkerVisible: Binding<Bool>,
          hasNewMessagesAtBottom: Binding<Bool>,
@@ -215,15 +224,19 @@ class TimelineTableViewController: UIViewController {
         self.diagnosticsEnabled = diagnosticsEnabled
         self.animationsDisabled = animationsDisabled
         self.bannerCompositingDisabled = bannerCompositingDisabled
+        self.cellReloadRequestID = cellReloadRequestID
         _isScrolledToBottom = isScrolledToBottom
         _isReadMarkerVisible = isReadMarkerVisible
         _hasNewMessagesAtBottom = hasNewMessagesAtBottom
         _floatingDate = floatingDate
-        
+
         super.init(nibName: nil, bundle: nil)
         
         diagnostics.animationsDisabled = animationsDisabled
         diagnostics.bannerCompositingDisabled = bannerCompositingDisabled
+        if diagnosticsEnabled, viewRebuildRequestID > 0 {
+            MXLog.info("TimelineDiagnostics rebuild timeline view request=\(viewRebuildRequestID)")
+        }
         
         tableView.register(TimelineItemCell.self, forCellReuseIdentifier: TimelineItemCell.reuseIdentifier)
         tableView.register(TimelineTypingIndicatorCell.self, forCellReuseIdentifier: TimelineTypingIndicatorCell.reuseIdentifier)
@@ -281,7 +294,7 @@ class TimelineTableViewController: UIViewController {
         
         configureDataSource()
     }
-    
+
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not available.")
@@ -439,6 +452,20 @@ class TimelineTableViewController: UIViewController {
         }
     }
     
+    private func forceReloadTimelineCells() {
+        guard let dataSource else {
+            MXLog.info("TimelineDiagnostics force reload skipped dataSource=unavailable request=\(cellReloadRequestID)")
+            return
+        }
+
+        let snapshot = dataSource.snapshot()
+        MXLog.info("TimelineDiagnostics force reload request=\(cellReloadRequestID) items=\(snapshot.numberOfMainItems)")
+        dataSource.applySnapshotUsingReloadData(snapshot)
+        tableView.setNeedsLayout()
+        tableView.layoutIfNeeded()
+        diagnostics.recordManualAction("force reload request=\(cellReloadRequestID)")
+    }
+
     /// Scrolls to the newest item in the timeline.
     private func scrollToNewestItem(animated: Bool) {
         guard !timelineItemsIDs.isEmpty else {

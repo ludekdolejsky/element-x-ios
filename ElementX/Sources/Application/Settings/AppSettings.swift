@@ -19,14 +19,14 @@ import SwiftUI
 nonisolated protocol CommonSettingsProtocol: AnyObject, Sendable {
     var lastNotificationBootTime: TimeInterval? { get set }
     var selectedNotificationTone: NotificationTone? { get set }
-    
+
     var logLevel: LogLevel { get }
     var traceLogPacks: Set<TraceLogPack> { get }
     var bugReportRageshakeURL: RemotePreference<RageshakeConfiguration> { get }
     var contentScannerURL: RemotePreference<URL?> { get }
     var forceDisableE2EE: RemotePreference<Bool> { get }
     var mapTilerConfiguration: RemotePreference<MapTilerConfiguration> { get }
-    
+
     var enableOnlySignedDeviceIsolationMode: Bool { get }
     var threadsEnabled: Bool { get }
     var hideQuietNotificationAlerts: Bool { get }
@@ -454,6 +454,12 @@ final nonisolated class AppSettings: @unchecked Sendable {
     @UserPreference(defaultValue: false)
     var topBannerCompositingDisabled: Bool
     
+    @UserPreference(defaultValue: 0)
+    var timelineCellReloadRequestID: Int
+
+    @UserPreference(defaultValue: 0)
+    var timelineViewRebuildRequestID: Int
+
     @UserPreference(defaultValue: false)
     var linkNewDeviceEnabled: Bool
     

@@ -76,6 +76,10 @@ internal nonisolated enum UntranslatedL10n {
   internal static var screenDeveloperOptionsDisableTimelineAnimationsIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_disable_timeline_animations_ios") }
   /// Disable top banner compositing
   internal static var screenDeveloperOptionsDisableTopBannerCompositingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_disable_top_banner_compositing_ios") }
+  /// Force reload timeline cells
+  internal static var screenDeveloperOptionsForceReloadTimelineCellsIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_force_reload_timeline_cells_ios") }
+  /// Rebuild timeline view
+  internal static var screenDeveloperOptionsRebuildTimelineViewIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_rebuild_timeline_view_ios") }
   /// Shows a status overlay and records rendering state in bug report logs.
   internal static var screenDeveloperOptionsTimelineDiagnosticsHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_timeline_diagnostics_hint_ios") }
   /// Timeline diagnostics

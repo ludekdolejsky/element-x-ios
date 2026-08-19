@@ -47,6 +47,8 @@ struct DeveloperOptionsScreenViewStateBindings {
 enum DeveloperOptionsScreenViewAction {
     case clearCache
     case markAllRoomsAsRead
+    case forceReloadTimelineCells
+    case rebuildTimelineView
 }
 
 protocol DeveloperOptionsProtocol: AnyObject {
@@ -74,6 +76,8 @@ protocol DeveloperOptionsProtocol: AnyObject {
     var timelineDiagnosticsEnabled: Bool { get set }
     var timelineAnimationsDisabled: Bool { get set }
     var topBannerCompositingDisabled: Bool { get set }
+    var timelineCellReloadRequestID: Int { get set }
+    var timelineViewRebuildRequestID: Int { get set }
     
     var linkNewDeviceEnabled: Bool { get set }
     var userStatusEnabled: Bool { get set }

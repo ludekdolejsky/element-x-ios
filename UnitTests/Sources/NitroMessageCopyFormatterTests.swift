@@ -8,6 +8,8 @@
 @testable import ElementX
 import Foundation
 import Testing
+import UIKit
+import UniformTypeIdentifiers
 
 struct NitroMessageCopyFormatterTests {
     @Test
@@ -24,6 +26,52 @@ struct NitroMessageCopyFormatterTests {
         #expect(NitroMessageCopyFormatter.html(for: item) == html)
     }
     
+    @Test
+    func providesRichAndPlainRepresentationsForCopy() {
+        let html = "<strong>Hello</strong>"
+        let item = textItem(body: "Hello", html: html)
+        let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .text)
+
+        #expect(representations == [
+            UTType.utf8PlainText.identifier: "Hello",
+            UTType.html.identifier: html,
+            NitroMessageCopyFormatter.formattedHTMLPasteboardType: html
+        ])
+    }
+
+    @Test
+    func providesSourceTextOnlyForExplicitFormats() {
+        let html = "<strong>Hello</strong>"
+        let item = textItem(body: "Hello", html: html)
+
+        #expect(NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .markdown) == [
+            UTType.utf8PlainText.identifier: "__Hello__",
+            NitroMessageCopyFormatter.markdownPasteboardType: "__Hello__"
+        ])
+        #expect(NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .html) == [
+            UTType.utf8PlainText.identifier: html
+        ])
+    }
+
+    @Test
+    func omitsHTMLRepresentationForPlainMessages() {
+        let item = textItem(body: "2 < 3", html: nil)
+
+        #expect(NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .text) == [
+            UTType.utf8PlainText.identifier: "2 < 3"
+        ])
+    }
+
+    @Test
+    func readsRichPasteContent() {
+        let item = textItem(body: "Hello", html: "<strong>Hello</strong>")
+        let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .text)
+        UIPasteboard.general.setItems([representations.mapValues { $0 as Any }])
+        defer { UIPasteboard.general.items = [] }
+
+        #expect(NitroMessageCopyFormatter.richPasteContent(from: .general) == .html("<strong>Hello</strong>", plainText: "Hello"))
+    }
+
     @Test
     func fallsBackToPlainBody() {
         let item = textItem(body: "Hello", html: nil)

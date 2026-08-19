@@ -57,7 +57,8 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
          appSettings: AppSettings,
          analyticsService: AnalyticsServiceProtocol,
          composerDraftService: ComposerDraftServiceProtocol,
-         emojiProvider: EmojiProviderProtocol? = nil) {
+         emojiProvider: EmojiProviderProtocol? = nil,
+         nitroTasksEnabled: Bool = false) {
         self.initialText = initialText
         self.wysiwygViewModel = wysiwygViewModel
         self.completionSuggestionService = completionSuggestionService
@@ -66,13 +67,16 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
         draftService = composerDraftService
         self.emojiProvider = emojiProvider
         self.appSettings = appSettings
+        let roomInfo = roomProxy.infoPublisher.value
         
         mentionBuilder = MentionBuilder()
         attributedStringBuilder = AttributedStringBuilder(cacheKey: "Composer", mentionBuilder: mentionBuilder)
         
         super.init(initialViewState: ComposerToolbarViewState(wysiwygViewModel: wysiwygViewModel,
-                                                              isRoomEncrypted: roomProxy.infoPublisher.value.isEncrypted,
+                                                              isRoomEncrypted: roomInfo.isEncrypted,
                                                               isLocationSharingEnabled: appSettings.mapTilerConfiguration.publisher.value.isEnabled,
+                                                              canCreateNitroTask: Self.canCreateNitroTask(roomInfo: roomInfo,
+                                                                                                          nitroTasksEnabled: nitroTasksEnabled),
                                                               bindings: .init()),
                    mediaProvider: mediaProvider)
         
@@ -89,6 +93,8 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             .weakAssign(to: \.state.isRoomEncrypted, on: self)
             .store(in: &cancellables)
         
+        setupNitroTaskCreationSubscription(nitroTasksEnabled: nitroTasksEnabled)
+
         context.$viewState
             .map(\.composerMode)
             .removeDuplicates()
@@ -170,6 +176,24 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
         .store(in: &cancellables)
     }
     
+    private static func canCreateNitroTask(roomInfo: RoomInfoProxyProtocol, nitroTasksEnabled: Bool) -> Bool {
+        guard nitroTasksEnabled,
+              roomInfo.successor == nil,
+              let powerLevels = roomInfo.powerLevels else {
+            return false
+        }
+        return powerLevels.canOwnUser(sendMessage: .roomMessage) && powerLevels.canOwnUserPinOrUnpin()
+    }
+
+    private func setupNitroTaskCreationSubscription(nitroTasksEnabled: Bool) {
+        roomProxy.infoPublisher
+            .map { Self.canCreateNitroTask(roomInfo: $0, nitroTasksEnabled: nitroTasksEnabled) }
+            .receive(on: DispatchQueue.main)
+            .removeDuplicates()
+            .weakAssign(to: \.state.canCreateNitroTask, on: self)
+            .store(in: &cancellables)
+    }
+
     // MARK: - Public
     
     func start() {
@@ -239,6 +263,8 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             actionsSubject.send(.attach(attachment))
         case .handlePasteOrDrop(let providers):
             actionsSubject.send(.handlePasteOrDrop(providers: providers))
+        case .pasteRichText(let content):
+            pasteRichText(content)
         case .enableTextFormatting:
             state.bindings.composerFormattingEnabled = true
             state.bindings.composerFocused = true
@@ -257,6 +283,25 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
         }
     }
     
+    private func pasteRichText(_ content: NitroMessageCopyFormatter.RichPasteContent) {
+        let selection = wysiwygViewModel.attributedContent.selection
+        let textLength = wysiwygViewModel.attributedContent.text.length
+        let replacesAll = selection.location == 0 && selection.length == textLength
+        let appends = selection.location == textLength && selection.length == 0
+
+        guard replacesAll || appends else {
+            _ = wysiwygViewModel.replaceText(range: selection, replacementText: content.plainText)
+            return
+        }
+
+        switch content {
+        case .html(let html, _):
+            wysiwygViewModel.setHtmlContent(replacesAll ? html : wysiwygViewModel.content.html + html)
+        case .markdown(let markdown):
+            wysiwygViewModel.setMarkdownContent(replacesAll ? markdown : wysiwygViewModel.content.markdown + markdown)
+        }
+    }
+
     func process(timelineAction: TimelineComposerAction) {
         switch timelineAction {
         case .setMode(mode: let mode):

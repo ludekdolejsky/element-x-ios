@@ -50,6 +50,7 @@ enum ComposerToolbarViewAction {
     case cancelEdit
     case attach(ComposerAttachmentType)
     case handlePasteOrDrop(providers: [NSItemProvider])
+    case pasteRichText(NitroMessageCopyFormatter.RichPasteContent)
     case enableTextFormatting
     case composerAction(action: ComposerAction)
     case selectedSuggestion(_ suggestion: SuggestionItem)
@@ -78,6 +79,7 @@ struct ComposerToolbarViewState: BindableState {
     
     var isRoomEncrypted: Bool
     var isLocationSharingEnabled: Bool
+    var canCreateNitroTask = false
     
     var keyCommands: [WysiwygKeyCommand] = []
     

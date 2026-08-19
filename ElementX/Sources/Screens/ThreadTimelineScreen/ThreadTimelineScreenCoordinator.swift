@@ -40,6 +40,7 @@ enum ThreadTimelineScreenCoordinatorAction {
     case presentRoomMemberDetails(userID: String)
     case presentMessageForwarding(forwardingItem: MessageForwardingItem)
     case presentResolveSendFailure(failure: TimelineItemSendFailure.VerifiedUser, sendHandle: SendHandleProxy)
+    case presentNitroTaskCreate(roomID: String)
 }
 
 final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
@@ -47,6 +48,7 @@ final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
     private let timelineViewModel: TimelineViewModelProtocol
     private var composerViewModel: ComposerToolbarViewModelProtocol
     private let appSettings: AppSettings
+    private let roomID: String
     
     private var cancellables = Set<AnyCancellable>()
     private var customEmojiPickerCancellable: AnyCancellable?
@@ -58,6 +60,7 @@ final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
     
     init(parameters: ThreadTimelineScreenCoordinatorParameters) {
         appSettings = parameters.appSettings
+        roomID = parameters.roomProxy.id
         
         viewModel = ThreadTimelineScreenViewModel(roomProxy: parameters.roomProxy, userSession: parameters.userSession)
         
@@ -88,7 +91,8 @@ final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
                                                      appSettings: parameters.appSettings,
                                                      analyticsService: parameters.analytics,
                                                      composerDraftService: parameters.composerDraftService,
-                                                     emojiProvider: parameters.emojiProvider)
+                                                     emojiProvider: parameters.emojiProvider,
+                                                     nitroTasksEnabled: NitroConfiguration.isEnabled && parameters.userSession.clientProxy is NitroClientProxyProtocol)
     }
     
     func start() {
@@ -188,7 +192,10 @@ final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
     }
     
     func toPresentable() -> AnyView {
-        let composerToolbar = ComposerToolbar(context: composerViewModel.context)
+        let composerToolbar = ComposerToolbar(context: composerViewModel.context) { [weak self] in
+            guard let self else { return }
+            actionsSubject.send(.presentNitroTaskCreate(roomID: roomID))
+        }
         
         return AnyView(ThreadTimelineScreen(context: viewModel.context,
                                             timelineContext: timelineViewModel.context,

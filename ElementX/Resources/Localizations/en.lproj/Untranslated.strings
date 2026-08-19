@@ -91,6 +91,8 @@
 "action_copy_as_html_ios" = "Copy as HTML";
 "screen_developer_options_disable_timeline_animations_ios" = "Disable timeline animations";
 "screen_developer_options_disable_top_banner_compositing_ios" = "Disable top banner compositing";
+"screen_developer_options_force_reload_timeline_cells_ios" = "Force reload timeline cells";
+"screen_developer_options_rebuild_timeline_view_ios" = "Rebuild timeline view";
 "soft_logout_clear_data_dialog_content" = "Clear all data currently stored on this device?\nSign in again to access your account data and messages.";
 "soft_logout_clear_data_dialog_title" = "Clear data";
 "soft_logout_clear_data_notice" = "Warning: Your personal data (including encryption keys) is still stored on this device.\n\nClear it if you’re finished using this device, or want to sign in to another account.";

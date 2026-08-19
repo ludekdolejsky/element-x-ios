@@ -112,13 +112,21 @@ struct DeveloperOptionsScreen: View {
                         Text(UntranslatedL10n.screenDeveloperOptionsTimelineDiagnosticsIos)
                         Text(UntranslatedL10n.screenDeveloperOptionsTimelineDiagnosticsHintIos)
                     }
-                    
+
                     Toggle(isOn: $context.timelineAnimationsDisabled) {
                         Text(UntranslatedL10n.screenDeveloperOptionsDisableTimelineAnimationsIos)
                     }
-                    
+
                     Toggle(isOn: $context.topBannerCompositingDisabled) {
                         Text(UntranslatedL10n.screenDeveloperOptionsDisableTopBannerCompositingIos)
+                    }
+
+                    Button(UntranslatedL10n.screenDeveloperOptionsForceReloadTimelineCellsIos) {
+                        context.send(viewAction: .forceReloadTimelineCells)
+                    }
+
+                    Button(UntranslatedL10n.screenDeveloperOptionsRebuildTimelineViewIos) {
+                        context.send(viewAction: .rebuildTimelineView)
                     }
                 }
                 

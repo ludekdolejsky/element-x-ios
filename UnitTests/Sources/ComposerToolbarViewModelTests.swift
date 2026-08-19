@@ -1175,13 +1175,15 @@ final class ComposerToolbarViewModelTests {
         let deferred = deferFulfillment(viewModel.context.$viewState, message: "Composer should be enabled") { $0.canSend == true }
         try await deferred.fulfill()
     }
-    
-    // MARK: - Helpers
-    
-    private func setUpViewModel(initialText: String? = nil,
-                                loadDraftClosure: (() async -> Result<ComposerDraftProxy?, ComposerDraftServiceError>)? = nil,
-                                emojiProvider: EmojiProviderProtocol? = nil,
-                                isEncrypted: Bool = false) {
+}
+
+private extension ComposerToolbarViewModelTests {
+    func setUpViewModel(initialText: String? = nil,
+                        loadDraftClosure: (() async -> Result<ComposerDraftProxy?, ComposerDraftServiceError>)? = nil,
+                        emojiProvider: EmojiProviderProtocol? = nil,
+                        isEncrypted: Bool = false,
+                        nitroTasksEnabled: Bool = false,
+                        powerLevelsConfiguration: RoomPowerLevelsProxyMock.Configuration = .init()) {
         wysiwygViewModel = WysiwygComposerViewModel()
         completionSuggestionServiceMock = CompletionSuggestionServiceMock(configuration: .init())
         draftServiceMock = ComposerDraftServiceMock(.init())
@@ -1192,7 +1194,8 @@ final class ComposerToolbarViewModelTests {
         appSettings = AppSettings.volatile()
         
         viewModel = ComposerToolbarViewModel(initialText: initialText,
-                                             roomProxy: JoinedRoomProxyMock(.init(isEncrypted: isEncrypted)),
+                                             roomProxy: JoinedRoomProxyMock(.init(isEncrypted: isEncrypted,
+                                                                                  powerLevelsConfiguration: powerLevelsConfiguration)),
                                              wysiwygViewModel: wysiwygViewModel,
                                              completionSuggestionService: completionSuggestionServiceMock,
                                              mediaProvider: MediaProviderMock(.init()),
@@ -1200,11 +1203,48 @@ final class ComposerToolbarViewModelTests {
                                              appSettings: appSettings,
                                              analyticsService: AnalyticsServiceMock(.init()),
                                              composerDraftService: draftServiceMock,
-                                             emojiProvider: emojiProvider)
+                                             emojiProvider: emojiProvider,
+                                             nitroTasksEnabled: nitroTasksEnabled)
     }
 }
 
 extension ComposerToolbarViewModelTests {
+    @Test
+    func enablesNitroTaskCreationWithRoomPermissions() {
+        setUpViewModel(nitroTasksEnabled: true)
+
+        #expect(viewModel.context.viewState.canCreateNitroTask)
+    }
+
+    @Test
+    func disablesNitroTaskCreationWithoutRequiredPermissions() {
+        setUpViewModel(nitroTasksEnabled: true,
+                       powerLevelsConfiguration: .init(canUserPin: false))
+
+        #expect(!viewModel.context.viewState.canCreateNitroTask)
+
+        setUpViewModel(nitroTasksEnabled: true,
+                       powerLevelsConfiguration: .init(canUserSendMessage: false))
+
+        #expect(!viewModel.context.viewState.canCreateNitroTask)
+    }
+
+    @Test
+    func pastesNitroHTMLAsFormattedContent() {
+        viewModel.process(viewAction: .pasteRichText(.html("<strong>Hello</strong>", plainText: "Hello")))
+
+        #expect(wysiwygViewModel.content.html == "<strong>Hello</strong>")
+        #expect(wysiwygViewModel.content.markdown == "__Hello__")
+    }
+
+    @Test
+    func pastesNitroMarkdownAsFormattedContent() {
+        viewModel.process(viewAction: .pasteRichText(.markdown("__Hello__")))
+
+        #expect(wysiwygViewModel.content.html == "<strong>Hello</strong>")
+        #expect(wysiwygViewModel.content.markdown == "__Hello__")
+    }
+
     @Test
     func disablesComposerWhileResolvingCustomEmojis() async throws {
         let customEmoji = try CustomEmoji(shortcode: "meatspin",

@@ -134,6 +134,8 @@ struct TimelineViewState: BindableState {
     var timelineDiagnosticsEnabled: Bool
     var timelineAnimationsDisabled: Bool
     var topBannerCompositingDisabled: Bool
+    var timelineCellReloadRequestID = 0
+    var timelineViewRebuildRequestID = 0
     
     let hasPredecessor: Bool
     

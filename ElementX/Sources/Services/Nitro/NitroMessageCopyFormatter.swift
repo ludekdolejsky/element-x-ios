@@ -6,16 +6,85 @@
 //
 
 import Foundation
+import UIKit
+import UniformTypeIdentifiers
 import WysiwygComposer
 
 enum NitroMessageCopyFormatter {
+    static let formattedHTMLPasteboardType = "com.nitrovery.element-x.formatted-html"
+    static let markdownPasteboardType = "com.nitrovery.element-x.markdown"
+
+    enum Format {
+        case text
+        case markdown
+        case html
+    }
+
+    enum RichPasteContent: Equatable {
+        case html(String, plainText: String)
+        case markdown(String)
+
+        var plainText: String {
+            switch self {
+            case .html(_, let plainText):
+                plainText
+            case .markdown(let markdown):
+                markdown
+            }
+        }
+    }
+
+    static func pasteboardRepresentations(for item: EventBasedMessageTimelineItemProtocol, format: Format) -> [String: String] {
+        switch format {
+        case .text:
+            var representations = [UTType.utf8PlainText.identifier: item.body]
+            if let html = formattedBodyHTML(for: item) {
+                representations[UTType.html.identifier] = html
+                representations[formattedHTMLPasteboardType] = html
+            }
+            return representations
+        case .markdown:
+            let markdown = markdown(for: item)
+            return [UTType.utf8PlainText.identifier: markdown,
+                    markdownPasteboardType: markdown]
+        case .html:
+            return [UTType.utf8PlainText.identifier: html(for: item)]
+        }
+    }
+
+    static func supportsRichPaste(_ itemProvider: NSItemProvider) -> Bool {
+        itemProvider.registeredTypeIdentifiers.contains(formattedHTMLPasteboardType) ||
+            itemProvider.registeredTypeIdentifiers.contains(markdownPasteboardType)
+    }
+
+    static func richPasteContent(from pasteboard: UIPasteboard) -> RichPasteContent? {
+        if let html = string(from: pasteboard, type: formattedHTMLPasteboardType) {
+            return .html(html, plainText: pasteboard.string ?? "")
+        }
+
+        if let markdown = string(from: pasteboard, type: markdownPasteboardType) {
+            return .markdown(markdown)
+        }
+
+        return nil
+    }
+
+    private static func string(from pasteboard: UIPasteboard, type: String) -> String? {
+        if let string = pasteboard.value(forPasteboardType: type) as? String {
+            return string
+        }
+
+        guard let data = pasteboard.data(forPasteboardType: type) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     static func markdown(for item: EventBasedMessageTimelineItemProtocol) -> String {
         guard let html = formattedBodyHTML(for: item) else { return item.body }
         let viewModel = WysiwygComposerViewModel()
         viewModel.setHtmlContent(html)
         return desktopCompatibleMarkdown(viewModel.content.markdown)
     }
-    
+
     static func html(for item: EventBasedMessageTimelineItemProtocol) -> String {
         formattedBodyHTML(for: item) ?? item.body
     }

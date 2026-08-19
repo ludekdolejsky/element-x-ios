@@ -50,6 +50,7 @@ enum RoomScreenCoordinatorAction {
     case presentKnockRequestsList
     case presentThreadList
     case presentNitroTasks(roomID: String, roomName: String)
+    case presentNitroTaskCreate(roomID: String)
     case presentThread(threadRootEventID: String, focussedEventID: String?)
     case presentRoom(roomID: String, via: [String])
 }
@@ -59,6 +60,7 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
     private var timelineViewModel: TimelineViewModelProtocol
     private var composerViewModel: ComposerToolbarViewModelProtocol
     private let appSettings: AppSettings
+    private let roomID: String
     
     private var cancellables = Set<AnyCancellable>()
     private var customEmojiPickerCancellable: AnyCancellable?
@@ -70,6 +72,7 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
     
     init(parameters: RoomScreenCoordinatorParameters) {
         appSettings = parameters.appSettings
+        roomID = parameters.roomProxy.id
         
         var selectedPinnedEventID: String?
         if let focussedEvent = parameters.focussedEvent {
@@ -111,7 +114,8 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
                                                          appSettings: parameters.appSettings,
                                                          analyticsService: parameters.analytics,
                                                          composerDraftService: parameters.composerDraftService,
-                                                         emojiProvider: parameters.emojiProvider)
+                                                         emojiProvider: parameters.emojiProvider,
+                                                         nitroTasksEnabled: NitroConfiguration.isEnabled && parameters.userSession.clientProxy is NitroClientProxyProtocol)
         self.composerViewModel = composerViewModel
     }
     
@@ -266,7 +270,10 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
     }
     
     func toPresentable() -> AnyView {
-        let composerToolbar = ComposerToolbar(context: composerViewModel.context)
+        let composerToolbar = ComposerToolbar(context: composerViewModel.context) { [weak self] in
+            guard let self else { return }
+            actionsSubject.send(.presentNitroTaskCreate(roomID: roomID))
+        }
         
         return AnyView(RoomScreen(context: roomViewModel.context,
                                   timelineContext: timelineViewModel.context,

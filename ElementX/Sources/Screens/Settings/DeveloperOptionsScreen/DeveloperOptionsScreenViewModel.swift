@@ -19,9 +19,11 @@ class DeveloperOptionsScreenViewModel: DeveloperOptionsScreenViewModelType, Deve
     }
     
     private let clientProxy: ClientProxyProtocol?
+    private let developerOptions: DeveloperOptionsProtocol
     
     init(developerOptions: DeveloperOptionsProtocol, appHooks: AppHooks, clientProxy: ClientProxyProtocol?) {
         self.clientProxy = clientProxy
+        self.developerOptions = developerOptions
         super.init(initialViewState: .init(appHooks: appHooks,
                                            shouldShowClearCache: clientProxy != nil,
                                            isSignedIn: clientProxy != nil,
@@ -61,6 +63,10 @@ class DeveloperOptionsScreenViewModel: DeveloperOptionsScreenViewModelType, Deve
             Task {
                 await self.clientProxy?.markAllRoomsAsRead()
             }
+        case .forceReloadTimelineCells:
+            developerOptions.timelineCellReloadRequestID &+= 1
+        case .rebuildTimelineView:
+            developerOptions.timelineViewRebuildRequestID &+= 1
         }
     }
 }

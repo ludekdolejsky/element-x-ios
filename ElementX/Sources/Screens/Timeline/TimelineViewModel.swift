@@ -74,9 +74,9 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         self.userIndicatorController = userIndicatorController
         self.appMediator = appMediator
         self.emojiProvider = emojiProvider
-        
+
         let voiceMessageRecorder = voiceMessageRecorder ?? VoiceMessageRecorder(audioRecorder: AudioRecorder(), mediaPlayerProvider: mediaPlayerProvider)
-        
+
         timelineInteractionHandler = TimelineInteractionHandler(roomProxy: roomProxy,
                                                                 timelineController: timelineController,
                                                                 userSession: userSession,
@@ -115,6 +115,8 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
                                                        timelineDiagnosticsEnabled: appSettings.timelineDiagnosticsEnabled,
                                                        timelineAnimationsDisabled: appSettings.timelineAnimationsDisabled,
                                                        topBannerCompositingDisabled: appSettings.topBannerCompositingDisabled,
+                                                       timelineCellReloadRequestID: appSettings.timelineCellReloadRequestID,
+                                                       timelineViewRebuildRequestID: appSettings.timelineViewRebuildRequestID,
                                                        hasPredecessor: roomProxy.predecessorRoom != nil,
                                                        pinnedEventIDs: roomProxy.infoPublisher.value.pinnedEventIDs,
                                                        emojiProvider: emojiProvider,
@@ -647,6 +649,14 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
             .weakAssign(to: \.state.topBannerCompositingDisabled, on: self)
             .store(in: &cancellables)
         
+        appSettings.timelineCellReloadRequestIDPublisher
+            .weakAssign(to: \.state.timelineCellReloadRequestID, on: self)
+            .store(in: &cancellables)
+
+        appSettings.timelineViewRebuildRequestIDPublisher
+            .weakAssign(to: \.state.timelineViewRebuildRequestID, on: self)
+            .store(in: &cancellables)
+
         userSession.clientProxy.timelineMediaVisibilityPublisher
             .removeDuplicates()
             .flatMap { [weak self] timelineMediaVisibility -> AnyPublisher<Bool, Never> in

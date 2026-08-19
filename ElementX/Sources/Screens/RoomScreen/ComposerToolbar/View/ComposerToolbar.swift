@@ -16,6 +16,12 @@ struct ComposerToolbar: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     
     @ObservedObject var context: ComposerToolbarViewModel.Context
+    let onCreateNitroTask: (() -> Void)?
+
+    init(context: ComposerToolbarViewModel.Context, onCreateNitroTask: (() -> Void)? = nil) {
+        self.context = context
+        self.onCreateNitroTask = onCreateNitroTask
+    }
     
     @FocusState private var composerFocused: Bool
     @State private var frame: CGRect = .zero
@@ -135,7 +141,7 @@ struct ComposerToolbar: View {
         ZStack(alignment: .bottom) {
             topBarLayout {
                 if !context.composerFormattingEnabled {
-                    RoomAttachmentPicker(context: context)
+                    RoomAttachmentPicker(context: context, onCreateNitroTask: onCreateNitroTask)
                         .scaledPadding(.vertical, buttonVerticalPadding, relativeTo: .compound.headingLG)
                 }
                 messageComposer
@@ -237,13 +243,17 @@ struct ComposerToolbar: View {
                             viewModel: context.viewState.wysiwygViewModel,
                             itemProviderHelper: ItemProviderHelper(),
                             keyCommands: context.viewState.keyCommands) { provider in
-            context.send(viewAction: .handlePasteOrDrop(providers: [provider]))
+            if let content = NitroMessageCopyFormatter.richPasteContent(from: .general) {
+                context.send(viewAction: .pasteRichText(content))
+            } else {
+                context.send(viewAction: .handlePasteOrDrop(providers: [provider]))
+            }
         }
     }
     
     private class ItemProviderHelper: WysiwygItemProviderHelper {
         func isPasteSupported(for itemProvider: NSItemProvider) -> Bool {
-            itemProvider.isSupportedForPasteOrDrop
+            NitroMessageCopyFormatter.supportsRichPaste(itemProvider) || itemProvider.isSupportedForPasteOrDrop
         }
     }
     

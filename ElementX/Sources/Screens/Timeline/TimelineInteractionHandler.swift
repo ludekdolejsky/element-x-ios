@@ -80,7 +80,7 @@ class TimelineInteractionHandler {
     var actions: AnyPublisher<TimelineInteractionHandlerAction, Never> {
         actionsSubject.eraseToAnyPublisher()
     }
-    
+
     private var voiceMessageRecorderObserver: AnyCancellable? {
         didSet {
             appMediator.setIdleTimerDisabled(voiceMessageRecorderObserver != nil)
@@ -159,13 +159,13 @@ class TimelineInteractionHandler {
         switch action {
         case .copy:
             guard let messageTimelineItem = timelineItem as? EventBasedMessageTimelineItemProtocol else { return }
-            UIPasteboard.general.string = messageTimelineItem.body
+            copyToPasteboard(messageTimelineItem, format: .text)
         case .copyAsMarkdown:
             guard let messageTimelineItem = timelineItem as? EventBasedMessageTimelineItemProtocol else { return }
-            UIPasteboard.general.string = NitroMessageCopyFormatter.markdown(for: messageTimelineItem)
+            copyToPasteboard(messageTimelineItem, format: .markdown)
         case .copyAsHTML:
             guard let messageTimelineItem = timelineItem as? EventBasedMessageTimelineItemProtocol else { return }
-            UIPasteboard.general.string = NitroMessageCopyFormatter.html(for: messageTimelineItem)
+            copyToPasteboard(messageTimelineItem, format: .html)
         case .copyCaption:
             guard let messageTimelineItem = timelineItem as? EventBasedMessageTimelineItemProtocol,
                   let caption = messageTimelineItem.mediaCaption else {
@@ -263,6 +263,11 @@ class TimelineInteractionHandler {
         }
     }
     
+    private func copyToPasteboard(_ item: EventBasedMessageTimelineItemProtocol, format: NitroMessageCopyFormatter.Format) {
+        let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: format)
+        UIPasteboard.general.setItems([representations.mapValues { $0 as Any }])
+    }
+
     private func processEditMessageEvent(_ messageTimelineItem: EventBasedMessageTimelineItemProtocol) {
         guard case let .event(_, eventOrTransactionID) = messageTimelineItem.id else {
             MXLog.error("Failed editing message, missing event id")

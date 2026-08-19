@@ -762,6 +762,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                     stateMachine.tryEvent(.presentThreadList, userInfo: EventUserInfo(animated: animated))
                 case .presentNitroTasks(let roomID, let roomName):
                     actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
+                case .presentNitroTaskCreate(let roomID):
+                    presentNitroTaskCreate(roomID: roomID)
                 case .presentThread(let threadRootEventID, let focussedEventID):
                     stateMachine.tryEvent(.presentThread(threadRootEventID: threadRootEventID, focusEventID: focussedEventID))
                 case .presentRoom(let roomID, let via):
@@ -793,6 +795,28 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
         }
     }
     
+    private func presentNitroTaskCreate(roomID: String) {
+        guard let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol else { return }
+
+        let coordinator = NitroTaskCreateScreenCoordinator(parameters: .init(taskService: clientProxy.nitroTaskService,
+                                                                             draft: .init(title: "",
+                                                                                          description: "",
+                                                                                          fixedRoomID: roomID,
+                                                                                          initialRoomID: nil,
+                                                                                          suggestedAssigneeID: nil,
+                                                                                          origin: nil),
+                                                                             userIndicatorController: flowParameters.userIndicatorController))
+        coordinator.actionsPublisher
+            .sink { [weak self] action in
+                switch action {
+                case .dismiss:
+                    self?.navigationStackCoordinator.setSheetCoordinator(nil)
+                }
+            }
+            .store(in: &cancellables)
+        navigationStackCoordinator.setSheetCoordinator(coordinator)
+    }
+
     private func presentThread(threadRootEventID: String, focusEventID: String?, animated: Bool) async {
         showLoadingIndicator()
         defer { hideLoadingIndicator() }
@@ -867,6 +891,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
             case .presentResolveSendFailure(let failure, let sendHandle):
                 stateMachine.tryEvent(.presentResolveSendFailure(failure: failure,
                                                                  sendHandle: sendHandle))
+            case .presentNitroTaskCreate(let roomID):
+                presentNitroTaskCreate(roomID: roomID)
             }
         }
         .store(in: &cancellables)

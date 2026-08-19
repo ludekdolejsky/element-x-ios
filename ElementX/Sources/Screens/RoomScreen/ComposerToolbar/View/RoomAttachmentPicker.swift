@@ -12,6 +12,12 @@ import WysiwygComposer
 
 struct RoomAttachmentPicker: View {
     @ObservedObject var context: ComposerToolbarViewModel.Context
+    let onCreateNitroTask: (() -> Void)?
+
+    init(context: ComposerToolbarViewModel.Context, onCreateNitroTask: (() -> Void)? = nil) {
+        self.context = context
+        self.onCreateNitroTask = onCreateNitroTask
+    }
     
     var body: some View {
         // Use a menu instead of the popover/sheet shown in Figma because overriding the colour scheme
@@ -37,6 +43,14 @@ struct RoomAttachmentPicker: View {
             }
             .accessibilityIdentifier(A11yIdentifiers.roomScreen.attachmentPickerTextFormatting)
             
+            if context.viewState.canCreateNitroTask, let onCreateNitroTask {
+                Button {
+                    onCreateNitroTask()
+                } label: {
+                    Label(UntranslatedL10n.actionCreateNitroTaskIos, icon: \.checkCircle)
+                }
+            }
+
             Button {
                 context.send(viewAction: .attach(.poll))
             } label: {

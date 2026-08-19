@@ -313,7 +313,26 @@ struct RoomScreen: View {
             }
         }
         
-        if context.viewState.shouldShowNitroTasksButton {
+        if context.viewState.shouldShowNitroTasksButton, context.viewState.roomThreadListEnabled {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button {
+                        context.send(viewAction: .displayThreadList)
+                    } label: {
+                        Label(L10n.commonThreads, icon: \.threads)
+                    }
+
+                    Button {
+                        context.send(viewAction: .displayNitroTasks)
+                    } label: {
+                        Label(UntranslatedL10n.screenNitroTasksTitleIos, icon: \.checkCircle)
+                    }
+                } label: {
+                    CompoundIcon(\.overflowHorizontal)
+                }
+                .accessibilityLabel("\(L10n.commonThreads), \(UntranslatedL10n.screenNitroTasksTitleIos)")
+            }
+        } else if context.viewState.shouldShowNitroTasksButton {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     context.send(viewAction: .displayNitroTasks)
@@ -322,9 +341,7 @@ struct RoomScreen: View {
                 }
                 .accessibilityLabel(UntranslatedL10n.screenNitroTasksTitleIos)
             }
-        }
-        
-        if context.viewState.roomThreadListEnabled {
+        } else if context.viewState.roomThreadListEnabled {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     context.send(viewAction: .displayThreadList)

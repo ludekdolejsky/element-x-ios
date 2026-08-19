@@ -48,7 +48,7 @@ final class TimelineDiagnostics {
                 "timelineAnimationsDisabled=\(animationsDisabled) bannerCompositingDisabled=\(bannerCompositingDisabled)"
         }
     }
-    
+
     private weak var tableView: UITableView?
     private let overlayLabel = UILabel()
     private var timer: Timer?
@@ -110,6 +110,10 @@ final class TimelineDiagnostics {
         sample(reason: "snapshot animated=\(animated)", forceLog: true)
     }
     
+    func recordManualAction(_ action: String) {
+        sample(reason: action, forceLog: true)
+    }
+
     private func configureOverlay() {
         overlayLabel.backgroundColor = UIColor.black.withAlphaComponent(0.75)
         overlayLabel.layer.cornerRadius = 6
