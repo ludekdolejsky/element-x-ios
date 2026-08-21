@@ -57,10 +57,6 @@ class TimelineTableViewController: UIViewController {
             
             applySnapshot()
             
-            if timelineItemsDictionary.isEmpty {
-                paginatePublisher.send()
-            }
-            
             sendLastVisibleItemReadReceipt()
         }
     }
@@ -449,6 +445,9 @@ class TimelineTableViewController: UIViewController {
         // Re-evaluate after the snapshot has been applied so the new layout is reflected.
         DispatchQueue.main.async { [weak self] in
             self?.updateReadMarkerVisibility()
+            
+            // Make sure we paginate with the final timeline geometry
+            self?.paginatePublisher.send(())
         }
     }
     
