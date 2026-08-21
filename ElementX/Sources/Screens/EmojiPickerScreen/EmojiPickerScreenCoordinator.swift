@@ -10,6 +10,7 @@ import Combine
 import SwiftUI
 
 struct EmojiPickerScreenCoordinatorParameters {
+    let mode: EmojiPickerScreenMode
     /// Any emojis that should be displayed as already selected.
     let selectedEmojis: Set<String>
     let emojiProvider: EmojiProviderProtocol
@@ -35,7 +36,8 @@ final class EmojiPickerScreenCoordinator: CoordinatorProtocol {
     
     init(parameters: EmojiPickerScreenCoordinatorParameters) {
         mediaProvider = parameters.mediaProvider
-        viewModel = EmojiPickerScreenViewModel(selectedEmojis: parameters.selectedEmojis,
+        viewModel = EmojiPickerScreenViewModel(mode: parameters.mode,
+                                               selectedEmojis: parameters.selectedEmojis,
                                                emojiProvider: parameters.emojiProvider,
                                                continuation: parameters.continuation)
     }

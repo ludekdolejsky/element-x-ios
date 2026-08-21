@@ -1202,7 +1202,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     private func presentEmojiPicker(selectedEmojis: Set<String>,
                                     emojiPickerContinuation: EmojiPickerScreenContinuation,
                                     animated: Bool) {
-        let params = EmojiPickerScreenCoordinatorParameters(selectedEmojis: selectedEmojis,
+        let params = EmojiPickerScreenCoordinatorParameters(mode: .reaction,
+                                                            selectedEmojis: selectedEmojis,
                                                             emojiProvider: emojiProvider,
                                                             mediaProvider: userSession.mediaProvider,
                                                             continuation: emojiPickerContinuation)
