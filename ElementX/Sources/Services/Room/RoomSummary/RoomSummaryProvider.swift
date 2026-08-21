@@ -189,7 +189,7 @@ class RoomSummaryProvider: RoomSummaryProviderProtocol {
             .sink { [weak self] range in
                 guard let self,
                       !range.isEmpty,
-                      range.upperBound >= rooms.count - Int(roomListPageSize) / 2,
+                      range.upperBound >= Self.pagePrefetchThreshold(roomCount: rooms.count, pageSize: roomListPageSize),
                       rooms.count != roomCountOnLastPageAddRequest else {
                     return
                 }
@@ -253,6 +253,11 @@ class RoomSummaryProvider: RoomSummaryProviderProtocol {
                 }
             }
             .store(in: &cancellables)
+    }
+
+    nonisolated static func pagePrefetchThreshold(roomCount: Int, pageSize: UInt32) -> Int {
+        let halfPage = Int(pageSize) / 2
+        return max(halfPage, roomCount - halfPage)
     }
     
     fileprivate func updateRoomsWithDiffs(_ diffs: [RoomListEntriesUpdate]) async {

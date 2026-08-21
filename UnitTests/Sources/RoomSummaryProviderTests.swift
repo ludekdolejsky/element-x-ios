@@ -86,6 +86,14 @@ final class RoomSummaryProviderTests {
         #expect(dynamicEntriesController.setFilterKindCallsCount == 2)
         #expect(dynamicEntriesController.setFilterKindReceivedInvocations.last == .all(filters: [.all(filters: [.favourite, .joined])] + baseFilters + [.identifiers(identifiers: ["SomeRoom"])]))
     }
+
+    @Test
+    func pagePrefetchThreshold() {
+        #expect(RoomSummaryProvider.pagePrefetchThreshold(roomCount: 30, pageSize: 100) == 50)
+        #expect(RoomSummaryProvider.pagePrefetchThreshold(roomCount: 60, pageSize: 100) == 50)
+        #expect(RoomSummaryProvider.pagePrefetchThreshold(roomCount: 100, pageSize: 100) == 50)
+        #expect(RoomSummaryProvider.pagePrefetchThreshold(roomCount: 120, pageSize: 100) == 70)
+    }
     
     // MARK: - Helpers
     
