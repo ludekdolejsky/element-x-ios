@@ -24,6 +24,10 @@ nonisolated struct NitroTaskState: Codable, Equatable, Sendable {
     static let `default` = NitroTaskState(status: .todo, assignee: nil)
 }
 
+nonisolated struct NitroTaskUpdateOptions: Equatable, Sendable {
+    var startWithCodex = false
+}
+
 nonisolated struct NitroTaskMetadata: Equatable, Sendable {
     let title: String
     let description: String?

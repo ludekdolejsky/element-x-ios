@@ -46,6 +46,8 @@ internal nonisolated enum UntranslatedL10n {
   internal static var actionSnoozeOneWeekIos: String { return UntranslatedL10n.tr("Untranslated", "action_snooze_one_week_ios") }
   /// Start
   internal static var actionStartNitroTaskIos: String { return UntranslatedL10n.tr("Untranslated", "action_start_nitro_task_ios") }
+  /// In progress + start Codex
+  internal static var actionStartNitroTaskWithCodexIos: String { return UntranslatedL10n.tr("Untranslated", "action_start_nitro_task_with_codex_ios") }
   /// Transcribe & insert
   internal static var actionTranscribeAndInsertIos: String { return UntranslatedL10n.tr("Untranslated", "action_transcribe_and_insert_ios") }
   /// Transcribe audio

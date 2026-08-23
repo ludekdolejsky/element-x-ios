@@ -11,6 +11,7 @@ nonisolated enum NitroTaskEventParser {
     static let taskContentKey = "com.nitrovery.todo"
     static let taskUpdateContentKey = "com.nitrovery.todo.update"
     static let c2mIgnoreContentKey = "com.nitrovery.c2m.ignore"
+    static let c2mStartTaskContentKey = "com.nitrovery.c2m.start_task"
     static let taskIndexEventType = "com.nitrovery.todo.index"
     static let maximumTitleLength = 500
     static let maximumDescriptionLength = 25000

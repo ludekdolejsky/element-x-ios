@@ -243,7 +243,8 @@ struct ComposerToolbar: View {
                             viewModel: context.viewState.wysiwygViewModel,
                             itemProviderHelper: ItemProviderHelper(),
                             keyCommands: context.viewState.keyCommands) { provider in
-            if let content = NitroMessageCopyFormatter.richPasteContent(from: .general) {
+            if NitroMessageCopyFormatter.supportsRichPaste(provider),
+               let content = NitroMessageCopyFormatter.richPasteContent(from: .general) {
                 context.send(viewAction: .pasteRichText(content))
             } else {
                 context.send(viewAction: .handlePasteOrDrop(providers: [provider]))

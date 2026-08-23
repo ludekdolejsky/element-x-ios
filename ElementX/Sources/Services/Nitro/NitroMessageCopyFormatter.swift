@@ -11,8 +11,7 @@ import UniformTypeIdentifiers
 import WysiwygComposer
 
 enum NitroMessageCopyFormatter {
-    static let formattedHTMLPasteboardType = "com.nitrovery.element-x.formatted-html"
-    static let markdownPasteboardType = "com.nitrovery.element-x.markdown"
+    static let markdownTypeIdentifier = "net.daringfireball.markdown"
 
     enum Format {
         case text
@@ -34,35 +33,38 @@ enum NitroMessageCopyFormatter {
         }
     }
 
-    static func pasteboardRepresentations(for item: EventBasedMessageTimelineItemProtocol, format: Format) -> [String: String] {
+    static func pasteboardRepresentations(for item: EventBasedMessageTimelineItemProtocol, format: Format) -> [String: Any] {
         switch format {
         case .text:
-            var representations = [UTType.utf8PlainText.identifier: item.body]
-            if let html = formattedBodyHTML(for: item) {
-                representations[UTType.html.identifier] = html
-                representations[formattedHTMLPasteboardType] = html
+            let content = renderedContent(for: item)
+            var representations: [String: Any] = [
+                UTType.utf8PlainText.identifier: content.plainText,
+                UTType.html.identifier: content.html,
+                markdownTypeIdentifier: content.markdown
+            ]
+            if let rtf = rtfData(from: content.attributedString) {
+                representations[UTType.rtf.identifier] = rtf
             }
             return representations
         case .markdown:
-            let markdown = markdown(for: item)
-            return [UTType.utf8PlainText.identifier: markdown,
-                    markdownPasteboardType: markdown]
+            return [UTType.utf8PlainText.identifier: markdown(for: item)]
         case .html:
             return [UTType.utf8PlainText.identifier: html(for: item)]
         }
     }
 
     static func supportsRichPaste(_ itemProvider: NSItemProvider) -> Bool {
-        itemProvider.registeredTypeIdentifiers.contains(formattedHTMLPasteboardType) ||
-            itemProvider.registeredTypeIdentifiers.contains(markdownPasteboardType)
+        return itemProvider.hasItemConformingToTypeIdentifier(UTType.html.identifier) ||
+            itemProvider.hasItemConformingToTypeIdentifier(markdownTypeIdentifier)
     }
 
     static func richPasteContent(from pasteboard: UIPasteboard) -> RichPasteContent? {
-        if let html = string(from: pasteboard, type: formattedHTMLPasteboardType) {
-            return .html(html, plainText: pasteboard.string ?? "")
+        if let html = string(from: pasteboard, type: UTType.html.identifier) {
+            let plainText = string(from: pasteboard, type: UTType.utf8PlainText.identifier) ?? renderedContent(forHTML: html).plainText
+            return .html(html, plainText: plainText)
         }
 
-        if let markdown = string(from: pasteboard, type: markdownPasteboardType) {
+        if let markdown = string(from: pasteboard, type: markdownTypeIdentifier) {
             return .markdown(markdown)
         }
 
@@ -75,18 +77,57 @@ enum NitroMessageCopyFormatter {
         }
 
         guard let data = pasteboard.data(forPasteboardType: type) else { return nil }
-        return String(data: data, encoding: .utf8)
+        return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .unicode)
     }
 
     static func markdown(for item: EventBasedMessageTimelineItemProtocol) -> String {
         guard let html = formattedBodyHTML(for: item) else { return item.body }
-        let viewModel = WysiwygComposerViewModel()
-        viewModel.setHtmlContent(html)
-        return desktopCompatibleMarkdown(viewModel.content.markdown)
+        return renderedContent(forHTML: html, fallbackBody: item.body).markdown
     }
 
     static func html(for item: EventBasedMessageTimelineItemProtocol) -> String {
         formattedBodyHTML(for: item) ?? item.body
+    }
+
+    private struct RenderedContent {
+        let plainText: String
+        let html: String
+        let markdown: String
+        let attributedString: NSAttributedString
+    }
+
+    private static func renderedContent(for item: EventBasedMessageTimelineItemProtocol) -> RenderedContent {
+        guard let html = formattedBodyHTML(for: item) else {
+            return .init(plainText: item.body,
+                         html: htmlForPlainText(item.body),
+                         markdown: item.body,
+                         attributedString: .init(string: item.body))
+        }
+        return renderedContent(forHTML: html, fallbackBody: item.body)
+    }
+    
+    private static func renderedContent(forHTML html: String, fallbackBody: String? = nil) -> RenderedContent {
+        let wysiwygHTML = CustomEmojiMessageContent.restoringShortcodes(in: html, fallbackBody: fallbackBody)
+        let viewModel = WysiwygComposerViewModel()
+        viewModel.setHtmlContent(wysiwygHTML)
+        return .init(plainText: viewModel.attributedContent.text.string,
+                     html: html,
+                     markdown: desktopCompatibleMarkdown(viewModel.content.markdown),
+                     attributedString: viewModel.attributedContent.text)
+    }
+
+    private static func htmlForPlainText(_ text: String) -> String {
+        let escaped = text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\n", with: "<br>")
+        return "<p>\(escaped)</p>"
+    }
+
+    private static func rtfData(from attributedString: NSAttributedString) -> Data? {
+        try? attributedString.data(from: NSRange(location: 0, length: attributedString.length),
+                                   documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
     }
     
     private static func formattedBodyHTML(for item: EventBasedMessageTimelineItemProtocol) -> String? {

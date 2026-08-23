@@ -53,6 +53,7 @@
 "action_open_nitro_task_source_ios" = "Open source message";
 "action_reopen_nitro_task_ios" = "Reopen";
 "action_start_nitro_task_ios" = "Start";
+"action_start_nitro_task_with_codex_ios" = "In progress + start Codex";
 "common_nitro_task_created_ios" = "Task created";
 "error_nitro_task_request_failed_ios" = "The task request failed. Refresh Tasks and try again.";
 "screen_nitro_task_assignee_ios" = "Assignee";

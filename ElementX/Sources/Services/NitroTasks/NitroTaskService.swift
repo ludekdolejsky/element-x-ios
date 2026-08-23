@@ -22,11 +22,13 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         let tasks: [NitroTask]
         let recoveryCandidates: [RecoveryCandidate]
         let isUnavailable: Bool
+        let reconciliation: NitroTaskIndex.RoomReconciliation
     }
     
     private nonisolated struct LoadedTasks: Sendable {
         let list: NitroTaskList
         let recoveryCandidates: [RecoveryCandidate]
+        let reconciliations: [NitroTaskIndex.RoomReconciliation]
     }
     
     private nonisolated struct LoadedPinnedEvents: Sendable {
@@ -57,6 +59,47 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         case unableToDecrypt
     }
     
+    private nonisolated struct LoadedIndexedEvent: Sendable {
+        let eventID: String
+        let result: LoadedIndexedEventResult
+    }
+    
+    private nonisolated enum LoadedIndexedEventResult: Sendable {
+        case eventJSON(LoadedEventJSON)
+        case unavailable
+    }
+    
+    private nonisolated enum TaskIndexUpdate: Sendable {
+        case add(roomID: String, eventID: String)
+        case remove(roomID: String, eventID: String)
+        case reconcile(initial: NitroTaskIndex, rooms: [NitroTaskIndex.RoomReconciliation])
+
+        var mutation: NitroTaskIndex.Mutation? {
+            switch self {
+            case .add(let roomID, let eventID):
+                .add(roomID: roomID, eventID: eventID)
+            case .remove(let roomID, let eventID):
+                .remove(roomID: roomID, eventID: eventID)
+            case .reconcile:
+                nil
+            }
+        }
+        
+        func reconciledIndex(from current: NitroTaskIndex?) -> NitroTaskIndex? {
+            switch self {
+            case .add, .remove:
+                return current
+            case .reconcile(let initial, let rooms):
+                return initial.reconciled(with: current, rooms: rooms)
+            }
+        }
+    }
+
+    private nonisolated struct TaskIndexWriteState: Sendable {
+        let index: NitroTaskIndex
+        let pendingMutations: [NitroTaskIndex.Mutation]
+    }
+    
     private nonisolated static let maximumConcurrentRoomLoads = 4
     private nonisolated static let timelineTimeout: Duration = .seconds(15)
     private nonisolated static let relationsPageSize = 20
@@ -64,10 +107,14 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     private let client: ClientProtocol
     private let urlSession: URLSession
     private let updatesSubject = PassthroughSubject<NitroTaskServiceUpdate, Never>()
+    private(set) var cachedTaskList: NitroTaskList?
     private var loadRequestID: UUID?
     private var recoveryCandidates = [RecoveryCandidate]()
     private var recoveryTask: Task<Void, Never>?
     private var recoveryTaskID: UUID?
+    private var taskIndexUpdateTask: Task<TaskIndexWriteState?, Never>?
+    private var taskIndexUpdateTaskID: UUID?
+    private var taskIndexWriteState: TaskIndexWriteState?
     var updatesPublisher: AnyPublisher<NitroTaskServiceUpdate, Never> {
         updatesSubject.eraseToAnyPublisher()
     }
@@ -90,12 +137,19 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         do {
             let session = try client.session()
             let ownUserID = try client.userId()
+            let initialIndex = await loadTaskIndex() ?? .init(migrationComplete: false,
+                                                              tasks: [],
+                                                              roomPinRevisions: [:])
             let loadedTasks = try await Self.loadTasks(in: client.rooms(),
                                                        ownUserID: ownUserID,
                                                        session: session,
-                                                       urlSession: urlSession)
+                                                       urlSession: urlSession,
+                                                       index: initialIndex)
+            guard !Task.isCancelled, loadRequestID == requestID else { return .failure(.cancelled) }
+            await updateTaskIndex(.reconcile(initial: initialIndex, rooms: loadedTasks.reconciliations))
             guard !Task.isCancelled, loadRequestID == requestID else { return .failure(.cancelled) }
             recoveryCandidates = loadedTasks.recoveryCandidates
+            cachedTaskList = loadedTasks.list
             return .success(loadedTasks.list)
         } catch is CancellationError {
             return .failure(.cancelled)
@@ -145,6 +199,8 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     func createTask(_ request: NitroTaskCreationRequest) async -> Result<NitroTask, NitroTaskServiceError> {
         do {
             let task = try await Self.createTask(request, client: client)
+            await updateTaskIndex(.add(roomID: task.roomID, eventID: task.id))
+            cache(task)
             updatesSubject.send(.created(task))
             return .success(task)
         } catch is CancellationError {
@@ -159,9 +215,15 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         }
     }
     
-    func updateTask(_ task: NitroTask, state: NitroTaskState) async -> Result<NitroTask, NitroTaskServiceError> {
+    func updateTask(_ task: NitroTask,
+                    state: NitroTaskState,
+                    options: NitroTaskUpdateOptions) async -> Result<NitroTask, NitroTaskServiceError> {
         do {
-            let updatedTask = try await Self.updateTask(task, state: state, client: client)
+            let updatedTask = try await Self.updateTask(task,
+                                                        state: state,
+                                                        options: options,
+                                                        client: client)
+            cache(updatedTask)
             updatesSubject.send(.updated(updatedTask))
             return .success(updatedTask)
         } catch is CancellationError {
@@ -184,6 +246,7 @@ final class NitroTaskService: NitroTaskServiceProtocol {
                                                       title: title,
                                                       description: description,
                                                       client: client)
+            cache(updatedTask)
             updatesSubject.send(.updated(updatedTask))
             return .success(updatedTask)
         } catch is CancellationError {
@@ -203,6 +266,8 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     func archiveTask(_ task: NitroTask) async -> Result<Void, NitroTaskServiceError> {
         do {
             try await Self.archiveTask(task, client: client)
+            await updateTaskIndex(.remove(roomID: task.roomID, eventID: task.id))
+            removeCachedTask(task)
             updatesSubject.send(.archived(task))
             return .success(())
         } catch is CancellationError {
@@ -218,117 +283,6 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     }
     
     // MARK: - Loading
-    
-    @concurrent
-    private static func loadTasks(in rooms: [MatrixRustSDK.Room],
-                                  ownUserID: String,
-                                  session: Session,
-                                  urlSession: URLSession) async throws -> LoadedTasks {
-        try Task.checkCancellation()
-        let joinedRooms = rooms.filter { $0.membership() == .joined && !$0.isSpace() }
-        var iterator = joinedRooms.makeIterator()
-        var loadedRooms = [LoadedRoomTasks]()
-        
-        await withTaskGroup(of: LoadedRoomTasks.self) { group in
-            for _ in 0..<min(maximumConcurrentRoomLoads, joinedRooms.count) {
-                guard let room = iterator.next() else { break }
-                group.addTask {
-                    await loadTasks(in: room, ownUserID: ownUserID, session: session, urlSession: urlSession)
-                }
-            }
-            
-            while let result = await group.next() {
-                loadedRooms.append(result)
-                if let room = iterator.next() {
-                    group.addTask {
-                        await loadTasks(in: room, ownUserID: ownUserID, session: session, urlSession: urlSession)
-                    }
-                }
-            }
-        }
-        
-        try Task.checkCancellation()
-        let tasks = loadedRooms
-            .flatMap(\.tasks)
-            .sorted { lhs, rhs in
-                lhs.metadata.createdDate != rhs.metadata.createdDate
-                    ? lhs.metadata.createdDate > rhs.metadata.createdDate
-                    : lhs.id < rhs.id
-            }
-        let recoveryCandidates = loadedRooms.flatMap(\.recoveryCandidates)
-        return LoadedTasks(list: .init(tasks: tasks,
-                                       unavailableRoomCount: loadedRooms.count(where: \.isUnavailable),
-                                       pendingEventCount: recoveryCandidates.count),
-                           recoveryCandidates: recoveryCandidates)
-    }
-    
-    @concurrent
-    private static func loadTasks(in room: MatrixRustSDK.Room,
-                                  ownUserID: String,
-                                  session: Session,
-                                  urlSession: URLSession) async -> LoadedRoomTasks {
-        do {
-            try Task.checkCancellation()
-            let info = try await room.roomInfo()
-            guard info.membership == .joined,
-                  !info.isSpace,
-                  info.successorRoom == nil,
-                  !info.pinnedEventIds.isEmpty else {
-                return LoadedRoomTasks(tasks: [], recoveryCandidates: [], isUnavailable: false)
-            }
-            
-            let timeline = try await room.timelineWithConfiguration(configuration: .init(focus: .pinnedEvents,
-                                                                                         filter: .all,
-                                                                                         internalIdPrefix: nil,
-                                                                                         dateDividerMode: .daily,
-                                                                                         trackReadReceipts: .disabled,
-                                                                                         reportUtds: true))
-            let timelineItems = try await initialTimelineItems(from: timeline)
-            let pinnedEvents = loadedPinnedEvents(from: timelineItems,
-                                                  eventIDs: info.pinnedEventIds,
-                                                  roomID: info.id)
-            var recoveryCandidates = pinnedEvents.recoveryCandidates
-            
-            var powerLevels = info.powerLevels
-            if powerLevels == nil {
-                powerLevels = try? await room.getPowerLevels()
-            }
-            let canSend = powerLevels?.canOwnUserSendMessage(message: .roomMessage) == true
-            let canPin = powerLevels?.canOwnUserPinUnpin() == true
-            let roomName = info.displayName ?? room.displayName() ?? info.id
-            var tasks = [NitroTask]()
-            
-            for taskEvent in pinnedEvents.taskEvents {
-                try Task.checkCancellation()
-                let task = await loadTask(taskEvent,
-                                          roomID: info.id,
-                                          roomName: roomName,
-                                          ownUserID: ownUserID,
-                                          canSend: canSend,
-                                          canPin: canPin,
-                                          waitForDecryption: false,
-                                          room: room,
-                                          session: session,
-                                          urlSession: urlSession)
-                tasks.append(task)
-                if !task.stateIsAvailable {
-                    let candidate = RecoveryCandidate(roomID: info.id, eventID: task.id)
-                    if !recoveryCandidates.contains(candidate) {
-                        recoveryCandidates.append(candidate)
-                    }
-                }
-            }
-            
-            return LoadedRoomTasks(tasks: tasks,
-                                   recoveryCandidates: recoveryCandidates,
-                                   isUnavailable: false)
-        } catch is CancellationError {
-            return LoadedRoomTasks(tasks: [], recoveryCandidates: [], isUnavailable: false)
-        } catch {
-            MXLog.error("Failed loading Nitro tasks for \(room.id()) with error: \(error)")
-            return LoadedRoomTasks(tasks: [], recoveryCandidates: [], isUnavailable: true)
-        }
-    }
     
     @concurrent
     private static func loadTask(_ taskEvent: NitroTaskEventParser.TaskEvent,
@@ -670,11 +624,12 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     @concurrent
     private static func updateTask(_ task: NitroTask,
                                    state: NitroTaskState,
+                                   options: NitroTaskUpdateOptions,
                                    client: ClientProtocol) async throws -> NitroTask {
         try Task.checkCancellation()
         guard task.stateIsAvailable else { throw InternalError.stateUnavailable }
         guard task.canUpdate else { throw InternalError.permissionDenied }
-        guard state != task.state else { return task }
+        guard state != task.state || options.startWithCodex else { return task }
         guard let room = try client.getRoom(roomId: task.roomID), room.membership() == .joined else {
             throw InternalError.roomUnavailable
         }
@@ -702,7 +657,8 @@ final class NitroTaskService: NitroTaskServiceProtocol {
                                     nextState: state,
                                     previousAssignee: formattedAssignee(task.state.assignee, room: room),
                                     nextAssignee: formattedAssignee(state.assignee, room: room),
-                                    permalink: permalink)
+                                    permalink: permalink,
+                                    startedWithCodex: options.startWithCodex)
         let message = messageEventContentFromHtml(body: "\(audit.plain)\nOpen task: \(permalink)",
                                                   htmlBody: audit.html)
         let assignee: Any = if let assignee = state.assignee {
@@ -710,22 +666,14 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         } else {
             NSNull()
         }
-        let extraContent = try jsonString(from: [
-            "m.mentions": [String: Any](),
-            "m.relates_to": [
-                "rel_type": "m.reference",
-                "event_id": task.id,
-                "m.in_reply_to": ["event_id": task.id]
-            ],
-            NitroTaskEventParser.taskUpdateContentKey: [
-                "version": 1,
-                "status": state.status.rawValue,
-                "assignee": assignee
-            ],
-            NitroTaskEventParser.c2mIgnoreContentKey: true
-        ])
+        let extraContent = taskUpdateExtraContent(task: task,
+                                                  state: state,
+                                                  assignee: assignee,
+                                                  permalink: permalink,
+                                                  options: options)
         let timeline = try await liveTimeline(in: room)
-        _ = try await timeline.sendWithExtraContent(msg: message, extraContentJson: extraContent)
+        _ = try await timeline.sendWithExtraContent(msg: message,
+                                                    extraContentJson: jsonString(from: extraContent))
         
         var updatedTask = task
         updatedTask.state = state
@@ -1041,12 +989,60 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         return metadata
     }
     
+    private nonisolated static func taskMetadataDictionary(_ metadata: NitroTaskMetadata) -> [String: Any] {
+        var content: [String: Any] = [
+            "version": 1,
+            "title": metadata.title,
+            "batch_id": metadata.batchID,
+            "created_ts": Int64(metadata.createdDate.timeIntervalSince1970 * 1000),
+            "initial_state": taskStateDictionary(metadata.initialState)
+        ]
+        content["description"] = metadata.description
+        content["source_room_id"] = metadata.sourceRoomID
+        content["source_event_id"] = metadata.sourceEventID
+        content["source_thread_root_id"] = metadata.sourceThreadRootID
+        content["source_permalink"] = metadata.sourcePermalink
+        return content
+    }
+    
+    private nonisolated static func taskUpdateExtraContent(task: NitroTask,
+                                                           state: NitroTaskState,
+                                                           assignee: Any,
+                                                           permalink: String,
+                                                           options: NitroTaskUpdateOptions) -> [String: Any] {
+        var content: [String: Any] = [
+            "m.mentions": [String: Any](),
+            "m.relates_to": [
+                "rel_type": "m.reference",
+                "event_id": task.id,
+                "m.in_reply_to": ["event_id": task.id]
+            ],
+            NitroTaskEventParser.taskUpdateContentKey: [
+                "version": 1,
+                "status": state.status.rawValue,
+                "assignee": assignee
+            ]
+        ]
+        if options.startWithCodex {
+            content[NitroTaskEventParser.c2mStartTaskContentKey] = [
+                "version": 1,
+                "task_event_id": task.id,
+                "task_permalink": permalink,
+                "task": taskMetadataDictionary(task.metadata)
+            ]
+        } else {
+            content[NitroTaskEventParser.c2mIgnoreContentKey] = true
+        }
+        return content
+    }
+    
     private nonisolated static func taskAudit(task: NitroTask,
                                               previousState: NitroTaskState,
                                               nextState: NitroTaskState,
                                               previousAssignee: String,
                                               nextAssignee: String,
-                                              permalink: String) -> (plain: String, html: String) {
+                                              permalink: String,
+                                              startedWithCodex: Bool) -> (plain: String, html: String) {
         var plainChanges = [String]()
         var htmlChanges = [String]()
         if previousState.status != nextState.status {
@@ -1058,6 +1054,10 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         if previousState.assignee != nextState.assignee {
             plainChanges.append("Assignee: \(previousAssignee) → \(nextAssignee)")
             htmlChanges.append("Assignee: \(htmlEscaped(previousAssignee)) → \(htmlEscaped(nextAssignee))")
+        }
+        if startedWithCodex {
+            plainChanges.append("Codex: requested")
+            htmlChanges.append("Codex: requested")
         }
         
         let plain = "Task “\(task.metadata.title)” updated — \(plainChanges.joined(separator: "; "))."
@@ -1091,6 +1091,252 @@ final class NitroTaskService: NitroTaskServiceProtocol {
 }
 
 private extension NitroTaskService {
+    @concurrent
+    private static func loadTasks(in rooms: [MatrixRustSDK.Room],
+                                  ownUserID: String,
+                                  session: Session,
+                                  urlSession: URLSession,
+                                  index: NitroTaskIndex) async throws -> LoadedTasks {
+        try Task.checkCancellation()
+        let joinedRooms = rooms.filter { $0.membership() == .joined && !$0.isSpace() }
+        var iterator = joinedRooms.makeIterator()
+        var loadedRooms = [LoadedRoomTasks]()
+        
+        await withTaskGroup(of: LoadedRoomTasks.self) { group in
+            for _ in 0..<min(maximumConcurrentRoomLoads, joinedRooms.count) {
+                guard let room = iterator.next() else { break }
+                group.addTask {
+                    await loadTasks(in: room,
+                                    ownUserID: ownUserID,
+                                    session: session,
+                                    urlSession: urlSession,
+                                    index: index)
+                }
+            }
+            
+            while let result = await group.next() {
+                loadedRooms.append(result)
+                if let room = iterator.next() {
+                    group.addTask {
+                        await loadTasks(in: room,
+                                        ownUserID: ownUserID,
+                                        session: session,
+                                        urlSession: urlSession,
+                                        index: index)
+                    }
+                }
+            }
+        }
+        
+        try Task.checkCancellation()
+        let tasks = loadedRooms
+            .flatMap(\.tasks)
+            .sorted { lhs, rhs in
+                lhs.metadata.createdDate != rhs.metadata.createdDate
+                    ? lhs.metadata.createdDate > rhs.metadata.createdDate
+                    : lhs.id < rhs.id
+            }
+        let recoveryCandidates = loadedRooms.flatMap(\.recoveryCandidates)
+        return LoadedTasks(list: .init(tasks: tasks,
+                                       unavailableRoomCount: loadedRooms.count(where: \.isUnavailable),
+                                       pendingEventCount: recoveryCandidates.count),
+                           recoveryCandidates: recoveryCandidates,
+                           reconciliations: loadedRooms.map(\.reconciliation))
+    }
+    
+    @concurrent
+    private static func loadTasks(in room: MatrixRustSDK.Room,
+                                  ownUserID: String,
+                                  session: Session,
+                                  urlSession: URLSession,
+                                  index: NitroTaskIndex) async -> LoadedRoomTasks {
+        let roomID = room.id()
+        let indexedEventIDs = index.eventIDs(in: roomID)
+        do {
+            try Task.checkCancellation()
+            let info = try await room.roomInfo()
+            guard info.membership == .joined,
+                  !info.isSpace,
+                  info.successorRoom == nil else {
+                return LoadedRoomTasks(tasks: [],
+                                       recoveryCandidates: [],
+                                       isUnavailable: false,
+                                       reconciliation: .init(roomID: roomID,
+                                                             retainedEventIDs: [],
+                                                             proposedPinRevision: nil,
+                                                             isComplete: true))
+            }
+            
+            let observedRevision = NitroTaskIndex.pinRevision(info.pinnedEventIds)
+            let scansAllPins = index.roomPinRevisions[info.id] != observedRevision
+            let indexedEventIDSet = Set(indexedEventIDs)
+            let eventIDs = scansAllPins
+                ? info.pinnedEventIds
+                : indexedEventIDs.filter { info.pinnedEventIds.contains($0) }
+            let pinnedEvents = try await loadPinnedEvents(eventIDs: eventIDs,
+                                                          scansAllPins: scansAllPins,
+                                                          roomID: info.id,
+                                                          room: room)
+            let eventRecoveryCandidates = pinnedEvents.recoveryCandidates
+            var recoveryCandidates = pinnedEvents.recoveryCandidates
+            
+            var powerLevels = info.powerLevels
+            if powerLevels == nil {
+                powerLevels = try? await room.getPowerLevels()
+            }
+            let canSend = powerLevels?.canOwnUserSendMessage(message: .roomMessage) == true
+            let canPin = powerLevels?.canOwnUserPinUnpin() == true
+            let roomName = info.displayName ?? room.displayName() ?? info.id
+            var tasks = [NitroTask]()
+            
+            for taskEvent in pinnedEvents.taskEvents {
+                try Task.checkCancellation()
+                let task = await loadTask(taskEvent,
+                                          roomID: info.id,
+                                          roomName: roomName,
+                                          ownUserID: ownUserID,
+                                          canSend: canSend,
+                                          canPin: canPin,
+                                          waitForDecryption: false,
+                                          room: room,
+                                          session: session,
+                                          urlSession: urlSession)
+                tasks.append(task)
+                if !task.stateIsAvailable {
+                    let candidate = RecoveryCandidate(roomID: info.id, eventID: task.id)
+                    if !recoveryCandidates.contains(candidate) {
+                        recoveryCandidates.append(candidate)
+                    }
+                }
+            }
+            let retainedEventIDs = tasks.map(\.id) + eventRecoveryCandidates
+                .map(\.eventID)
+                .filter { indexedEventIDSet.contains($0) }
+            let proposedRevision = try await reconciledPinRevision(observedRevision,
+                                                                   scansAllPins: scansAllPins,
+                                                                   hasUnavailableEvents: !eventRecoveryCandidates.isEmpty,
+                                                                   room: room)
+            
+            return LoadedRoomTasks(tasks: tasks,
+                                   recoveryCandidates: recoveryCandidates,
+                                   isUnavailable: false,
+                                   reconciliation: .init(roomID: info.id,
+                                                         retainedEventIDs: retainedEventIDs,
+                                                         proposedPinRevision: proposedRevision,
+                                                         isComplete: proposedRevision != nil))
+        } catch is CancellationError {
+            return LoadedRoomTasks(tasks: [],
+                                   recoveryCandidates: [],
+                                   isUnavailable: false,
+                                   reconciliation: .init(roomID: roomID,
+                                                         retainedEventIDs: indexedEventIDs,
+                                                         proposedPinRevision: index.roomPinRevisions[roomID],
+                                                         isComplete: false))
+        } catch {
+            MXLog.error("Failed loading Nitro tasks for \(roomID) with error: \(error)")
+            return LoadedRoomTasks(tasks: [],
+                                   recoveryCandidates: [],
+                                   isUnavailable: true,
+                                   reconciliation: .init(roomID: roomID,
+                                                         retainedEventIDs: indexedEventIDs,
+                                                         proposedPinRevision: index.roomPinRevisions[roomID],
+                                                         isComplete: false))
+        }
+    }
+    
+    @concurrent
+    private static func loadPinnedEvents(eventIDs: [String],
+                                         scansAllPins: Bool,
+                                         roomID: String,
+                                         room: MatrixRustSDK.Room) async throws -> LoadedPinnedEvents {
+        guard !eventIDs.isEmpty else {
+            return LoadedPinnedEvents(taskEvents: [], recoveryCandidates: [])
+        }
+        guard scansAllPins else {
+            return try await loadIndexedEvents(eventIDs: eventIDs, roomID: roomID, room: room)
+        }
+        let timeline = try await room.timelineWithConfiguration(configuration: .init(focus: .pinnedEvents,
+                                                                                     filter: .all,
+                                                                                     internalIdPrefix: nil,
+                                                                                     dateDividerMode: .daily,
+                                                                                     trackReadReceipts: .disabled,
+                                                                                     reportUtds: true))
+        let timelineItems = try await initialTimelineItems(from: timeline)
+        return loadedPinnedEvents(from: timelineItems, eventIDs: eventIDs, roomID: roomID)
+    }
+    
+    @concurrent
+    private static func reconciledPinRevision(_ observedRevision: String,
+                                              scansAllPins: Bool,
+                                              hasUnavailableEvents: Bool,
+                                              room: MatrixRustSDK.Room) async throws -> String? {
+        guard scansAllPins else { return observedRevision }
+        guard !hasUnavailableEvents else { return nil }
+        let latestInfo = try await room.roomInfo()
+        return NitroTaskIndex.pinRevision(latestInfo.pinnedEventIds) == observedRevision ? observedRevision : nil
+    }
+    
+    @concurrent
+    private static func loadIndexedEvents(eventIDs: [String],
+                                          roomID: String,
+                                          room: MatrixRustSDK.Room) async throws -> LoadedPinnedEvents {
+        var iterator = eventIDs.makeIterator()
+        var loadedEvents = [String: LoadedIndexedEventResult]()
+        
+        try await withThrowingTaskGroup(of: LoadedIndexedEvent.self) { group in
+            for _ in 0..<min(maximumConcurrentRoomLoads, eventIDs.count) {
+                guard let eventID = iterator.next() else { break }
+                group.addTask {
+                    try await loadIndexedEvent(eventID: eventID, room: room)
+                }
+            }
+            
+            while let result = try await group.next() {
+                loadedEvents[result.eventID] = result.result
+                if let eventID = iterator.next() {
+                    group.addTask {
+                        try await loadIndexedEvent(eventID: eventID, room: room)
+                    }
+                }
+            }
+        }
+        
+        try Task.checkCancellation()
+        var taskEvents = [NitroTaskEventParser.TaskEvent]()
+        var recoveryCandidates = [RecoveryCandidate]()
+        for eventID in eventIDs {
+            switch loadedEvents[eventID] {
+            case .eventJSON(.event(let originalJSON, let latestJSON)):
+                if let taskEvent = NitroTaskEventParser.taskEvent(originalJSON: originalJSON,
+                                                                  latestJSON: latestJSON,
+                                                                  eventIDOverride: eventID) {
+                    taskEvents.append(taskEvent)
+                }
+            case .eventJSON(.redacted):
+                break
+            case .eventJSON(.unableToDecrypt), .unavailable, .none:
+                recoveryCandidates.append(.init(roomID: roomID, eventID: eventID))
+            }
+        }
+        return LoadedPinnedEvents(taskEvents: taskEvents, recoveryCandidates: recoveryCandidates)
+    }
+    
+    @concurrent
+    private static func loadIndexedEvent(eventID: String,
+                                         room: MatrixRustSDK.Room) async throws -> LoadedIndexedEvent {
+        do {
+            return try await LoadedIndexedEvent(eventID: eventID,
+                                                result: .eventJSON(loadedEventJSON(eventID: eventID,
+                                                                                   waitForDecryption: false,
+                                                                                   room: room)))
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            MXLog.error("Failed loading indexed Nitro task candidate \(eventID) in \(room.id()) with error: \(error)")
+            return LoadedIndexedEvent(eventID: eventID, result: .unavailable)
+        }
+    }
+    
     @concurrent
     private static func editTask(_ task: NitroTask,
                                  title: String,
@@ -1237,6 +1483,7 @@ private extension NitroTaskService {
                 switch result {
                 case .resolved(let candidate, let task):
                     if let task {
+                        cache(task)
                         updatesSubject.send(.recovered(task))
                         if !task.stateIsAvailable {
                             failedCandidates.append(candidate)
@@ -1245,6 +1492,7 @@ private extension NitroTaskService {
                 case .failed(let candidate), .cancelled(let candidate):
                     failedCandidates.append(candidate)
                 }
+                updateCachedPendingEventCount(pendingEventCount)
                 updatesSubject.send(.recoveryProgress(.init(pendingEventCount: pendingEventCount,
                                                             failedEventCount: failedCandidates.count)))
                 
@@ -1267,6 +1515,7 @@ private extension NitroTaskService {
         recoveryCandidates = failedCandidates
         recoveryTask = nil
         recoveryTaskID = nil
+        updateCachedPendingEventCount(0)
         updatesSubject.send(.recoveryProgress(.init(pendingEventCount: 0,
                                                     failedEventCount: failedCandidates.count)))
     }
@@ -1276,5 +1525,95 @@ private extension NitroTaskService {
         recoveryTask = nil
         recoveryTaskID = nil
         recoveryCandidates.removeAll()
+    }
+    
+    private func loadTaskIndex() async -> NitroTaskIndex? {
+        do {
+            return try await NitroTaskIndex.decode(client.accountData(eventType: NitroTaskEventParser.taskIndexEventType))
+        } catch is CancellationError {
+            return nil
+        } catch {
+            MXLog.error("Failed loading the Nitro task index with error: \(error)")
+            return nil
+        }
+    }
+    
+    private func updateTaskIndex(_ update: TaskIndexUpdate) async {
+        let previousTask = taskIndexUpdateTask
+        let taskID = UUID()
+        let client = client
+        let cachedState = taskIndexWriteState
+        let task = Task {
+            let previousState = if let previousTask {
+                await previousTask.value
+            } else {
+                cachedState
+            }
+            do {
+                let currentJSON = try await client.accountData(eventType: NitroTaskEventParser.taskIndexEventType)
+                let current = NitroTaskIndex.decode(currentJSON)
+                var pendingMutations = previousState?.pendingMutations ?? []
+                if previousState?.index == current {
+                    pendingMutations.removeAll()
+                }
+                if let mutation = update.mutation {
+                    pendingMutations.removeAll { $0.targetsSameEntry(as: mutation) }
+                    pendingMutations.append(mutation)
+                }
+                let rebasedIndex = NitroTaskIndex.replaying(pendingMutations, on: current)
+                guard let next = update.reconciledIndex(from: rebasedIndex) else { return previousState }
+                try await client.setAccountData(eventType: NitroTaskEventParser.taskIndexEventType,
+                                                content: next.jsonString())
+                return TaskIndexWriteState(index: next, pendingMutations: pendingMutations)
+            } catch {
+                MXLog.error("Failed updating the Nitro task index with error: \(error)")
+                return previousState
+            }
+        }
+        taskIndexUpdateTask = task
+        taskIndexUpdateTaskID = taskID
+        let updatedState = await task.value
+        if taskIndexUpdateTaskID == taskID {
+            if let updatedState {
+                taskIndexWriteState = updatedState
+            }
+            taskIndexUpdateTask = nil
+            taskIndexUpdateTaskID = nil
+        }
+    }
+    
+    private func cache(_ task: NitroTask) {
+        guard let cachedTaskList else { return }
+        var tasks = cachedTaskList.tasks
+        if let index = tasks.firstIndex(where: { $0.id == task.id }) {
+            tasks[index] = task
+        } else {
+            tasks.append(task)
+        }
+        self.cachedTaskList = NitroTaskList(tasks: Self.sortedTasks(tasks),
+                                            unavailableRoomCount: cachedTaskList.unavailableRoomCount,
+                                            pendingEventCount: cachedTaskList.pendingEventCount)
+    }
+    
+    private func removeCachedTask(_ task: NitroTask) {
+        guard let cachedTaskList else { return }
+        self.cachedTaskList = NitroTaskList(tasks: cachedTaskList.tasks.filter { $0.id != task.id },
+                                            unavailableRoomCount: cachedTaskList.unavailableRoomCount,
+                                            pendingEventCount: cachedTaskList.pendingEventCount)
+    }
+    
+    private func updateCachedPendingEventCount(_ pendingEventCount: Int) {
+        guard let cachedTaskList else { return }
+        self.cachedTaskList = NitroTaskList(tasks: cachedTaskList.tasks,
+                                            unavailableRoomCount: cachedTaskList.unavailableRoomCount,
+                                            pendingEventCount: pendingEventCount)
+    }
+    
+    private nonisolated static func sortedTasks(_ tasks: [NitroTask]) -> [NitroTask] {
+        tasks.sorted { lhs, rhs in
+            lhs.metadata.createdDate != rhs.metadata.createdDate
+                ? lhs.metadata.createdDate > rhs.metadata.createdDate
+                : lhs.id < rhs.id
+        }
     }
 }

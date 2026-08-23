@@ -12,7 +12,7 @@ typealias NitroTasksScreenViewModelType = StateStoreViewModelV2<NitroTasksScreen
 
 final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasksScreenViewModelProtocol {
     private enum Mutation {
-        case setStatus(NitroTaskStatus)
+        case setStatus(NitroTaskStatus, startWithCodex: Bool)
         case setAssignee(String?)
         case editContent(title: String, description: String)
         case archive
@@ -33,6 +33,7 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
     private var pendingMutations = [PendingMutation]()
     private var pendingCreatedTasks = [String: NitroTask]()
     private var isRefreshPending = false
+    private var shouldRefreshCachedSnapshot = false
     private var dataRevision = 0
     private var pendingReminderTask: NitroTask?
     
@@ -45,6 +46,14 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
         self.taskService = taskService
         super.init(initialViewState: .init(bindings: .init()))
         
+        if let cachedTaskList = taskService.cachedTaskList {
+            state.tasks = cachedTaskList.tasks
+            state.unavailableRoomCount = cachedTaskList.unavailableRoomCount
+            state.pendingEventCount = cachedTaskList.pendingEventCount
+            state.hasLoaded = true
+            shouldRefreshCachedSnapshot = true
+        }
+        
         taskService.updatesPublisher
             .sink { [weak self] update in
                 self?.apply(update)
@@ -55,7 +64,8 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
     override func process(viewAction: NitroTasksScreenViewAction) {
         switch viewAction {
         case .load:
-            guard !state.hasLoaded, loadTask == nil else { return }
+            guard loadTask == nil, !state.hasLoaded || shouldRefreshCachedSnapshot else { return }
+            shouldRefreshCachedSnapshot = false
             startLoad()
         case .refresh:
             requestRefresh()
@@ -99,7 +109,9 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
             state.bindings.selectedTask = nil
             actionsSubject.send(.openSource(task))
         case .setStatus(let status, let task):
-            startMutation(.setStatus(status), task: task)
+            startMutation(.setStatus(status, startWithCodex: false), task: task)
+        case .startWithCodex(let task):
+            startMutation(.setStatus(.inProgress, startWithCodex: true), task: task)
         case .setAssignee(let assigneeID, let task):
             startMutation(.setAssignee(assigneeID), task: task)
         case .editContent(let title, let description, let task):
@@ -220,14 +232,17 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
         defer { finishMutation(taskID: taskID) }
         
         switch mutation {
-        case .setStatus(let status):
+        case .setStatus(let status, let startWithCodex):
             var nextState = task.state
             nextState.status = status
-            await updateTask(task, state: nextState, taskID: taskID)
+            await updateTask(task,
+                             state: nextState,
+                             options: .init(startWithCodex: startWithCodex),
+                             taskID: taskID)
         case .setAssignee(let assigneeID):
             var nextState = task.state
             nextState.assignee = assigneeID
-            await updateTask(task, state: nextState, taskID: taskID)
+            await updateTask(task, state: nextState, options: .init(), taskID: taskID)
         case .editContent(let title, let description):
             switch await taskService.editTask(task, title: title, description: description) {
             case .success(let updatedTask):
@@ -257,8 +272,11 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
         }
     }
     
-    private func updateTask(_ task: NitroTask, state nextState: NitroTaskState, taskID: UUID) async {
-        switch await taskService.updateTask(task, state: nextState) {
+    private func updateTask(_ task: NitroTask,
+                            state nextState: NitroTaskState,
+                            options: NitroTaskUpdateOptions,
+                            taskID: UUID) async {
+        switch await taskService.updateTask(task, state: nextState, options: options) {
         case .success(let updatedTask):
             guard !Task.isCancelled, mutationTaskID == taskID else { return }
             replaceTask(updatedTask)

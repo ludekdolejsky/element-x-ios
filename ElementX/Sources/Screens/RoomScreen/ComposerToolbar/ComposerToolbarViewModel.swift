@@ -290,13 +290,24 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
         let appends = selection.location == textLength && selection.length == 0
 
         guard replacesAll || appends else {
+            if case .html(let html, let plainText) = content {
+                let restoration = CustomEmojiMessageContent.restoringCustomEmojis(in: html, fallbackBody: plainText)
+                preservedCustomEmojis.append(contentsOf: restoration.customEmojis)
+            }
             _ = wysiwygViewModel.replaceText(range: selection, replacementText: content.plainText)
             return
         }
 
         switch content {
-        case .html(let html, _):
-            wysiwygViewModel.setHtmlContent(replacesAll ? html : wysiwygViewModel.content.html + html)
+        case .html(let html, let plainText):
+            let restoration = CustomEmojiMessageContent.restoringCustomEmojis(in: html, fallbackBody: plainText)
+            if replacesAll {
+                preservedCustomEmojis = restoration.customEmojis
+                wysiwygViewModel.setHtmlContent(restoration.html)
+            } else {
+                preservedCustomEmojis.append(contentsOf: restoration.customEmojis)
+                wysiwygViewModel.setHtmlContent(wysiwygViewModel.content.html + restoration.html)
+            }
         case .markdown(let markdown):
             wysiwygViewModel.setMarkdownContent(replacesAll ? markdown : wysiwygViewModel.content.markdown + markdown)
         }

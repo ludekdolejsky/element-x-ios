@@ -13,6 +13,8 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
         updatesSubject.eraseToAnyPublisher()
     }
     
+    var cachedTaskList: NitroTaskList?
+    
     var loadTasksReturnValue: Result<NitroTaskList, NitroTaskServiceError> = .success(.init(tasks: [], unavailableRoomCount: 0))
     var loadTasksClosure: (() async -> Result<NitroTaskList, NitroTaskServiceError>)?
     private(set) var loadTasksCallsCount = 0
@@ -32,7 +34,7 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
     
     var updateTaskReturnValue: Result<NitroTask, NitroTaskServiceError> = .failure(.sendFailed)
     var updateTaskClosure: ((NitroTask, NitroTaskState) async -> Result<NitroTask, NitroTaskServiceError>)?
-    private(set) var updateTaskReceivedArguments = [(task: NitroTask, state: NitroTaskState)]()
+    private(set) var updateTaskReceivedArguments = [(task: NitroTask, state: NitroTaskState, options: NitroTaskUpdateOptions)]()
     
     var editTaskReturnValue: Result<NitroTask, NitroTaskServiceError> = .failure(.sendFailed)
     var editTaskClosure: ((NitroTask, String, String) async -> Result<NitroTask, NitroTaskServiceError>)?
@@ -66,8 +68,10 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
         return await createTaskClosure?(request) ?? createTaskReturnValue
     }
     
-    func updateTask(_ task: NitroTask, state: NitroTaskState) async -> Result<NitroTask, NitroTaskServiceError> {
-        updateTaskReceivedArguments.append((task, state))
+    func updateTask(_ task: NitroTask,
+                    state: NitroTaskState,
+                    options: NitroTaskUpdateOptions) async -> Result<NitroTask, NitroTaskServiceError> {
+        updateTaskReceivedArguments.append((task, state, options))
         return await updateTaskClosure?(task, state) ?? updateTaskReturnValue
     }
     

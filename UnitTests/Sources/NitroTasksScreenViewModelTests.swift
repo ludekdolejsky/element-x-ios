@@ -35,6 +35,27 @@ struct NitroTasksScreenViewModelTests {
     }
     
     @Test
+    func showsCachedTasksWhileRefreshing() async throws {
+        let cachedTask = makeTask()
+        let refreshedTask = makeTask(id: "$fresh:example.org")
+        let service = NitroTaskServiceMock()
+        service.cachedTaskList = .init(tasks: [cachedTask], unavailableRoomCount: 1)
+        service.loadTasksReturnValue = .success(.init(tasks: [refreshedTask], unavailableRoomCount: 0))
+        let viewModel = NitroTasksScreenViewModel(taskService: service)
+        
+        #expect(viewModel.context.viewState.tasks == [cachedTask])
+        #expect(viewModel.context.viewState.hasLoaded)
+        #expect(viewModel.context.viewState.unavailableRoomCount == 1)
+        let refreshed = deferFulfillment(viewModel.context.observe(\.viewState.tasks)) { $0 == [refreshedTask] }
+        
+        viewModel.context.send(viewAction: .load)
+        try await refreshed.fulfill()
+        
+        #expect(service.loadTasksCallsCount == 1)
+        #expect(viewModel.context.viewState.unavailableRoomCount == 0)
+    }
+    
+    @Test
     func startsRecoveryForPendingEvents() async throws {
         let service = NitroTaskServiceMock()
         service.loadTasksReturnValue = .success(.init(tasks: [],
@@ -135,7 +156,31 @@ struct NitroTasksScreenViewModelTests {
         let arguments = try #require(service.updateTaskReceivedArguments.first)
         #expect(arguments.task == task)
         #expect(arguments.state == .init(status: .inProgress, assignee: nil))
+        #expect(!arguments.options.startWithCodex)
         #expect(viewModel.context.selectedTask == updatedTask)
+    }
+    
+    @Test
+    func movesToInProgressAndStartsCodex() async throws {
+        let task = makeTask()
+        var updatedTask = task
+        updatedTask.state.status = .inProgress
+        let service = NitroTaskServiceMock()
+        service.loadTasksReturnValue = .success(.init(tasks: [task], unavailableRoomCount: 0))
+        service.updateTaskReturnValue = .success(updatedTask)
+        let viewModel = NitroTasksScreenViewModel(taskService: service)
+        let loaded = deferFulfillment(viewModel.context.observe(\.viewState.hasLoaded)) { $0 }
+        viewModel.context.send(viewAction: .load)
+        try await loaded.fulfill()
+        let updated = deferFulfillment(viewModel.context.observe(\.viewState.tasks)) { $0.first?.status == .inProgress }
+        
+        viewModel.context.send(viewAction: .startWithCodex(task))
+        try await updated.fulfill()
+        
+        let arguments = try #require(service.updateTaskReceivedArguments.first)
+        #expect(arguments.task == task)
+        #expect(arguments.state == .init(status: .inProgress, assignee: nil))
+        #expect(arguments.options.startWithCodex)
     }
     
     @Test

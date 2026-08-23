@@ -80,6 +80,7 @@ enum NitroTasksScreenViewAction {
     case openTask(NitroTask)
     case openSource(NitroTask)
     case setStatus(NitroTaskStatus, task: NitroTask)
+    case startWithCodex(NitroTask)
     case setAssignee(String?, task: NitroTask)
     case editContent(title: String, description: String, task: NitroTask)
     case archive(NitroTask)

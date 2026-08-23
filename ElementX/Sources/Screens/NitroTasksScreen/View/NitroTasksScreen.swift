@@ -14,8 +14,12 @@ struct NitroTasksScreen: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            if context.viewState.hasLoaded, hasRecoveryStatus {
-                recoveryStatus
+            if context.viewState.hasLoaded {
+                if context.viewState.isLoading {
+                    refreshStatus
+                } else if hasRecoveryStatus {
+                    recoveryStatus
+                }
             }
             
             Group {
@@ -197,6 +201,11 @@ struct NitroTasksScreen: View {
                 Button(status.title) {
                     context.send(viewAction: .setStatus(status, task: task))
                 }
+                if status == .inProgress {
+                    Button(UntranslatedL10n.actionStartNitroTaskWithCodexIos) {
+                        context.send(viewAction: .startWithCodex(task))
+                    }
+                }
             }
         }
         .disabled(!task.canUpdate)
@@ -284,6 +293,20 @@ struct NitroTasksScreen: View {
     
     private var hasRecoveryStatus: Bool {
         context.viewState.pendingEventCount > 0 || context.viewState.failedEventCount > 0
+    }
+    
+    private var refreshStatus: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(L10n.commonLoading)
+                .font(.compound.bodySM)
+                .foregroundStyle(.compound.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.compound.bgSubtleSecondary)
     }
     
     private var recoveryStatus: some View {

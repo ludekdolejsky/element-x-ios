@@ -265,7 +265,7 @@ class TimelineInteractionHandler {
     
     private func copyToPasteboard(_ item: EventBasedMessageTimelineItemProtocol, format: NitroMessageCopyFormatter.Format) {
         let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: format)
-        UIPasteboard.general.setItems([representations.mapValues { $0 as Any }])
+        UIPasteboard.general.setItems([representations])
     }
 
     private func processEditMessageEvent(_ messageTimelineItem: EventBasedMessageTimelineItemProtocol) {

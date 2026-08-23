@@ -1238,6 +1238,22 @@ extension ComposerToolbarViewModelTests {
     }
 
     @Test
+    func pastesNitroCustomEmojiAndPreservesOriginalMedia() async throws {
+        let html = #"Hello <img data-mx-emoticon src="mxc://example.org/meatspin" alt="Meatspin" title="meatspin" height="32" />"#
+        viewModel.process(viewAction: .pasteRichText(.html(html, plainText: "Hello :meatspin:")))
+
+        #expect(wysiwygViewModel.content.markdown == "Hello :meatspin:")
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(_, sentHTML, _, _) = action else { return false }
+            return sentHTML == html
+        }
+
+        viewModel.process(viewAction: .sendMessage)
+
+        try await deferred.fulfill()
+    }
+
+    @Test
     func pastesNitroMarkdownAsFormattedContent() {
         viewModel.process(viewAction: .pasteRichText(.markdown("__Hello__")))
 

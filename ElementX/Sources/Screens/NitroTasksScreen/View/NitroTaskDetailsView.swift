@@ -164,6 +164,11 @@ struct NitroTaskDetailsView: View {
                 Button(status.title) {
                     context.send(viewAction: .setStatus(status, task: task))
                 }
+                if status == .inProgress {
+                    Button(UntranslatedL10n.actionStartNitroTaskWithCodexIos) {
+                        context.send(viewAction: .startWithCodex(task))
+                    }
+                }
             }
         } label: {
             LabeledContent(UntranslatedL10n.screenNitroTaskStatusIos, value: task.status.title)
