@@ -160,7 +160,7 @@ enum TimelineItemMenuAction: Identifiable, Hashable {
     var label: some View {
         switch self {
         case .copy:
-            Label(L10n.actionCopyText, icon: \.copy)
+            Label(NitroConfiguration.isEnabled ? L10n.actionCopy : L10n.actionCopyText, icon: \.copy)
         case .copyAsMarkdown:
             Label(UntranslatedL10n.actionCopyAsMarkdownIos, icon: \.copy)
         case .copyAsHTML:
