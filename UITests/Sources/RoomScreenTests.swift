@@ -6,6 +6,8 @@
 // Please see LICENSE files in the repository root for full details.
 //
 
+import UIKit
+import UniformTypeIdentifiers
 import XCTest
 
 @MainActor
@@ -47,6 +49,31 @@ class RoomScreenUITests: XCTestCase {
         
         XCTAssertTrue(closeFormattingOptions.waitForExistence(timeout: 5))
         XCTAssertEqual(composer.value as? String, "Formatting stays")
+    }
+    
+    func testPastesNotesPlainTextIntoComposer() {
+        let app = Application.launch(.roomSmallTimeline)
+        let composer = app.textViews[A11yIdentifiers.roomScreen.messageComposer]
+        
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        UIPasteboard.general.items = [[
+            "com.apple.notes.richtext": Data("notes-richtext".utf8),
+            UTType.utf8PlainText.identifier: "Hello from Notes"
+        ]]
+        defer { UIPasteboard.general.items = [] }
+        
+        composer.tap()
+        composer.press(forDuration: 1)
+        let paste = app.menuItems["Paste"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 5))
+        paste.tap()
+        
+        let inserted = expectation(for: NSPredicate { object, _ in
+            guard let composer = object as? XCUIElement else { return false }
+            return composer.value as? String == "Hello from Notes"
+        }, evaluatedWith: composer)
+        wait(for: [inserted], timeout: 5)
+        XCTAssertEqual(composer.value as? String, "Hello from Notes")
     }
     
     func testSanitizedCustomEmojiTimeline() {

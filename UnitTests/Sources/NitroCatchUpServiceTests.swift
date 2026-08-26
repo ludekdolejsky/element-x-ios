@@ -12,7 +12,7 @@ import Testing
 
 struct NitroCatchUpServiceTests {
     @Test
-    func cleansUpAmbiguousStartFailure() async throws {
+    func reportsAmbiguousStartFailureWithoutCancellingServerJob() async throws {
         let api = NitroCatchUpAPIMock()
         api.startError = URLError(.timedOut)
         let service = makeService(api: api)
@@ -26,9 +26,8 @@ struct NitroCatchUpServiceTests {
                               mode: .overview).isSuccess)
         try await failed.fulfill()
         
-        let operation = try #require(service.operationsPublisher.value.first)
-        #expect(api.cancelledJobIDs == [operation.id])
-        #expect(api.cancellationTimeouts == [5])
+        #expect(api.cancelledJobIDs.isEmpty)
+        #expect(api.cancellationTimeouts.isEmpty)
     }
     
     @Test
@@ -281,12 +280,87 @@ struct NitroCatchUpServiceTests {
         
         service.restore()
         try await jobsRequested.fulfill()
+        let jobsReturned = deferFulfillment(api.jobsReturnedSubject) { _ in true }
+        
         service.stop()
         api.resumeJobs()
-        await Task.yield()
+        try await jobsReturned.fulfill()
         
         #expect(service.operationsPublisher.value.isEmpty)
         #expect(api.polledJobIDs.isEmpty)
+        #expect(api.cancelledJobIDs.isEmpty)
+    }
+    
+    @Test
+    func staleRestoreDoesNotClearReplacementTask() async throws {
+        let api = NitroCatchUpAPIMock()
+        api.shouldSuspendJobs = true
+        api.restoredJobs = [job(status: "queued")]
+        let service = makeService(api: api, pollInterval: .zero)
+        let firstJobsRequested = deferFulfillment(api.jobsRequestedSubject) { _ in true }
+        
+        service.restore()
+        try await firstJobsRequested.fulfill()
+        service.stop()
+        let secondJobsRequested = deferFulfillment(api.jobsRequestedSubject) { _ in true }
+        service.restore()
+        try await secondJobsRequested.fulfill()
+        let firstJobsReturned = deferFulfillment(api.jobsReturnedSubject) { _ in true }
+        
+        api.resumeJobs()
+        try await firstJobsReturned.fulfill()
+        service.stop()
+        let secondJobsReturned = deferFulfillment(api.jobsReturnedSubject) { _ in true }
+        api.resumeJobs()
+        try await secondJobsReturned.fulfill()
+        
+        #expect(service.operationsPublisher.value.isEmpty)
+        #expect(api.polledJobIDs.isEmpty)
+        #expect(api.cancelledJobIDs.isEmpty)
+    }
+    
+    @Test
+    func stopPreventsSuspendedPollingFromPublishingOrCancellingJob() async throws {
+        let api = NitroCatchUpAPIMock()
+        api.shouldSuspendPoll = true
+        api.restoredJobs = [job(status: "running")]
+        let service = makeService(api: api, pollInterval: .zero)
+        let pollRequested = deferFulfillment(api.pollRequestedSubject) { _ in true }
+        
+        service.restore()
+        try await pollRequested.fulfill()
+        let pollReturned = deferFulfillment(api.pollReturnedSubject) { _ in true }
+        
+        service.stop()
+        api.resumePoll(with: job(status: "completed", summary: "Done"))
+        try await pollReturned.fulfill()
+        
+        #expect(service.operationsPublisher.value.isEmpty)
+        #expect(api.cancelledJobIDs.isEmpty)
+    }
+    
+    @Test
+    func stopPreventsSuspendedUnauthorizedPollFromReauthenticating() async throws {
+        let api = NitroCatchUpAPIMock()
+        api.shouldSuspendPoll = true
+        api.restoredJobs = [job(status: "running")]
+        let authenticationProvider = NitroCatchUpAuthenticationProviderMock()
+        let service = makeService(api: api,
+                                  authenticationProvider: authenticationProvider,
+                                  pollInterval: .zero)
+        let pollRequested = deferFulfillment(api.pollRequestedSubject) { _ in true }
+        
+        service.restore()
+        try await pollRequested.fulfill()
+        let pollReturned = deferFulfillment(api.pollReturnedSubject) { _ in true }
+        
+        service.stop()
+        api.resumePoll(throwing: NitroCatchUpAPIError.httpStatus(401, message: nil))
+        try await pollReturned.fulfill()
+        
+        #expect(authenticationProvider.authenticationCallsCount == 1)
+        #expect(service.operationsPublisher.value.isEmpty)
+        #expect(api.cancelledJobIDs.isEmpty)
     }
     
     @Test
@@ -322,18 +396,17 @@ struct NitroCatchUpServiceTests {
     }
     
     @Test
-    func preservesCompletedResultWhenPollingDeadlineExpires() async throws {
+    func restoresAndCompletesJobOlderThanFormerClientPollingLimit() async throws {
         let api = NitroCatchUpAPIMock()
+        api.restoredJobs = [job(status: "running", elapsedSeconds: 26 * 60)]
         api.pollJobs = [job(status: "completed", summary: "Done")]
-        let service = makeService(api: api, maximumPollingDuration: .zero)
+        let service = makeService(api: api, pollInterval: .zero)
+        defer { service.stop() }
         let completed = deferFulfillment(service.operationsPublisher) { operations in
             operations.contains { $0.state == .completed(.init(summary: "Done", messageCount: 1, model: nil, promptVersion: nil)) }
         }
         
-        #expect(service.start(roomID: "!room:example.org",
-                              roomName: "Nitro team",
-                              scope: .lastRead,
-                              mode: .overview).isSuccess)
+        service.restore()
         try await completed.fulfill()
         
         #expect(api.polledJobIDs.count == 1)
@@ -373,6 +446,8 @@ struct NitroCatchUpServiceTests {
         
         service.stop()
         try await cancelled.fulfill()
+        
+        #expect(api.cancelledJobIDs.isEmpty)
     }
     
     @Test
@@ -492,19 +567,23 @@ struct NitroCatchUpServiceTests {
                              historyLoader: NitroCatchUpHistoryLoaderMock = .init(),
                              pollInterval: Duration = .seconds(5),
                              retryInterval: Duration = .seconds(5),
-                             maximumPollingDuration: Duration = .seconds(25 * 60),
                              restoreRetryInterval: Duration = .seconds(5)) -> NitroCatchUpService {
         NitroCatchUpService(authenticationProvider: authenticationProvider,
                             historyLoader: historyLoader,
                             api: api,
                             pollInterval: pollInterval,
                             serverActionRetryInterval: retryInterval,
-                            maximumPollingDuration: maximumPollingDuration,
                             restoreRetryInterval: restoreRetryInterval)
     }
     
-    private func job(status: String, summary: String? = nil, error: String? = nil) -> NitroCatchUpJob {
-        NitroCatchUpAPIMock.job(status: status, summary: summary, error: error)
+    private func job(status: String,
+                     elapsedSeconds: Int = 0,
+                     summary: String? = nil,
+                     error: String? = nil) -> NitroCatchUpJob {
+        NitroCatchUpAPIMock.job(status: status,
+                                elapsedSeconds: elapsedSeconds,
+                                summary: summary,
+                                error: error)
     }
 }
 
@@ -549,10 +628,14 @@ private final class NitroCatchUpHistoryLoaderMock: NitroCatchUpHistoryLoaderProt
 private final class NitroCatchUpAPIMock: NitroCatchUpAPIProtocol {
     let startRequestedSubject = PassthroughSubject<Bool, Never>()
     let jobsRequestedSubject = PassthroughSubject<Bool, Never>()
+    let jobsReturnedSubject = PassthroughSubject<Bool, Never>()
+    let pollRequestedSubject = PassthroughSubject<Bool, Never>()
+    let pollReturnedSubject = PassthroughSubject<Bool, Never>()
     var startJob = job(status: "queued")
     var startError: Error?
     var shouldSuspendStart = false
     var shouldSuspendJobs = false
+    var shouldSuspendPoll = false
     var jobsErrors = [Error?]()
     var cancelErrors = [Error?]()
     var cancelJobs = [NitroCatchUpJob]()
@@ -566,7 +649,8 @@ private final class NitroCatchUpAPIMock: NitroCatchUpAPIProtocol {
     private(set) var polledJobIDs = [String]()
     private(set) var jobsRequestsCount = 0
     private var suspendedStart: (requestID: String, continuation: CheckedContinuation<NitroCatchUpJob, Error>)?
-    private var suspendedJobs: CheckedContinuation<[NitroCatchUpJob], Never>?
+    private var suspendedJobs = [CheckedContinuation<[NitroCatchUpJob], Never>]()
+    private var suspendedPoll: (jobID: String, continuation: CheckedContinuation<NitroCatchUpJob, Error>)?
     
     func start(requestID: String,
                roomID: String,
@@ -604,6 +688,13 @@ private final class NitroCatchUpAPIMock: NitroCatchUpAPIProtocol {
     
     func poll(jobID: String, authentication: NitroCatchUpAuthentication) async throws -> NitroCatchUpJob {
         polledJobIDs.append(jobID)
+        if shouldSuspendPoll {
+            pollRequestedSubject.send(true)
+            defer { pollReturnedSubject.send(true) }
+            return try await withCheckedThrowingContinuation { continuation in
+                suspendedPoll = (jobID, continuation)
+            }
+        }
         if !pollErrors.isEmpty, let error = pollErrors.removeFirst() {
             throw error
         }
@@ -614,12 +705,29 @@ private final class NitroCatchUpAPIMock: NitroCatchUpAPIProtocol {
         return Self.job(id: jobID, status: startJob.status, summary: startJob.summary)
     }
     
+    func resumePoll(with job: NitroCatchUpJob) {
+        guard let suspendedPoll else { return }
+        self.suspendedPoll = nil
+        suspendedPoll.continuation.resume(returning: Self.job(id: suspendedPoll.jobID,
+                                                              status: job.status,
+                                                              elapsedSeconds: job.elapsedSeconds,
+                                                              summary: job.summary,
+                                                              error: job.error))
+    }
+    
+    func resumePoll(throwing error: Error) {
+        guard let suspendedPoll else { return }
+        self.suspendedPoll = nil
+        suspendedPoll.continuation.resume(throwing: error)
+    }
+    
     func jobs(authentication: NitroCatchUpAuthentication) async throws -> [NitroCatchUpJob] {
         jobsRequestsCount += 1
         if shouldSuspendJobs {
             jobsRequestedSubject.send(true)
+            defer { jobsReturnedSubject.send(true) }
             return await withCheckedContinuation { continuation in
-                suspendedJobs = continuation
+                suspendedJobs.append(continuation)
             }
         }
         if !jobsErrors.isEmpty, let error = jobsErrors.removeFirst() {
@@ -629,9 +737,8 @@ private final class NitroCatchUpAPIMock: NitroCatchUpAPIProtocol {
     }
     
     func resumeJobs() {
-        guard let suspendedJobs else { return }
-        self.suspendedJobs = nil
-        suspendedJobs.resume(returning: restoredJobs)
+        guard !suspendedJobs.isEmpty else { return }
+        suspendedJobs.removeFirst().resume(returning: restoredJobs)
     }
     
     func cancel(jobID: String,
@@ -656,10 +763,15 @@ private final class NitroCatchUpAPIMock: NitroCatchUpAPIProtocol {
         }
     }
     
-    static func job(id: String = "job", status: String, summary: String? = nil, error: String? = nil) -> NitroCatchUpJob {
+    static func job(id: String = "job",
+                    status: String,
+                    elapsedSeconds: Int = 0,
+                    summary: String? = nil,
+                    error: String? = nil) -> NitroCatchUpJob {
         .init(id: id,
               status: status,
               messageCount: 1,
+              elapsedSeconds: elapsedSeconds,
               summary: summary,
               error: error,
               roomID: "!room:example.org",

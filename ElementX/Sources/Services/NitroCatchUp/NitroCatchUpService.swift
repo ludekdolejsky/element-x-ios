@@ -27,15 +27,15 @@ private struct NitroCatchUpAuthenticationProvider: NitroCatchUpAuthenticationPro
 }
 
 final class NitroCatchUpService: NitroCatchUpServiceProtocol {
-    private struct OperationTask {
+    private struct TrackedTask {
         let id: UUID
         let task: Task<Void, Never>
     }
     
     private final class OperationRuntime {
         var operation: NitroCatchUpOperation
-        var operationTask: OperationTask?
-        var serverActionTask: OperationTask?
+        var operationTask: TrackedTask?
+        var serverActionTask: TrackedTask?
         var authentication: NitroCatchUpAuthentication?
         var isStarting = false
         var hasPendingCancellation = false
@@ -60,7 +60,6 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
     
     private static let pollInterval: Duration = .seconds(5)
     private static let maximumPollInterval: Duration = .seconds(30)
-    private static let maximumPollingDuration: Duration = .seconds(25 * 60)
     private static let cancellationTimeout: TimeInterval = 5
     private static let defaultServerActionRetryInterval: Duration = .seconds(5)
     private static let maximumServerActionRetryInterval: Duration = .seconds(30)
@@ -72,12 +71,11 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
     private let api: NitroCatchUpAPIProtocol
     private let pollInterval: Duration
     private let serverActionRetryInterval: Duration
-    private let maximumPollingDuration: Duration
     private let restoreRetryInterval: Duration
     private let operationsSubject = CurrentValueSubject<[NitroCatchUpOperation], Never>([])
     private let actionFailuresSubject = PassthroughSubject<String, Never>()
     private var operationRuntimes = [String: OperationRuntime]()
-    private var restoreTask: Task<Void, Never>?
+    private var restoreTask: TrackedTask?
     
     var operationsPublisher: CurrentValuePublisher<[NitroCatchUpOperation], Never> {
         operationsSubject.asCurrentValuePublisher()
@@ -93,7 +91,6 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
         api = NitroCatchUpAPI(baseURL: baseURL, urlSession: urlSession)
         pollInterval = Self.pollInterval
         serverActionRetryInterval = Self.defaultServerActionRetryInterval
-        maximumPollingDuration = Self.maximumPollingDuration
         restoreRetryInterval = Self.defaultServerActionRetryInterval
     }
     
@@ -102,14 +99,12 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
          api: NitroCatchUpAPIProtocol,
          pollInterval: Duration = NitroCatchUpService.pollInterval,
          serverActionRetryInterval: Duration = NitroCatchUpService.defaultServerActionRetryInterval,
-         maximumPollingDuration: Duration = NitroCatchUpService.maximumPollingDuration,
          restoreRetryInterval: Duration = NitroCatchUpService.defaultServerActionRetryInterval) {
         self.authenticationProvider = authenticationProvider
         self.historyLoader = historyLoader
         self.api = api
         self.pollInterval = pollInterval
         self.serverActionRetryInterval = serverActionRetryInterval
-        self.maximumPollingDuration = maximumPollingDuration
         self.restoreRetryInterval = restoreRetryInterval
     }
     
@@ -135,13 +130,16 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
     
     func restore() {
         guard restoreTask == nil else { return }
-        restoreTask = Task(name: "Restore Nitro catch up jobs") { [weak self] in
+        let taskID = UUID()
+        let task = Task(name: "Restore Nitro catch up jobs") { [weak self] in
             await self?.restoreJobs()
+            self?.finishRestoreTask(taskID: taskID)
         }
+        restoreTask = .init(id: taskID, task: task)
     }
     
     func stop() {
-        restoreTask?.cancel()
+        restoreTask?.task.cancel()
         restoreTask = nil
         operationRuntimes.values.forEach { runtime in
             runtime.operationTask?.task.cancel()
@@ -212,7 +210,6 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
                            roomID: roomID,
                            roomName: roomName,
                            mode: mode,
-                           elapsedSeconds: job.elapsedSeconds,
                            authentication: authentication)
                 return
             }
@@ -222,7 +219,6 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
                        roomID: roomID,
                        roomName: roomName,
                        mode: mode,
-                       elapsedSeconds: job.elapsedSeconds,
                        authentication: authentication)
         } catch {
             handleRunError(error, operationID: operationID, roomID: roomID)
@@ -259,9 +255,9 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
             updateOperation(operationID) { $0.state = .cancelled }
             return nil
         } catch {
-            await cancelAmbiguousStart(operationID: operationID, authentication: authentication)
             guard runtime.hasPendingCancellation else { throw error }
             runtime.hasPendingCancellation = false
+            await cancelAmbiguousStart(operationID: operationID, authentication: authentication)
             updateOperation(operationID) { $0.state = .cancelled }
             return nil
         }
@@ -285,21 +281,18 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
                       roomID: String,
                       roomName: String,
                       mode: NitroCatchUpMode,
-                      elapsedSeconds: Int,
                       authentication initialAuthentication: NitroCatchUpAuthentication) async {
         var failureCount = 0
         var authentication = initialAuthentication
         var hasRefreshedAuthentication = false
-        let elapsedDuration: Duration = .seconds(elapsedSeconds)
-        let remainingDuration = max(.zero, maximumPollingDuration - elapsedDuration)
-        let deadline = ContinuousClock.now.advanced(by: remainingDuration)
-        while !Task.isCancelled, ContinuousClock.now < deadline {
+        while !Task.isCancelled {
             guard operationRuntimes[jobID]?.operation.state.isRunning == true else { return }
             let multiplier = 1 << min(failureCount, 3)
             let delay = min(pollInterval * multiplier, Self.maximumPollInterval)
             do {
                 try await Task.sleep(for: delay)
                 let job = try await api.poll(jobID: jobID, authentication: authentication)
+                try Task.checkCancellation()
                 failureCount = 0
                 apply(job, fallbackRoomID: roomID, fallbackRoomName: roomName, fallbackMode: mode)
                 if job.isFinished {
@@ -308,6 +301,7 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
             } catch is CancellationError {
                 return
             } catch NitroCatchUpAPIError.httpStatus(401, _) where !hasRefreshedAuthentication {
+                guard !Task.isCancelled else { return }
                 operationRuntimes[jobID]?.authentication = nil
                 do {
                     authentication = try await self.authentication(for: jobID)
@@ -316,51 +310,24 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
                 } catch is CancellationError {
                     return
                 } catch {
+                    guard !Task.isCancelled else { return }
                     failureCount += 1
                     MXLog.warning("Unable to refresh Catch me up authentication for \(jobID)")
                 }
             } catch NitroCatchUpAPIError.httpStatus(let status, _) where !Self.isRetryableHTTPStatus(status) {
+                guard !Task.isCancelled else { return }
                 MXLog.warning("Catch me up polling failed with HTTP \(status) for \(jobID)")
                 updateOperation(jobID) { $0.state = .failed(.transport) }
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 failureCount += 1
                 MXLog.warning("Catch me up polling interrupted for \(jobID)")
             }
         }
-        guard !Task.isCancelled else { return }
-        await finishExpiredPolling(jobID: jobID,
-                                   roomID: roomID,
-                                   roomName: roomName,
-                                   mode: mode,
-                                   authentication: authentication)
-    }
-    
-    private func finishExpiredPolling(jobID: String,
-                                      roomID: String,
-                                      roomName: String,
-                                      mode: NitroCatchUpMode,
-                                      authentication: NitroCatchUpAuthentication) async {
-        do {
-            let finalJob = try await api.poll(jobID: jobID, authentication: authentication)
-            apply(finalJob, fallbackRoomID: roomID, fallbackRoomName: roomName, fallbackMode: mode)
-            guard !finalJob.isFinished else { return }
-            
-            let cancelledJob = try await api.cancel(jobID: jobID,
-                                                    authentication: authentication,
-                                                    timeoutInterval: Self.cancellationTimeout)
-            apply(cancelledJob, fallbackRoomID: roomID, fallbackRoomName: roomName, fallbackMode: mode)
-            guard !cancelledJob.isFinished else { return }
-        } catch is CancellationError {
-            return
-        } catch {
-            MXLog.warning("Unable to finish expired Catch me up polling for \(jobID)")
-        }
-        updateOperation(jobID) { $0.state = .failed(.transport) }
     }
     
     private func restoreJobs() async {
-        defer { restoreTask = nil }
         var failureCount = 0
         while !Task.isCancelled, failureCount < Self.maximumRestoreAttemptCount {
             do {
@@ -381,7 +348,6 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
                                                roomID: roomID,
                                                roomName: roomName,
                                                mode: mode,
-                                               elapsedSeconds: job.elapsedSeconds,
                                                authentication: authentication)
                         }
                     }
@@ -525,6 +491,11 @@ final class NitroCatchUpService: NitroCatchUpServiceProtocol {
         if !runtime.operation.state.isRunning {
             runtime.authentication = nil
         }
+    }
+    
+    private func finishRestoreTask(taskID: UUID) {
+        guard restoreTask?.id == taskID else { return }
+        restoreTask = nil
     }
     
     private func finishServerActionTask(operationID: String, taskID: UUID) {

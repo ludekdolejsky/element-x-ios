@@ -327,7 +327,7 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
     private func pasteRichText(_ content: NitroMessageCopyFormatter.RichPasteContent) {
         let selection = wysiwygViewModel.attributedContent.selection
         if case .plainText(let plainText) = content {
-            _ = wysiwygViewModel.replaceText(range: selection, replacementText: plainText)
+            replaceRichComposerText(in: selection, with: plainText)
             return
         }
         let textLength = wysiwygViewModel.attributedContent.text.length
@@ -339,7 +339,7 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
                 let restoration = CustomEmojiMessageContent.restoringCustomEmojis(in: html, fallbackBody: plainText)
                 preservedCustomEmojis.append(contentsOf: restoration.customEmojis)
             }
-            _ = wysiwygViewModel.replaceText(range: selection, replacementText: content.plainText)
+            replaceRichComposerText(in: selection, with: content.plainText)
             return
         }
         
