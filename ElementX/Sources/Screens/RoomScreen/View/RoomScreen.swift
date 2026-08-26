@@ -333,7 +333,7 @@ struct RoomScreen: View {
                     Button {
                         context.send(viewAction: .displayNitroCatchUp)
                     } label: {
-                        Label(UntranslatedL10n.screenNitroCatchUpTitleIos, icon: \.spotlight)
+                        Label(UntranslatedL10n.screenNitroCatchUpTitleIos, icon: \.history)
                     }
                 } label: {
                     CompoundIcon(\.overflowHorizontal)
