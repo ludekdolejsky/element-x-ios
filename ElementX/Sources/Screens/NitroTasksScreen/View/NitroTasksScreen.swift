@@ -27,8 +27,12 @@ struct NitroTasksScreen: View {
                     ProgressView()
                 } else if context.viewState.tasks.isEmpty {
                     emptyState
+                } else if context.viewState.isFilteringBySearch, context.viewState.filteredTasks.isEmpty {
+                    searchEmptyState
                 } else if horizontalSizeClass == .regular {
                     board
+                } else if context.viewState.isFilteringBySearch {
+                    compactSearchResults
                 } else {
                     compactList
                 }
@@ -36,6 +40,12 @@ struct NitroTasksScreen: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color.compound.bgCanvasDefault)
+        .searchable(text: $context.searchQuery,
+                    placement: .navigationBarDrawer(displayMode: .automatic),
+                    prompt: UntranslatedL10n.screenNitroTasksSearchIos)
+        .compoundSearchField()
+        .autocorrectionDisabled()
+        .textInputAutocapitalization(.never)
         .navigationTitle(UntranslatedL10n.screenNitroTasksTitleIos)
         .toolbar { toolbar }
         .alert(item: $context.alertInfo)
@@ -116,6 +126,34 @@ struct NitroTasksScreen: View {
             .refreshable {
                 context.send(viewAction: .refresh)
             }
+        }
+    }
+    
+    private var compactSearchResults: some View {
+        List {
+            if hasUnavailableContent {
+                unavailableRow
+            }
+            ForEach(NitroTaskStatus.allCases) { status in
+                let tasks = context.viewState.tasks(for: status)
+                if !tasks.isEmpty {
+                    Section(status.title) {
+                        ForEach(tasks) { task in
+                            taskCard(task, useCardBackground: false)
+                                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                    leadingSwipeAction(task)
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    archiveSwipeAction(task)
+                                }
+                        }
+                    }
+                }
+            }
+        }
+        .compoundList()
+        .refreshable {
+            context.send(viewAction: .refresh)
         }
     }
     
@@ -277,6 +315,21 @@ struct NitroTasksScreen: View {
         }
     }
     
+    private var searchEmptyState: some View {
+        VStack(spacing: 12) {
+            CompoundIcon(\.search, size: .custom(48), relativeTo: .compound.headingLG)
+                .foregroundStyle(.compound.iconSecondary)
+            Text(L10n.commonNoResults)
+                .font(.compound.headingMDBold)
+                .foregroundStyle(.compound.textPrimary)
+            Button(L10n.actionClear) {
+                context.searchQuery = ""
+            }
+            .buttonStyle(.compound(.secondary, size: .medium))
+        }
+        .padding(24)
+    }
+    
     private var compactEmptyRow: some View {
         Text(UntranslatedL10n.screenNitroTasksColumnEmptyIos)
             .font(.compound.bodyMD)
@@ -286,9 +339,7 @@ struct NitroTasksScreen: View {
     }
     
     private var hasUnavailableContent: Bool {
-        context.viewState.unavailableRoomCount > 0 || context.viewState.tasks.contains { task in
-            !task.stateIsAvailable && (context.selectedRoomID == nil || task.roomID == context.selectedRoomID)
-        }
+        context.viewState.unavailableRoomCount > 0 || context.viewState.filteredTasks.contains { !$0.stateIsAvailable }
     }
     
     private var hasRecoveryStatus: Bool {

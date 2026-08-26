@@ -11,6 +11,7 @@ protocol NitroTaskServiceProtocol {
     var updatesPublisher: AnyPublisher<NitroTaskServiceUpdate, Never> { get }
     var cachedTaskList: NitroTaskList? { get }
     
+    func currentTaskIndexRevision() async -> String?
     func loadTasks() async -> Result<NitroTaskList, NitroTaskServiceError>
     func startPendingTaskRecovery()
     func loadRooms() async -> Result<[NitroTaskRoom], NitroTaskServiceError>

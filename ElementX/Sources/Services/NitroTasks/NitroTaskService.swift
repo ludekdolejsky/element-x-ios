@@ -73,7 +73,7 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         case add(roomID: String, eventID: String)
         case remove(roomID: String, eventID: String)
         case reconcile(initial: NitroTaskIndex, rooms: [NitroTaskIndex.RoomReconciliation])
-
+        
         var mutation: NitroTaskIndex.Mutation? {
             switch self {
             case .add(let roomID, let eventID):
@@ -94,7 +94,7 @@ final class NitroTaskService: NitroTaskServiceProtocol {
             }
         }
     }
-
+    
     private nonisolated struct TaskIndexWriteState: Sendable {
         let index: NitroTaskIndex
         let pendingMutations: [NitroTaskIndex.Mutation]
@@ -122,6 +122,10 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     init(client: ClientProtocol, urlSession: URLSession = .shared) {
         self.client = client
         self.urlSession = urlSession
+    }
+    
+    func currentTaskIndexRevision() async -> String? {
+        try? await client.accountData(eventType: NitroTaskEventParser.taskIndexEventType)
     }
     
     func loadTasks() async -> Result<NitroTaskList, NitroTaskServiceError> {

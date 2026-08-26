@@ -11,7 +11,7 @@ nonisolated struct NitroTaskIndex: Equatable, Sendable {
     enum Mutation: Equatable, Sendable {
         case add(roomID: String, eventID: String)
         case remove(roomID: String, eventID: String)
-
+        
         func targetsSameEntry(as other: Mutation) -> Bool {
             switch (self, other) {
             case (.add(let roomID, let eventID), .add(let otherRoomID, let otherEventID)),
@@ -22,7 +22,7 @@ nonisolated struct NitroTaskIndex: Equatable, Sendable {
             }
         }
     }
-
+    
     struct Entry: Equatable, Hashable, Sendable {
         let roomID: String
         let eventID: String
@@ -115,7 +115,7 @@ nonisolated struct NitroTaskIndex: Equatable, Sendable {
                               tasks: remainingTasks,
                               roomPinRevisions: revisions)
     }
-
+    
     static func replaying(_ mutations: [Mutation], on index: NitroTaskIndex?) -> NitroTaskIndex? {
         mutations.reduce(index) { result, mutation in
             switch mutation {

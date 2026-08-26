@@ -110,6 +110,67 @@ struct NitroTasksScreenViewModelTests {
     }
     
     @Test
+    func filtersTasksByAllSearchableFields() {
+        let titleTask = makeTask(id: "$title:example.org", title: "Připravit release")
+        let descriptionTask = makeTask(id: "$description:example.org", description: "Publish the TestFlight build")
+        let roomTask = makeTask(id: "$room:example.org", roomName: "Mobile team")
+        let assigneeTask = makeTask(id: "$assignee:example.org",
+                                    assigneeID: "@alice:example.org",
+                                    assigneeDisplayName: "Alice Cooper")
+        var state = NitroTasksScreenViewState(bindings: .init())
+        state.tasks = [titleTask, descriptionTask, roomTask, assigneeTask]
+        
+        state.bindings.searchQuery = "pripravit"
+        #expect(state.filteredTasks == [titleTask])
+        state.bindings.searchQuery = "testflight"
+        #expect(state.filteredTasks == [descriptionTask])
+        state.bindings.searchQuery = "mobile"
+        #expect(state.filteredTasks == [roomTask])
+        state.bindings.searchQuery = "alice example"
+        #expect(state.filteredTasks == [assigneeTask])
+    }
+    
+    @Test
+    func combinesSearchAndRoomFilters() {
+        let nitroTask = makeTask(title: "Publish build")
+        let designTask = makeTask(id: "$design:example.org",
+                                  roomID: "!design:example.org",
+                                  roomName: "Design",
+                                  title: "Publish mockups")
+        var state = NitroTasksScreenViewState(bindings: .init(selectedRoomID: designTask.roomID,
+                                                              searchQuery: "publish"))
+        state.tasks = [nitroTask, designTask]
+        
+        #expect(state.filteredTasks == [designTask])
+    }
+    
+    @Test
+    func updatesSearchIndexWhenTasksChange() {
+        let task = makeTask(title: "Prepare release")
+        var state = NitroTasksScreenViewState(bindings: .init(searchQuery: "release"))
+        state.tasks = [task]
+        #expect(state.filteredTasks == [task])
+        
+        var updatedTask = task
+        updatedTask.metadata = .init(title: "Publish build",
+                                     description: task.metadata.description,
+                                     batchID: task.metadata.batchID,
+                                     sourceRoomID: task.metadata.sourceRoomID,
+                                     sourceEventID: task.metadata.sourceEventID,
+                                     sourceThreadRootID: task.metadata.sourceThreadRootID,
+                                     sourcePermalink: task.metadata.sourcePermalink,
+                                     initialState: task.metadata.initialState,
+                                     createdDate: task.metadata.createdDate)
+        state.tasks = [updatedTask]
+        #expect(state.filteredTasks.isEmpty)
+        
+        state.bindings.searchQuery = "publish"
+        #expect(state.filteredTasks == [updatedTask])
+        state.tasks = []
+        #expect(state.filteredTasks.isEmpty)
+    }
+    
+    @Test
     func keepsContextRoomFilterWithoutLoadedTasks() async throws {
         let room = NitroTaskRoom(id: "!empty:example.org", name: "Empty room")
         let service = NitroTaskServiceMock()
@@ -590,12 +651,16 @@ struct NitroTasksScreenViewModelTests {
     
     private func makeTask(id: String = "$task:example.org",
                           roomID: String = "!nitro:example.org",
-                          roomName: String = "Nitro team") -> NitroTask {
+                          roomName: String = "Nitro team",
+                          title: String = "Ship the iOS board",
+                          description: String? = "Keep it compatible with desktop.",
+                          assigneeID: String? = nil,
+                          assigneeDisplayName: String? = nil) -> NitroTask {
         .init(id: id,
               roomID: roomID,
               roomName: roomName,
-              metadata: .init(title: "Ship the iOS board",
-                              description: "Keep it compatible with desktop.",
+              metadata: .init(title: title,
+                              description: description,
                               batchID: "batch-1",
                               sourceRoomID: "!nitro:example.org",
                               sourceEventID: "$source:example.org",
@@ -603,9 +668,9 @@ struct NitroTasksScreenViewModelTests {
                               sourcePermalink: "https://matrix.to/#/!nitro:example.org/$source:example.org",
                               initialState: .default,
                               createdDate: Date(timeIntervalSince1970: 1_800_000_000)),
-              state: .default,
+              state: .init(status: .todo, assignee: assigneeID),
               stateIsAvailable: true,
-              assigneeDisplayName: nil,
+              assigneeDisplayName: assigneeDisplayName,
               updatedDate: nil,
               canUpdate: true,
               canArchive: true,
