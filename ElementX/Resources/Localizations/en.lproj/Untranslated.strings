@@ -127,6 +127,14 @@
 "screen_developer_options_disable_top_banner_compositing_ios" = "Disable top banner compositing";
 "screen_developer_options_force_reload_timeline_cells_ios" = "Force reload timeline cells";
 "screen_developer_options_rebuild_timeline_view_ios" = "Rebuild timeline view";
+"screen_developer_options_sentry_ios" = "Sentry";
+"screen_developer_options_send_sentry_test_event_ios" = "Send Sentry test event";
+"screen_developer_options_sentry_event_id_ios" = "Event ID";
+"screen_developer_options_trigger_sentry_test_crash_ios" = "Trigger Sentry test crash";
+"screen_developer_options_crash_now_ios" = "Crash now";
+"screen_developer_options_sentry_enabled_hint_ios" = "Test events are sent immediately. Test crashes are sent after the next launch.";
+"screen_developer_options_sentry_disabled_hint_ios" = "Enable analytics in Settings before testing Sentry.";
+"screen_developer_options_trigger_sentry_test_crash_confirmation_ios" = "The app will close immediately. Reopen it to send the crash report.";
 "soft_logout_clear_data_dialog_content" = "Clear all data currently stored on this device?\nSign in again to access your account data and messages.";
 "soft_logout_clear_data_dialog_title" = "Clear data";
 "soft_logout_clear_data_notice" = "Warning: Your personal data (including encryption keys) is still stored on this device.\n\nClear it if you’re finished using this device, or want to sign in to another account.";

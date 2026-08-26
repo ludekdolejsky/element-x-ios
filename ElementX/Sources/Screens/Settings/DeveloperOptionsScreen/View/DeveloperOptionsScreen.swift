@@ -11,6 +11,7 @@ import SwiftUI
 struct DeveloperOptionsScreen: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showMarkAllRoomsAsReadAlert = false
+    @State private var showSentryTestCrashAlert = false
     
     @Bindable var context: DeveloperOptionsScreenViewModel.Context
     
@@ -44,6 +45,40 @@ struct DeveloperOptionsScreen: View {
                 }
             }
             
+            if NitroConfiguration.isEnabled {
+                Section {
+                    Button(UntranslatedL10n.screenDeveloperOptionsSendSentryTestEventIos) {
+                        context.send(viewAction: .sendSentryTestEvent)
+                    }
+                    .disabled(!context.viewState.isSentryEnabled)
+
+                    if let eventID = context.viewState.sentryTestEventID {
+                        LabeledContent(UntranslatedL10n.screenDeveloperOptionsSentryEventIdIos, value: eventID)
+                            .textSelection(.enabled)
+                    }
+
+                    Button(UntranslatedL10n.screenDeveloperOptionsTriggerSentryTestCrashIos, role: .destructive) {
+                        showSentryTestCrashAlert = true
+                    }
+                    .disabled(!context.viewState.isSentryEnabled)
+                } header: {
+                    Text(UntranslatedL10n.screenDeveloperOptionsSentryIos)
+                } footer: {
+                    Text(context.viewState.isSentryEnabled
+                        ? UntranslatedL10n.screenDeveloperOptionsSentryEnabledHintIos
+                        : UntranslatedL10n.screenDeveloperOptionsSentryDisabledHintIos)
+                }
+                .alert(UntranslatedL10n.screenDeveloperOptionsTriggerSentryTestCrashIos,
+                       isPresented: $showSentryTestCrashAlert) {
+                    Button(L10n.actionCancel, role: .cancel) { }
+                    Button(UntranslatedL10n.screenDeveloperOptionsCrashNowIos, role: .destructive) {
+                        context.send(viewAction: .triggerSentryTestCrash)
+                    }
+                } message: {
+                    Text(UntranslatedL10n.screenDeveloperOptionsTriggerSentryTestCrashConfirmationIos)
+                }
+            }
+
             Section("General") {
                 Toggle(isOn: $context.linkNewDeviceEnabled) {
                     Text("Link new device with QR code")

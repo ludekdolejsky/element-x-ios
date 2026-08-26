@@ -7,6 +7,7 @@
 //
 
 import Combine
+import Sentry
 import SwiftUI
 
 typealias DeveloperOptionsScreenViewModelType = StateStoreViewModelV2<DeveloperOptionsScreenViewState, DeveloperOptionsScreenViewAction>
@@ -20,11 +21,24 @@ class DeveloperOptionsScreenViewModel: DeveloperOptionsScreenViewModelType, Deve
     
     private let clientProxy: ClientProxyProtocol?
     private let developerOptions: DeveloperOptionsProtocol
+    private let captureSentryTestEvent: () -> String
+    private let triggerSentryTestCrash: () -> Void
     
-    init(developerOptions: DeveloperOptionsProtocol, appHooks: AppHooks, clientProxy: ClientProxyProtocol?) {
+    init(developerOptions: DeveloperOptionsProtocol,
+         appHooks: AppHooks,
+         clientProxy: ClientProxyProtocol?,
+         captureSentryTestEvent: @escaping () -> String = {
+             SentrySDK.capture(message: "Nitro Sentry test event").sentryIdString
+         },
+         triggerSentryTestCrash: @escaping () -> Void = {
+             fatalError("Nitro Sentry test crash")
+         }) {
         self.clientProxy = clientProxy
         self.developerOptions = developerOptions
+        self.captureSentryTestEvent = captureSentryTestEvent
+        self.triggerSentryTestCrash = triggerSentryTestCrash
         super.init(initialViewState: .init(appHooks: appHooks,
+                                           isSentryEnabled: NitroConfiguration.sentryURL != nil && developerOptions.analyticsConsentState == .optedIn,
                                            shouldShowClearCache: clientProxy != nil,
                                            isSignedIn: clientProxy != nil,
                                            bindings: .init(developerOptions: developerOptions)))
@@ -67,6 +81,10 @@ class DeveloperOptionsScreenViewModel: DeveloperOptionsScreenViewModelType, Deve
             developerOptions.timelineCellReloadRequestID &+= 1
         case .rebuildTimelineView:
             developerOptions.timelineViewRebuildRequestID &+= 1
+        case .sendSentryTestEvent:
+            state.sentryTestEventID = captureSentryTestEvent()
+        case .triggerSentryTestCrash:
+            triggerSentryTestCrash()
         }
     }
 }

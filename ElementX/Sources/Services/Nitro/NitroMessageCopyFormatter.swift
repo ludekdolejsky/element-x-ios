@@ -12,6 +12,12 @@ import WysiwygComposer
 
 enum NitroMessageCopyFormatter {
     static let markdownTypeIdentifier = "net.daringfireball.markdown"
+    private static let plainTextTypeIdentifiers = [
+        UTType.utf8PlainText.identifier,
+        UTType.utf16PlainText.identifier,
+        UTType.utf16ExternalPlainText.identifier,
+        UTType.plainText.identifier
+    ]
     
     enum Format {
         case text
@@ -64,9 +70,10 @@ enum NitroMessageCopyFormatter {
         }
     }
     
-    static func supportsRichPaste(_ itemProvider: NSItemProvider) -> Bool {
+    static func supportsTextPaste(_ itemProvider: NSItemProvider) -> Bool {
         itemProvider.hasItemConformingToTypeIdentifier(UTType.html.identifier) ||
-            itemProvider.hasItemConformingToTypeIdentifier(markdownTypeIdentifier)
+            itemProvider.hasItemConformingToTypeIdentifier(markdownTypeIdentifier) ||
+            itemProvider.hasItemConformingToTypeIdentifier(UTType.text.identifier)
     }
     
     static func richPasteContent(from itemProvider: NSItemProvider) async -> RichPasteContent? {
@@ -83,10 +90,19 @@ enum NitroMessageCopyFormatter {
             return .markdown(markdown)
         }
         
-        guard let plainText = await string(from: itemProvider, type: UTType.utf8PlainText.identifier) else {
-            return nil
+        for type in plainTextTypeIdentifiers where itemProvider.registeredTypeIdentifiers.contains(type) {
+            if let plainText = await string(from: itemProvider, type: type) {
+                return .plainText(plainText)
+            }
         }
-        return .plainText(plainText)
+
+        if itemProvider.hasItemConformingToTypeIdentifier(UTType.rtf.identifier),
+           let data = await data(from: itemProvider, type: UTType.rtf.identifier),
+           let plainText = await plainText(fromRTF: data) {
+            return .plainText(plainText)
+        }
+
+        return nil
     }
     
     private static func string(from itemProvider: NSItemProvider, type: String) async -> String? {
@@ -113,6 +129,28 @@ enum NitroMessageCopyFormatter {
         try? Data(contentsOf: url)
     }
     
+    private static func data(from itemProvider: NSItemProvider, type: String) async -> Data? {
+        if let data = await dataRepresentation(from: itemProvider, type: type) {
+            return data
+        }
+        guard let item = try? await itemProvider.loadItem(forTypeIdentifier: type) else {
+            return nil
+        }
+        if let data = item as? Data {
+            return data
+        }
+        guard let url = item as? URL else {
+            return nil
+        }
+        return await data(from: url)
+    }
+
+    @concurrent private static func plainText(fromRTF data: Data) async -> String? {
+        try? NSAttributedString(data: data,
+                                options: [.documentType: NSAttributedString.DocumentType.rtf],
+                                documentAttributes: nil).string
+    }
+
     private static func dataRepresentation(from itemProvider: NSItemProvider, type: String) async -> Data? {
         await withCheckedContinuation { continuation in
             itemProvider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in

@@ -88,6 +88,8 @@ internal nonisolated enum UntranslatedL10n {
   internal static var errorReminderTimeInPastIos: String { return UntranslatedL10n.tr("Untranslated", "error_reminder_time_in_past_ios") }
   /// Audio transcript
   internal static var screenAudioTranscriptTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_audio_transcript_title_ios") }
+  /// Crash now
+  internal static var screenDeveloperOptionsCrashNowIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_crash_now_ios") }
   /// Disable timeline animations
   internal static var screenDeveloperOptionsDisableTimelineAnimationsIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_disable_timeline_animations_ios") }
   /// Disable top banner compositing
@@ -96,10 +98,24 @@ internal nonisolated enum UntranslatedL10n {
   internal static var screenDeveloperOptionsForceReloadTimelineCellsIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_force_reload_timeline_cells_ios") }
   /// Rebuild timeline view
   internal static var screenDeveloperOptionsRebuildTimelineViewIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_rebuild_timeline_view_ios") }
+  /// Send Sentry test event
+  internal static var screenDeveloperOptionsSendSentryTestEventIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_send_sentry_test_event_ios") }
+  /// Enable analytics in Settings before testing Sentry.
+  internal static var screenDeveloperOptionsSentryDisabledHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_sentry_disabled_hint_ios") }
+  /// Test events are sent immediately. Test crashes are sent after the next launch.
+  internal static var screenDeveloperOptionsSentryEnabledHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_sentry_enabled_hint_ios") }
+  /// Event ID
+  internal static var screenDeveloperOptionsSentryEventIdIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_sentry_event_id_ios") }
+  /// Sentry
+  internal static var screenDeveloperOptionsSentryIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_sentry_ios") }
   /// Shows a status overlay and records rendering state in bug report logs.
   internal static var screenDeveloperOptionsTimelineDiagnosticsHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_timeline_diagnostics_hint_ios") }
   /// Timeline diagnostics
   internal static var screenDeveloperOptionsTimelineDiagnosticsIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_timeline_diagnostics_ios") }
+  /// The app will close immediately. Reopen it to send the crash report.
+  internal static var screenDeveloperOptionsTriggerSentryTestCrashConfirmationIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_trigger_sentry_test_crash_confirmation_ios") }
+  /// Trigger Sentry test crash
+  internal static var screenDeveloperOptionsTriggerSentryTestCrashIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_trigger_sentry_test_crash_ios") }
   /// Search
   internal static var screenHomeTabSearch: String { return UntranslatedL10n.tr("Untranslated", "screen_home_tab_search") }
   /// You’re already caught up — there are no newer messages in this range.

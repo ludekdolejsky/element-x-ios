@@ -15,6 +15,8 @@ enum DeveloperOptionsScreenViewModelAction {
 struct DeveloperOptionsScreenViewState: BindableState {
     let appHooks: AppHooks
     var storeSizes: [StoreSize]?
+    var sentryTestEventID: String?
+    let isSentryEnabled: Bool
     let shouldShowClearCache: Bool
     let isSignedIn: Bool
     
@@ -49,6 +51,8 @@ enum DeveloperOptionsScreenViewAction {
     case markAllRoomsAsRead
     case forceReloadTimelineCells
     case rebuildTimelineView
+    case sendSentryTestEvent
+    case triggerSentryTestCrash
 }
 
 protocol DeveloperOptionsProtocol: AnyObject {
@@ -85,6 +89,8 @@ protocol DeveloperOptionsProtocol: AnyObject {
     var roomThreadListEnabled: Bool { get set }
     
     var globalSearchEnabled: Bool { get set }
+
+    var analyticsConsentState: AnalyticsConsentState { get set }
 }
 
 extension AppSettings: DeveloperOptionsProtocol { }

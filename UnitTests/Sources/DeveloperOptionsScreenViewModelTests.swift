@@ -22,4 +22,18 @@ struct DeveloperOptionsScreenViewModelTests {
         viewModel.context.send(viewAction: .rebuildTimelineView)
         #expect(appSettings.timelineViewRebuildRequestID == 1)
     }
+
+    @Test
+    func sendsSentryTestEvent() {
+        let appSettings = AppSettings.volatile()
+        appSettings.analyticsConsentState = .optedIn
+        let viewModel = DeveloperOptionsScreenViewModel(developerOptions: appSettings,
+                                                        appHooks: AppHooks(),
+                                                        clientProxy: nil,
+                                                        captureSentryTestEvent: { "test-event-id" })
+
+        #expect(viewModel.context.viewState.isSentryEnabled)
+        viewModel.context.send(viewAction: .sendSentryTestEvent)
+        #expect(viewModel.context.viewState.sentryTestEventID == "test-event-id")
+    }
 }

@@ -984,16 +984,16 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
         case .nightly:
             options.environment = "NIGHTLY"
         case .release:
-            options.environment = "RELEASE"
+            options.environment = NitroConfiguration.isEnabled ? "NITRO_TESTFLIGHT" : "RELEASE"
         }
         
         // Sentry swizzling shows up quite often as the heaviest stack trace when profiling
         // We don't need any of the features it powers (see docs)
         options.enableSwizzling = false
         
-        // WatchdogTermination is currently the top issue but we've had zero complaints
-        // so it might very well just all be false positives
-        options.enableWatchdogTerminationTracking = false
+        // Nitro uses this to diagnose OS kills such as 0xdead10cc. Reports are heuristic,
+        // so keep the upstream behaviour for non-Nitro builds.
+        options.enableWatchdogTerminationTracking = NitroConfiguration.isEnabled
         
         // Disabled as it seems to report a lot of false positives
         options.enableAppHangTracking = false
@@ -1010,8 +1010,12 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
         // Uniform sample rate: 1.0 captures 100% of transactions
         // In Production you will probably want a smaller number such as 0.5 for 50%
         options.sampleRate = 1.0
-        options.tracesSampleRate = 1.0
-        options.configureProfiling = { $0.sessionSampleRate = 1.0 }
+        if NitroConfiguration.isEnabled {
+            options.tracesSampleRate = 0.1
+        } else {
+            options.tracesSampleRate = 1.0
+            options.configureProfiling = { $0.sessionSampleRate = 1.0 }
+        }
         
         // This callback is only executed once during the entire run of the program to avoid
         // multiple callbacks if there are multiple crash events to send (see method documentation)

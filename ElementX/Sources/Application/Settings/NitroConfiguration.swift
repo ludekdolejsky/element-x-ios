@@ -13,6 +13,7 @@ nonisolated enum NitroConfiguration {
     private static let defaultCatchUpBaseURL: URL = "https://matrix-bot.nitrovery.com"
     private static let defaultReminderBaseURL: URL = "https://matrix-bot.nitrovery.com"
     private static let defaultTranscriptionBaseURL: URL = "https://matrix-bot.nitrovery.com"
+    private static let defaultSentryURL: URL = "https://d875c82c8d742fe7292ad47e7d6b9a4d@o4511974887784448.ingest.de.sentry.io/4511975003848784"
     
     static var isEnabled: Bool {
         InfoPlistReader.main.isNitroBuild
@@ -41,6 +42,12 @@ nonisolated enum NitroConfiguration {
                                     defaultURL: defaultTranscriptionBaseURL)
     }
     
+    static var sentryURL: URL? {
+        resolvedNitroServiceBaseURL(isNitroBuild: isEnabled,
+                                    configuredURL: nil,
+                                    defaultURL: defaultSentryURL)
+    }
+
     static func resolvedPushGatewayBaseURL(isNitroBuild: Bool, configuredURL: URL?) -> URL {
         guard isNitroBuild else { return defaultPushGatewayBaseURL }
         return configuredURL ?? defaultNitroPushGatewayBaseURL

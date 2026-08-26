@@ -92,7 +92,7 @@ struct NitroMessageCopyFormatterTests {
         let item = textItem(body: "Hello", html: "<strong>Hello</strong>")
         let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .text)
         let itemProvider = itemProvider(representations: representations)
-        #expect(NitroMessageCopyFormatter.supportsRichPaste(itemProvider))
+        #expect(NitroMessageCopyFormatter.supportsTextPaste(itemProvider))
         #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) == .html("<strong>Hello</strong>", plainText: "Hello"))
     }
     
@@ -120,14 +120,39 @@ struct NitroMessageCopyFormatterTests {
     }
     
     @Test
+    func readsPlainTextFromNotesProvider() async throws {
+        let rtf = try NSAttributedString(string: "Hello from Notes").data(from: NSRange(location: 0, length: 16),
+                                                                          documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
+        let itemProvider = itemProvider(representations: [
+            "com.apple.webarchive": Data("webarchive".utf8),
+            UTType.rtf.identifier: rtf,
+            UTType.utf8PlainText.identifier: "Hello from Notes"
+        ])
+
+        #expect(NitroMessageCopyFormatter.supportsTextPaste(itemProvider))
+        #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) == .plainText("Hello from Notes"))
+    }
+
+    @Test
+    func fallsBackToPlainTextFromRTF() async throws {
+        let text = "Only RTF"
+        let rtf = try NSAttributedString(string: text).data(from: NSRange(location: 0, length: text.utf16.count),
+                                                            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
+        let itemProvider = itemProvider(representations: [UTType.rtf.identifier: rtf])
+
+        #expect(NitroMessageCopyFormatter.supportsTextPaste(itemProvider))
+        #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) == .plainText(text))
+    }
+
+    @Test
     func supportsStandardRichTextProviders() {
         let htmlProvider = NSItemProvider(item: "<strong>Hello</strong>" as NSString,
                                           typeIdentifier: UTType.html.identifier)
         let markdownProvider = NSItemProvider(item: "**Hello**" as NSString,
                                               typeIdentifier: NitroMessageCopyFormatter.markdownTypeIdentifier)
         
-        #expect(NitroMessageCopyFormatter.supportsRichPaste(htmlProvider))
-        #expect(NitroMessageCopyFormatter.supportsRichPaste(markdownProvider))
+        #expect(NitroMessageCopyFormatter.supportsTextPaste(htmlProvider))
+        #expect(NitroMessageCopyFormatter.supportsTextPaste(markdownProvider))
     }
     
     @Test
@@ -137,7 +162,7 @@ struct NitroMessageCopyFormatterTests {
             UTType.html.identifier: "<strong>Hello</strong>"
         ])
         #expect(itemProvider.preferredContentType?.type == .pdf)
-        #expect(NitroMessageCopyFormatter.supportsRichPaste(itemProvider))
+        #expect(NitroMessageCopyFormatter.supportsTextPaste(itemProvider))
     }
     
     @Test

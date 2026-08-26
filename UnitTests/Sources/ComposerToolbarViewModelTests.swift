@@ -1292,6 +1292,27 @@ extension ComposerToolbarViewModelTests {
     }
     
     @Test
+    func resolvesNotesPlainTextProviderInViewModel() async throws {
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: "com.apple.webarchive", visibility: .all) { completion in
+            completion(Data("webarchive".utf8), nil)
+            return nil
+        }
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all) { completion in
+            completion(Data("Hello from Notes".utf8), nil)
+            return nil
+        }
+        let pasted = deferFulfillment(wysiwygViewModel.$attributedContent) { content in
+            content.text.string == "Hello from Notes"
+        }
+
+        viewModel.process(viewAction: .pasteRichTextProvider(provider))
+
+        try await pasted.fulfill()
+        #expect(wysiwygViewModel.content.html == "Hello from Notes")
+    }
+
+    @Test
     func disablesComposerWhileResolvingCustomEmojis() async throws {
         let customEmoji = try CustomEmoji(shortcode: "meatspin",
                                           body: "Meatspin",

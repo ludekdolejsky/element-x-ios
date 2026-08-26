@@ -243,7 +243,7 @@ struct ComposerToolbar: View {
                             viewModel: context.viewState.wysiwygViewModel,
                             itemProviderHelper: ItemProviderHelper(),
                             keyCommands: context.viewState.keyCommands) { provider in
-            guard NitroMessageCopyFormatter.supportsRichPaste(provider) else {
+            guard NitroMessageCopyFormatter.supportsTextPaste(provider) else {
                 context.send(viewAction: .handlePasteOrDrop(providers: [provider]))
                 return
             }
@@ -253,7 +253,7 @@ struct ComposerToolbar: View {
     
     private class ItemProviderHelper: WysiwygItemProviderHelper {
         func isPasteSupported(for itemProvider: NSItemProvider) -> Bool {
-            NitroMessageCopyFormatter.supportsRichPaste(itemProvider) || itemProvider.isSupportedForPasteOrDrop
+            NitroMessageCopyFormatter.supportsTextPaste(itemProvider) || itemProvider.isSupportedForPasteOrDrop
         }
     }
     
