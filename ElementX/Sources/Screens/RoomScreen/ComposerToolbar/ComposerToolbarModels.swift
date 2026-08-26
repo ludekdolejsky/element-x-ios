@@ -50,6 +50,7 @@ enum ComposerToolbarViewAction {
     case cancelEdit
     case attach(ComposerAttachmentType)
     case handlePasteOrDrop(providers: [NSItemProvider])
+    case pasteRichTextProvider(NSItemProvider)
     case pasteRichText(NitroMessageCopyFormatter.RichPasteContent)
     case enableTextFormatting
     case composerAction(action: ComposerAction)

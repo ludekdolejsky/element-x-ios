@@ -16,6 +16,11 @@ import WysiwygComposer
 typealias ComposerToolbarViewModelType = StateStoreViewModel<ComposerToolbarViewState, ComposerToolbarViewAction>
 
 final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerToolbarViewModelProtocol {
+    private struct RichPasteTask {
+        let id: UUID
+        let task: Task<Void, Never>
+    }
+    
     private var initialText: String?
     private let wysiwygViewModel: WysiwygComposerViewModel
     private let completionSuggestionService: CompletionSuggestionServiceProtocol
@@ -47,6 +52,8 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
     
     private var replyLoadingTask: Task<Void, Never>?
     private var sendMessageTask: Task<Void, Never>?
+    private var richPasteTask: RichPasteTask?
+    private var pendingRichPasteProviders = [NSItemProvider]()
     
     init(initialText: String? = nil,
          roomProxy: JoinedRoomProxyProtocol,
@@ -94,7 +101,7 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             .store(in: &cancellables)
         
         setupNitroTaskCreationSubscription(nitroTasksEnabled: nitroTasksEnabled)
-
+        
         context.$viewState
             .map(\.composerMode)
             .removeDuplicates()
@@ -184,7 +191,7 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
         }
         return powerLevels.canOwnUser(sendMessage: .roomMessage) && powerLevels.canOwnUserPinOrUnpin()
     }
-
+    
     private func setupNitroTaskCreationSubscription(nitroTasksEnabled: Bool) {
         roomProxy.infoPublisher
             .map { Self.canCreateNitroTask(roomInfo: $0, nitroTasksEnabled: nitroTasksEnabled) }
@@ -193,7 +200,7 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             .weakAssign(to: \.state.canCreateNitroTask, on: self)
             .store(in: &cancellables)
     }
-
+    
     // MARK: - Public
     
     func start() {
@@ -204,6 +211,9 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
     func stop() {
         sendMessageTask?.cancel()
         sendMessageTask = nil
+        richPasteTask?.task.cancel()
+        richPasteTask = nil
+        pendingRichPasteProviders.removeAll()
         state.isResolvingCustomEmojis = false
         saveDraft()
     }
@@ -263,6 +273,8 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             actionsSubject.send(.attach(attachment))
         case .handlePasteOrDrop(let providers):
             actionsSubject.send(.handlePasteOrDrop(providers: providers))
+        case .pasteRichTextProvider(let provider):
+            enqueueRichPaste(from: provider)
         case .pasteRichText(let content):
             pasteRichText(content)
         case .enableTextFormatting:
@@ -283,12 +295,45 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
         }
     }
     
+    private func enqueueRichPaste(from provider: NSItemProvider) {
+        pendingRichPasteProviders.append(provider)
+        startNextRichPasteIfNeeded()
+    }
+    
+    private func startNextRichPasteIfNeeded() {
+        guard richPasteTask == nil, !pendingRichPasteProviders.isEmpty else { return }
+        
+        let provider = pendingRichPasteProviders.removeFirst()
+        let taskID = UUID()
+        let task = Task(name: "Resolve rich text paste") { [weak self] in
+            let content = await NitroMessageCopyFormatter.richPasteContent(from: provider)
+            guard !Task.isCancelled, let self else { return }
+            if let content {
+                pasteRichText(content)
+            } else {
+                actionsSubject.send(.handlePasteOrDrop(providers: [provider]))
+            }
+            finishRichPaste(taskID: taskID)
+        }
+        richPasteTask = .init(id: taskID, task: task)
+    }
+    
+    private func finishRichPaste(taskID: UUID) {
+        guard richPasteTask?.id == taskID else { return }
+        richPasteTask = nil
+        startNextRichPasteIfNeeded()
+    }
+    
     private func pasteRichText(_ content: NitroMessageCopyFormatter.RichPasteContent) {
         let selection = wysiwygViewModel.attributedContent.selection
+        if case .plainText(let plainText) = content {
+            _ = wysiwygViewModel.replaceText(range: selection, replacementText: plainText)
+            return
+        }
         let textLength = wysiwygViewModel.attributedContent.text.length
         let replacesAll = selection.location == 0 && selection.length == textLength
         let appends = selection.location == textLength && selection.length == 0
-
+        
         guard replacesAll || appends else {
             if case .html(let html, let plainText) = content {
                 let restoration = CustomEmojiMessageContent.restoringCustomEmojis(in: html, fallbackBody: plainText)
@@ -297,7 +342,7 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             _ = wysiwygViewModel.replaceText(range: selection, replacementText: content.plainText)
             return
         }
-
+        
         switch content {
         case .html(let html, let plainText):
             let restoration = CustomEmojiMessageContent.restoringCustomEmojis(in: html, fallbackBody: plainText)
@@ -310,9 +355,11 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             }
         case .markdown(let markdown):
             wysiwygViewModel.setMarkdownContent(replacesAll ? markdown : wysiwygViewModel.content.markdown + markdown)
+        case .plainText:
+            break
         }
     }
-
+    
     func process(timelineAction: TimelineComposerAction) {
         switch timelineAction {
         case .setMode(mode: let mode):

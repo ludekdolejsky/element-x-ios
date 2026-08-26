@@ -11,6 +11,8 @@ import Combine
 import Foundation
 import MatrixRustSDK
 import Testing
+import UIKit
+import UniformTypeIdentifiers
 import WysiwygComposer
 
 @MainActor
@@ -1212,55 +1214,83 @@ extension ComposerToolbarViewModelTests {
     @Test
     func enablesNitroTaskCreationWithRoomPermissions() {
         setUpViewModel(nitroTasksEnabled: true)
-
+        
         #expect(viewModel.context.viewState.canCreateNitroTask)
     }
-
+    
     @Test
     func disablesNitroTaskCreationWithoutRequiredPermissions() {
         setUpViewModel(nitroTasksEnabled: true,
                        powerLevelsConfiguration: .init(canUserPin: false))
-
+        
         #expect(!viewModel.context.viewState.canCreateNitroTask)
-
+        
         setUpViewModel(nitroTasksEnabled: true,
                        powerLevelsConfiguration: .init(canUserSendMessage: false))
-
+        
         #expect(!viewModel.context.viewState.canCreateNitroTask)
     }
-
+    
     @Test
     func pastesNitroHTMLAsFormattedContent() {
         viewModel.process(viewAction: .pasteRichText(.html("<strong>Hello</strong>", plainText: "Hello")))
-
+        
         #expect(wysiwygViewModel.content.html == "<strong>Hello</strong>")
         #expect(wysiwygViewModel.content.markdown == "__Hello__")
     }
-
+    
     @Test
     func pastesNitroCustomEmojiAndPreservesOriginalMedia() async throws {
         let html = #"Hello <img data-mx-emoticon src="mxc://example.org/meatspin" alt="Meatspin" title="meatspin" height="32" />"#
         viewModel.process(viewAction: .pasteRichText(.html(html, plainText: "Hello :meatspin:")))
-
+        
         #expect(wysiwygViewModel.content.markdown == "Hello :meatspin:")
         let deferred = deferFulfillment(viewModel.actions) { action in
             guard case let .sendMessage(_, sentHTML, _, _) = action else { return false }
             return sentHTML == html
         }
-
+        
         viewModel.process(viewAction: .sendMessage)
-
+        
         try await deferred.fulfill()
     }
-
+    
     @Test
     func pastesNitroMarkdownAsFormattedContent() {
         viewModel.process(viewAction: .pasteRichText(.markdown("__Hello__")))
-
+        
         #expect(wysiwygViewModel.content.html == "<strong>Hello</strong>")
         #expect(wysiwygViewModel.content.markdown == "__Hello__")
     }
-
+    
+    @Test
+    func pastesNitroPlainTextWithoutInterpretingMarkdown() {
+        viewModel.process(viewAction: .pasteRichText(.plainText("__Hello__")))
+        
+        #expect(wysiwygViewModel.content.html == "__Hello__")
+    }
+    
+    @Test
+    func resolvesRichPasteProviderInViewModel() async throws {
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.html.identifier, visibility: .all) { completion in
+            completion(Data("<strong>Hello</strong>".utf8), nil)
+            return nil
+        }
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all) { completion in
+            completion(Data("Hello".utf8), nil)
+            return nil
+        }
+        let pasted = deferFulfillment(wysiwygViewModel.$attributedContent) { content in
+            content.text.string == "Hello"
+        }
+        
+        viewModel.process(viewAction: .pasteRichTextProvider(provider))
+        
+        try await pasted.fulfill()
+        #expect(wysiwygViewModel.content.markdown == "__Hello__")
+    }
+    
     @Test
     func disablesComposerWhileResolvingCustomEmojis() async throws {
         let customEmoji = try CustomEmoji(shortcode: "meatspin",

@@ -12,27 +12,30 @@ import WysiwygComposer
 
 enum NitroMessageCopyFormatter {
     static let markdownTypeIdentifier = "net.daringfireball.markdown"
-
+    
     enum Format {
         case text
         case markdown
         case html
     }
-
+    
     enum RichPasteContent: Equatable {
         case html(String, plainText: String)
         case markdown(String)
-
+        case plainText(String)
+        
         var plainText: String {
             switch self {
             case .html(_, let plainText):
                 plainText
             case .markdown(let markdown):
                 markdown
+            case .plainText(let plainText):
+                plainText
             }
         }
     }
-
+    
     static func pasteboardRepresentations(for item: EventBasedMessageTimelineItemProtocol, format: Format) -> [String: Any] {
         switch format {
         case .text:
@@ -47,55 +50,93 @@ enum NitroMessageCopyFormatter {
             }
             return representations
         case .markdown:
-            return [UTType.utf8PlainText.identifier: markdown(for: item)]
+            let markdown = markdown(for: item)
+            return [
+                UTType.utf8PlainText.identifier: markdown,
+                markdownTypeIdentifier: markdown
+            ]
         case .html:
-            return [UTType.utf8PlainText.identifier: html(for: item)]
+            let html = html(for: item)
+            return [
+                UTType.utf8PlainText.identifier: html,
+                UTType.html.identifier: html
+            ]
         }
     }
-
+    
     static func supportsRichPaste(_ itemProvider: NSItemProvider) -> Bool {
-        return itemProvider.hasItemConformingToTypeIdentifier(UTType.html.identifier) ||
+        itemProvider.hasItemConformingToTypeIdentifier(UTType.html.identifier) ||
             itemProvider.hasItemConformingToTypeIdentifier(markdownTypeIdentifier)
     }
-
-    static func richPasteContent(from pasteboard: UIPasteboard) -> RichPasteContent? {
-        if let html = string(from: pasteboard, type: UTType.html.identifier) {
-            let plainText = string(from: pasteboard, type: UTType.utf8PlainText.identifier) ?? renderedContent(forHTML: html).plainText
+    
+    static func richPasteContent(from itemProvider: NSItemProvider) async -> RichPasteContent? {
+        if itemProvider.hasItemConformingToTypeIdentifier(UTType.html.identifier),
+           let html = await string(from: itemProvider, type: UTType.html.identifier) {
+            let renderedPlainText = renderedContent(forHTML: html).plainText
+            let providedPlainText = await string(from: itemProvider, type: UTType.utf8PlainText.identifier)
+            let plainText = providedPlainText == html ? renderedPlainText : providedPlainText ?? renderedPlainText
             return .html(html, plainText: plainText)
         }
-
-        if let markdown = string(from: pasteboard, type: markdownTypeIdentifier) {
+        
+        if itemProvider.hasItemConformingToTypeIdentifier(markdownTypeIdentifier),
+           let markdown = await string(from: itemProvider, type: markdownTypeIdentifier) {
             return .markdown(markdown)
         }
-
-        return nil
+        
+        guard let plainText = await string(from: itemProvider, type: UTType.utf8PlainText.identifier) else {
+            return nil
+        }
+        return .plainText(plainText)
     }
-
-    private static func string(from pasteboard: UIPasteboard, type: String) -> String? {
-        if let string = pasteboard.value(forPasteboardType: type) as? String {
+    
+    private static func string(from itemProvider: NSItemProvider, type: String) async -> String? {
+        if let data = await dataRepresentation(from: itemProvider, type: type),
+           let string = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .unicode) {
             return string
         }
-
-        guard let data = pasteboard.data(forPasteboardType: type) else { return nil }
+        guard let item = try? await itemProvider.loadItem(forTypeIdentifier: type) else {
+            return nil
+        }
+        if let string = item as? String {
+            return string
+        }
+        if let url = item as? URL, let data = await data(from: url) {
+            return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .unicode)
+        }
+        guard let data = item as? Data else {
+            return nil
+        }
         return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .unicode)
     }
-
+    
+    @concurrent private static func data(from url: URL) async -> Data? {
+        try? Data(contentsOf: url)
+    }
+    
+    private static func dataRepresentation(from itemProvider: NSItemProvider, type: String) async -> Data? {
+        await withCheckedContinuation { continuation in
+            itemProvider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in
+                continuation.resume(returning: data)
+            }
+        }
+    }
+    
     static func markdown(for item: EventBasedMessageTimelineItemProtocol) -> String {
         guard let html = formattedBodyHTML(for: item) else { return item.body }
         return renderedContent(forHTML: html, fallbackBody: item.body).markdown
     }
-
+    
     static func html(for item: EventBasedMessageTimelineItemProtocol) -> String {
         formattedBodyHTML(for: item) ?? item.body
     }
-
+    
     private struct RenderedContent {
         let plainText: String
         let html: String
         let markdown: String
         let attributedString: NSAttributedString
     }
-
+    
     private static func renderedContent(for item: EventBasedMessageTimelineItemProtocol) -> RenderedContent {
         guard let html = formattedBodyHTML(for: item) else {
             return .init(plainText: item.body,
@@ -115,7 +156,7 @@ enum NitroMessageCopyFormatter {
                      markdown: desktopCompatibleMarkdown(viewModel.content.markdown),
                      attributedString: viewModel.attributedContent.text)
     }
-
+    
     private static func htmlForPlainText(_ text: String) -> String {
         let escaped = text
             .replacingOccurrences(of: "&", with: "&amp;")
@@ -124,7 +165,7 @@ enum NitroMessageCopyFormatter {
             .replacingOccurrences(of: "\n", with: "<br>")
         return "<p>\(escaped)</p>"
     }
-
+    
     private static func rtfData(from attributedString: NSAttributedString) -> Data? {
         try? attributedString.data(from: NSRange(location: 0, length: attributedString.length),
                                    documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])

@@ -17,7 +17,7 @@ struct ComposerToolbar: View {
     
     @ObservedObject var context: ComposerToolbarViewModel.Context
     let onCreateNitroTask: (() -> Void)?
-
+    
     init(context: ComposerToolbarViewModel.Context, onCreateNitroTask: (() -> Void)? = nil) {
         self.context = context
         self.onCreateNitroTask = onCreateNitroTask
@@ -243,12 +243,11 @@ struct ComposerToolbar: View {
                             viewModel: context.viewState.wysiwygViewModel,
                             itemProviderHelper: ItemProviderHelper(),
                             keyCommands: context.viewState.keyCommands) { provider in
-            if NitroMessageCopyFormatter.supportsRichPaste(provider),
-               let content = NitroMessageCopyFormatter.richPasteContent(from: .general) {
-                context.send(viewAction: .pasteRichText(content))
-            } else {
+            guard NitroMessageCopyFormatter.supportsRichPaste(provider) else {
                 context.send(viewAction: .handlePasteOrDrop(providers: [provider]))
+                return
             }
+            context.send(viewAction: .pasteRichTextProvider(provider))
         }
     }
     
