@@ -20,6 +20,12 @@ class ClientProxy: ClientProxyProtocol {
     private let analyticsService: AnalyticsServiceProtocol
     private lazy var nitroClientAPI = NitroClientAPI(client: client)
     private(set) lazy var nitroTaskService: NitroTaskServiceProtocol = NitroTaskService(client: client)
+    private(set) lazy var nitroCatchUpService: NitroCatchUpServiceProtocol = {
+        guard let baseURL = NitroConfiguration.catchUpBaseURL else {
+            fatalError("Catch me up is only available in Nitro builds")
+        }
+        return NitroCatchUpService(client: client, baseURL: baseURL)
+    }()
     
     let mediaLoader: MediaLoaderProtocol
     let contentScanner: ContentScannerProxyProtocol?

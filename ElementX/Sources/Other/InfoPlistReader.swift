@@ -20,6 +20,7 @@ nonisolated struct InfoPlistReader {
         static let isNitroBuild = "isNitroBuild"
         static let notificationFilteringEnabled = "notificationFilteringEnabled"
         static let nitroPushGatewayBaseURL = "nitroPushGatewayBaseURL"
+        static let nitroCatchUpBaseURL = "nitroCatchUpBaseURL"
         static let nitroReminderBaseURL = "nitroReminderBaseURL"
         static let nitroTranscriptionBaseURL = "nitroTranscriptionBaseURL"
         static let utExportedTypeDeclarationsKey = "UTExportedTypeDeclarations"
@@ -117,6 +118,10 @@ nonisolated struct InfoPlistReader {
     
     var nitroPushGatewayBaseURL: URL? {
         urlInfoPlistValue(forKey: Keys.nitroPushGatewayBaseURL)
+    }
+    
+    var nitroCatchUpBaseURL: URL? {
+        urlInfoPlistValue(forKey: Keys.nitroCatchUpBaseURL)
     }
     
     var nitroReminderBaseURL: URL? {

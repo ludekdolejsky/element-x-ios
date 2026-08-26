@@ -77,8 +77,41 @@
 "screen_nitro_tasks_filter_room_ios" = "Filter by room";
 "screen_nitro_tasks_loading_older_failed_ios" = "Some older tasks could not be loaded.";
 "screen_nitro_tasks_loading_older_ios" = "Loading older tasks…";
+"screen_nitro_tasks_search_ios" = "Filter tasks…";
 "screen_nitro_tasks_title_ios" = "Tasks";
 "screen_nitro_tasks_unavailable_message_ios" = "Some task state could not be loaded. Refresh before changing those tasks.";
+"action_nitro_catch_up_ios" = "Catch me up";
+"a11y_room_actions_ios" = "Room actions";
+"error_nitro_catch_up_already_running_ios" = "Catch me up is already running for this room.";
+"error_nitro_catch_up_no_read_marker_ios" = "This room has no previous read marker. Choose a date instead.";
+"error_nitro_catch_up_range_too_large_ios" = "That range is too large. Choose a more recent date.";
+"error_nitro_catch_up_request_failed_ios" = "Catch me up failed. Try again.";
+"error_nitro_catch_up_room_unavailable_ios" = "This room is no longer available.";
+"screen_nitro_catch_up_already_caught_up_ios" = "You’re already caught up — there are no newer messages in this range.";
+"screen_nitro_catch_up_attention_ios" = "What needs my attention?";
+"screen_nitro_catch_up_background_hint_ios" = "This continues in the background. Reopen Catch me up from the room menu to see progress or the result.";
+"screen_nitro_catch_up_cancelled_ios" = "Catch me up was cancelled";
+"screen_nitro_catch_up_cancelling_ios" = "Cancelling…";
+/* Localazy: change %1$@ -> %1$s */
+"screen_nitro_catch_up_completed_toast_ios" = "Catch me up is ready for %1$@";
+"screen_nitro_catch_up_date_ios" = "Date and time";
+"screen_nitro_catch_up_events_scanned_ios" = "Events checked: %1$d";
+"screen_nitro_catch_up_failed_ios" = "Catch me up failed";
+/* Localazy: change %1$@ -> %1$s */
+"screen_nitro_catch_up_failed_toast_ios" = "Catch me up failed for %1$@";
+"screen_nitro_catch_up_from_ios" = "From";
+/* Localazy: change %1$@ -> %1$s */
+"screen_nitro_catch_up_hint_ios" = "Summarize what happened in %1$@, with links back to the source messages.";
+"screen_nitro_catch_up_last_read_ios" = "Last read";
+"screen_nitro_catch_up_merging_ios" = "Combining summaries…";
+"screen_nitro_catch_up_message_count_ios" = "Messages: %1$d";
+"screen_nitro_catch_up_overview_ios" = "Overview";
+"screen_nitro_catch_up_progress_ios" = "Step %1$d of %2$d · Messages: %3$d";
+"screen_nitro_catch_up_queued_ios" = "Waiting for AI…";
+"screen_nitro_catch_up_reading_ios" = "Reading room history…";
+"screen_nitro_catch_up_show_me_ios" = "Show me";
+"screen_nitro_catch_up_summarizing_ios" = "Summarizing…";
+"screen_nitro_catch_up_title_ios" = "Catch me up";
 "screen_home_tab_search" = "Search";
 "screen_room_attachment_source_custom_emoji" = "Custom emoji";
 "screen_search_empty_state_message" = "Search for chats and messages";

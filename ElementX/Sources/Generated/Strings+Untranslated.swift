@@ -10,6 +10,8 @@ import Foundation
 // swiftlint:disable explicit_type_interface function_parameter_count identifier_name line_length
 // swiftlint:disable nesting type_body_length type_name vertical_whitespace_opening_braces
 internal nonisolated enum UntranslatedL10n {
+  /// Room actions
+  internal static var a11yRoomActionsIos: String { return UntranslatedL10n.tr("Untranslated", "a11y_room_actions_ios") }
   /// Add task
   internal static var actionAddNitroTaskIos: String { return UntranslatedL10n.tr("Untranslated", "action_add_nitro_task_ios") }
   /// Archive
@@ -22,6 +24,8 @@ internal nonisolated enum UntranslatedL10n {
   internal static var actionCreateNitroTaskIos: String { return UntranslatedL10n.tr("Untranslated", "action_create_nitro_task_ios") }
   /// Edit time
   internal static var actionEditTimeIos: String { return UntranslatedL10n.tr("Untranslated", "action_edit_time_ios") }
+  /// Catch me up
+  internal static var actionNitroCatchUpIos: String { return UntranslatedL10n.tr("Untranslated", "action_nitro_catch_up_ios") }
   /// Open
   internal static var actionOpenIos: String { return UntranslatedL10n.tr("Untranslated", "action_open_ios") }
   /// Open in room
@@ -66,6 +70,16 @@ internal nonisolated enum UntranslatedL10n {
   internal static var customEmojiMediaWarningTitle: String { return UntranslatedL10n.tr("Untranslated", "custom_emoji_media_warning_title") }
   /// Audio transcription failed.
   internal static var errorAudioTranscriptionFailedIos: String { return UntranslatedL10n.tr("Untranslated", "error_audio_transcription_failed_ios") }
+  /// Catch me up is already running for this room.
+  internal static var errorNitroCatchUpAlreadyRunningIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_catch_up_already_running_ios") }
+  /// This room has no previous read marker. Choose a date instead.
+  internal static var errorNitroCatchUpNoReadMarkerIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_catch_up_no_read_marker_ios") }
+  /// That range is too large. Choose a more recent date.
+  internal static var errorNitroCatchUpRangeTooLargeIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_catch_up_range_too_large_ios") }
+  /// Catch me up failed. Try again.
+  internal static var errorNitroCatchUpRequestFailedIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_catch_up_request_failed_ios") }
+  /// This room is no longer available.
+  internal static var errorNitroCatchUpRoomUnavailableIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_catch_up_room_unavailable_ios") }
   /// The task request failed. Refresh Tasks and try again.
   internal static var errorNitroTaskRequestFailedIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_task_request_failed_ios") }
   /// The reminder request failed. Try again.
@@ -88,6 +102,62 @@ internal nonisolated enum UntranslatedL10n {
   internal static var screenDeveloperOptionsTimelineDiagnosticsIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_timeline_diagnostics_ios") }
   /// Search
   internal static var screenHomeTabSearch: String { return UntranslatedL10n.tr("Untranslated", "screen_home_tab_search") }
+  /// You’re already caught up — there are no newer messages in this range.
+  internal static var screenNitroCatchUpAlreadyCaughtUpIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_already_caught_up_ios") }
+  /// What needs my attention?
+  internal static var screenNitroCatchUpAttentionIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_attention_ios") }
+  /// This continues in the background. Reopen Catch me up from the room menu to see progress or the result.
+  internal static var screenNitroCatchUpBackgroundHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_background_hint_ios") }
+  /// Catch me up was cancelled
+  internal static var screenNitroCatchUpCancelledIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_cancelled_ios") }
+  /// Cancelling…
+  internal static var screenNitroCatchUpCancellingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_cancelling_ios") }
+  /// Catch me up is ready for %1$@
+  internal static func screenNitroCatchUpCompletedToastIos(_ p1: Any) -> String {
+    return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_completed_toast_ios", String(describing: p1))
+  }
+  /// Date and time
+  internal static var screenNitroCatchUpDateIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_date_ios") }
+  /// Events checked: %1$d
+  internal static func screenNitroCatchUpEventsScannedIos(_ p1: Int) -> String {
+    return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_events_scanned_ios", p1)
+  }
+  /// Catch me up failed
+  internal static var screenNitroCatchUpFailedIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_failed_ios") }
+  /// Catch me up failed for %1$@
+  internal static func screenNitroCatchUpFailedToastIos(_ p1: Any) -> String {
+    return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_failed_toast_ios", String(describing: p1))
+  }
+  /// From
+  internal static var screenNitroCatchUpFromIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_from_ios") }
+  /// Summarize what happened in %1$@, with links back to the source messages.
+  internal static func screenNitroCatchUpHintIos(_ p1: Any) -> String {
+    return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_hint_ios", String(describing: p1))
+  }
+  /// Last read
+  internal static var screenNitroCatchUpLastReadIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_last_read_ios") }
+  /// Combining summaries…
+  internal static var screenNitroCatchUpMergingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_merging_ios") }
+  /// Messages: %1$d
+  internal static func screenNitroCatchUpMessageCountIos(_ p1: Int) -> String {
+    return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_message_count_ios", p1)
+  }
+  /// Overview
+  internal static var screenNitroCatchUpOverviewIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_overview_ios") }
+  /// Step %1$d of %2$d · Messages: %3$d
+  internal static func screenNitroCatchUpProgressIos(_ p1: Int, _ p2: Int, _ p3: Int) -> String {
+    return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_progress_ios", p1, p2, p3)
+  }
+  /// Waiting for AI…
+  internal static var screenNitroCatchUpQueuedIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_queued_ios") }
+  /// Reading room history…
+  internal static var screenNitroCatchUpReadingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_reading_ios") }
+  /// Show me
+  internal static var screenNitroCatchUpShowMeIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_show_me_ios") }
+  /// Summarizing…
+  internal static var screenNitroCatchUpSummarizingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_summarizing_ios") }
+  /// Catch me up
+  internal static var screenNitroCatchUpTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_title_ios") }
   /// Choose a quick reminder or set an exact local date and time.
   internal static var screenNitroReminderCreateHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_create_hint_ios") }
   /// Reminder time
@@ -186,6 +256,8 @@ internal nonisolated enum UntranslatedL10n {
   internal static var screenNitroTasksLoadingOlderFailedIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_loading_older_failed_ios") }
   /// Loading older tasks…
   internal static var screenNitroTasksLoadingOlderIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_loading_older_ios") }
+  /// Filter tasks…
+  internal static var screenNitroTasksSearchIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_search_ios") }
   /// Tasks
   internal static var screenNitroTasksTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_tasks_title_ios") }
   /// Some task state could not be loaded. Refresh before changing those tasks.

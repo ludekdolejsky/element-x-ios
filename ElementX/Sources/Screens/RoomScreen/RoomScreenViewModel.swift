@@ -119,6 +119,8 @@ class RoomScreenViewModel: RoomScreenViewModelType, RoomScreenViewModelProtocol 
             actionsSubject.send(.displayThreadList)
         case .displayNitroTasks:
             actionsSubject.send(.displayNitroTasks(roomID: roomProxy.id, roomName: state.roomTitle))
+        case .displayNitroCatchUp:
+            actionsSubject.send(.displayNitroCatchUp(roomID: roomProxy.id, roomName: state.roomTitle))
         case .tappedStopLiveLocation:
             actionsSubject.send(.stopLiveLocationSharing)
         case .tappedOpenLiveLocation:

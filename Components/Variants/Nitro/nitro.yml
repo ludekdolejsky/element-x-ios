@@ -6,6 +6,7 @@ settings:
   IS_NITRO_BUILD: true
   NOTIFICATION_FILTERING_ENABLED: false
   NITRO_PUSH_GATEWAY_BASE_URL: https://push.nitrovery.com
+  NITRO_CATCH_UP_BASE_URL: https://matrix-bot.nitrovery.com
   NITRO_REMINDER_BASE_URL: https://matrix-bot.nitrovery.com
   NITRO_TRANSCRIPTION_BASE_URL: https://matrix-bot.nitrovery.com
 
@@ -23,6 +24,7 @@ targets:
         - $(BASE_BUNDLE_IDENTIFIER).background.refresh
         isNitroBuild: $(IS_NITRO_BUILD)
         nitroPushGatewayBaseURL: $(NITRO_PUSH_GATEWAY_BASE_URL)
+        nitroCatchUpBaseURL: $(NITRO_CATCH_UP_BASE_URL)
         nitroReminderBaseURL: $(NITRO_REMINDER_BASE_URL)
         nitroTranscriptionBaseURL: $(NITRO_TRANSCRIPTION_BASE_URL)
     entitlements:

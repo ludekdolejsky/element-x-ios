@@ -762,6 +762,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                     stateMachine.tryEvent(.presentThreadList, userInfo: EventUserInfo(animated: animated))
                 case .presentNitroTasks(let roomID, let roomName):
                     actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
+                case .presentNitroCatchUp(let roomID, let roomName):
+                    presentNitroCatchUp(roomID: roomID, roomName: roomName)
                 case .presentNitroTaskCreate(let roomID):
                     presentNitroTaskCreate(roomID: roomID)
                 case .presentThread(let threadRootEventID, let focussedEventID):
@@ -797,7 +799,7 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     
     private func presentNitroTaskCreate(roomID: String) {
         guard let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol else { return }
-
+        
         let coordinator = NitroTaskCreateScreenCoordinator(parameters: .init(taskService: clientProxy.nitroTaskService,
                                                                              draft: .init(title: "",
                                                                                           description: "",
@@ -816,7 +818,23 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
             .store(in: &cancellables)
         navigationStackCoordinator.setSheetCoordinator(coordinator)
     }
-
+    
+    private func presentNitroCatchUp(roomID: String, roomName: String) {
+        guard let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol else { return }
+        let coordinator = NitroCatchUpScreenCoordinator(parameters: .init(roomID: roomID,
+                                                                          roomName: roomName,
+                                                                          service: clientProxy.nitroCatchUpService))
+        coordinator.actionsPublisher
+            .sink { [weak self] action in
+                switch action {
+                case .dismiss:
+                    self?.navigationStackCoordinator.setSheetCoordinator(nil)
+                }
+            }
+            .store(in: &cancellables)
+        navigationStackCoordinator.setSheetCoordinator(coordinator)
+    }
+    
     private func presentThread(threadRootEventID: String, focusEventID: String?, animated: Bool) async {
         showLoadingIndicator()
         defer { hideLoadingIndicator() }

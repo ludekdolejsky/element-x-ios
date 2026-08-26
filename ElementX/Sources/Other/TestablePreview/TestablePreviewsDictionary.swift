@@ -102,6 +102,7 @@ enum TestablePreviewsDictionary {
             "MessageComposer_Previews" : MessageComposer_Previews.self,
             "MessageForwardingScreen_Previews" : MessageForwardingScreen_Previews.self,
             "MessageText_Previews" : MessageText_Previews.self,
+            "NitroCatchUpScreen_Previews" : NitroCatchUpScreen_Previews.self,
             "NitroReminderCreateScreen_Previews" : NitroReminderCreateScreen_Previews.self,
             "NitroRemindersScreen_Previews" : NitroRemindersScreen_Previews.self,
             "NitroTaskCreateScreen_Previews" : NitroTaskCreateScreen_Previews.self,

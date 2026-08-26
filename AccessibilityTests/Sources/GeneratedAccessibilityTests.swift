@@ -391,6 +391,10 @@ extension AccessibilityTests {
         try await performAccessibilityAudit(named: "MessageText_Previews")
     }
 
+    func testNitroCatchUpScreen() async throws {
+        try await performAccessibilityAudit(named: "NitroCatchUpScreen_Previews")
+    }
+
     func testNitroReminderCreateScreen() async throws {
         try await performAccessibilityAudit(named: "NitroReminderCreateScreen_Previews")
     }

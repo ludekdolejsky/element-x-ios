@@ -32,6 +32,8 @@ class TimelineItemProvider: TimelineItemProviderProtocol {
         }
     }
     
+    private(set) var hasLoadedInitialSnapshot = false
+    
     var updatePublisher: AnyPublisher<([TimelineItemProxy], TimelinePaginationState), Never> {
         itemProxiesSubject
             .combineLatest(paginationStateSubject)
@@ -88,6 +90,15 @@ class TimelineItemProvider: TimelineItemProviderProtocol {
         // expensive, so run it off the main actor and only hop back to publish the result.
         let result = await Self.processDiffs(diffs, on: itemProxies, spanName: "process_timeline_list_diffs:\(kind)")
         
+        if diffs.contains(where: { diff in
+            if case .reset = diff {
+                true
+            } else {
+                false
+            }
+        }) {
+            hasLoadedInitialSnapshot = true
+        }
         itemProxies = result.itemProxies
         
         if result.hasMembershipChange {

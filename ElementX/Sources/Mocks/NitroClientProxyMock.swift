@@ -11,16 +11,19 @@ final class NitroClientProxyMock: NitroClientProxyProtocol {
     var homeserver: String
     var userID: String
     var nitroTaskService: NitroTaskServiceProtocol
+    var nitroCatchUpService: NitroCatchUpServiceProtocol
     var requestOpenIDTokenReturnValue: Result<NitroOpenIDToken, ClientProxyError> = .failure(.invalidResponse)
     var requestOpenIDTokenClosure: (() async -> Result<NitroOpenIDToken, ClientProxyError>)?
     private(set) var requestOpenIDTokenCallsCount = 0
     
     init(homeserver: String = "",
          userID: String = "@alice:example.org",
-         nitroTaskService: NitroTaskServiceProtocol = NitroTaskServiceMock()) {
+         nitroTaskService: NitroTaskServiceProtocol = NitroTaskServiceMock(),
+         nitroCatchUpService: NitroCatchUpServiceProtocol = NitroCatchUpServiceMock()) {
         self.homeserver = homeserver
         self.userID = userID
         self.nitroTaskService = nitroTaskService
+        self.nitroCatchUpService = nitroCatchUpService
     }
     
     func requestOpenIDToken() async -> Result<NitroOpenIDToken, ClientProxyError> {

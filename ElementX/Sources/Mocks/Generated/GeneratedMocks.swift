@@ -12813,6 +12813,11 @@ nonisolated class TimelineItemProviderMock: TimelineItemProviderProtocol, @unche
     }
     nonisolated(unsafe) var underlyingUpdatePublisher: AnyPublisher<([TimelineItemProxy], TimelinePaginationState), Never>!
     nonisolated(unsafe) var itemProxies: [TimelineItemProxy] = []
+    var hasLoadedInitialSnapshot: Bool {
+        get { return underlyingHasLoadedInitialSnapshot }
+        set(value) { underlyingHasLoadedInitialSnapshot = value }
+    }
+    nonisolated(unsafe) var underlyingHasLoadedInitialSnapshot: Bool!
     var paginationState: TimelinePaginationState {
         get { return underlyingPaginationState }
         set(value) { underlyingPaginationState = value }

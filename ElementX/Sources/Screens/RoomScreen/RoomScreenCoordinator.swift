@@ -50,6 +50,7 @@ enum RoomScreenCoordinatorAction {
     case presentKnockRequestsList
     case presentThreadList
     case presentNitroTasks(roomID: String, roomName: String)
+    case presentNitroCatchUp(roomID: String, roomName: String)
     case presentNitroTaskCreate(roomID: String)
     case presentThread(threadRootEventID: String, focussedEventID: String?)
     case presentRoom(roomID: String, via: [String])
@@ -192,6 +193,14 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
             }
             .store(in: &cancellables)
         
+        setupRoomViewModelActions()
+        
+        // Loading the draft requires the subscriptions to be set up first otherwise
+        // the room won't be be able to propagate the information to the composer.
+        composerViewModel.start()
+    }
+    
+    private func setupRoomViewModelActions() {
         roomViewModel.actions
             .sink { [weak self] action in
                 guard let self else { return }
@@ -217,6 +226,8 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
                     actionsSubject.send(.presentThreadList)
                 case .displayNitroTasks(let roomID, let roomName):
                     actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
+                case .displayNitroCatchUp(let roomID, let roomName):
+                    actionsSubject.send(.presentNitroCatchUp(roomID: roomID, roomName: roomName))
                 case .displayThread(let threadRootEventID, let focussedEventID):
                     actionsSubject.send(.presentThread(threadRootEventID: threadRootEventID, focussedEventID: focussedEventID))
                 case .stopLiveLocationSharing:
@@ -226,10 +237,6 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
                 }
             }
             .store(in: &cancellables)
-        
-        // Loading the draft requires the subscriptions to be set up first otherwise
-        // the room won't be be able to propagate the information to the composer.
-        composerViewModel.start()
     }
     
     func focusOnEvent(_ focussedEvent: FocusEvent) {

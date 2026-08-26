@@ -13,6 +13,7 @@ enum RoomScreenViewModelAction: Equatable {
     case focusEvent(eventID: String)
     case displayThreadList
     case displayNitroTasks(roomID: String, roomName: String)
+    case displayNitroCatchUp(roomID: String, roomName: String)
     case displayThread(threadRootEventID: String, focussedEventID: String)
     case displayPinnedEventsTimeline
     case displayRoomDetails
@@ -37,6 +38,7 @@ enum RoomScreenViewAction {
     case displaySuccessorRoom
     case displayThreadList
     case displayNitroTasks
+    case displayNitroCatchUp
     case tappedOpenLiveLocation
     case tappedStopLiveLocation
 }

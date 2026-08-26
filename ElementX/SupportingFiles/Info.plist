@@ -130,6 +130,8 @@
 	<string>$(KEYCHAIN_ACCESS_GROUP_IDENTIFIER)</string>
 	<key>nitroPushGatewayBaseURL</key>
 	<string>$(NITRO_PUSH_GATEWAY_BASE_URL)</string>
+	<key>nitroCatchUpBaseURL</key>
+	<string>$(NITRO_CATCH_UP_BASE_URL)</string>
 	<key>nitroReminderBaseURL</key>
 	<string>$(NITRO_REMINDER_BASE_URL)</string>
 	<key>nitroTranscriptionBaseURL</key>

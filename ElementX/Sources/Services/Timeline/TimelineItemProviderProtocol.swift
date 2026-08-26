@@ -26,6 +26,8 @@ protocol TimelineItemProviderProtocol {
     var updatePublisher: AnyPublisher<([TimelineItemProxy], TimelinePaginationState), Never> { get }
     /// The current set of items in the timeline.
     var itemProxies: [TimelineItemProxy] { get }
+    /// Whether the initial reset diff has been applied to ``itemProxies``.
+    var hasLoadedInitialSnapshot: Bool { get }
     /// Whether the timeline is back/forward paginating or not (or has reached the start/end of the room).
     var paginationState: TimelinePaginationState { get }
     /// The kind of the timeline

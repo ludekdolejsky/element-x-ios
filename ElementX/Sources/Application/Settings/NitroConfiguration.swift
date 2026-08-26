@@ -10,6 +10,7 @@ import Foundation
 nonisolated enum NitroConfiguration {
     private static let defaultPushGatewayBaseURL: URL = "https://matrix.org"
     private static let defaultNitroPushGatewayBaseURL: URL = "https://push.nitrovery.com"
+    private static let defaultCatchUpBaseURL: URL = "https://matrix-bot.nitrovery.com"
     private static let defaultReminderBaseURL: URL = "https://matrix-bot.nitrovery.com"
     private static let defaultTranscriptionBaseURL: URL = "https://matrix-bot.nitrovery.com"
     
@@ -26,6 +27,12 @@ nonisolated enum NitroConfiguration {
         resolvedNitroServiceBaseURL(isNitroBuild: isEnabled,
                                     configuredURL: InfoPlistReader.main.nitroReminderBaseURL,
                                     defaultURL: defaultReminderBaseURL)
+    }
+    
+    static var catchUpBaseURL: URL? {
+        resolvedNitroServiceBaseURL(isNitroBuild: isEnabled,
+                                    configuredURL: InfoPlistReader.main.nitroCatchUpBaseURL,
+                                    defaultURL: defaultCatchUpBaseURL)
     }
     
     static var transcriptionBaseURL: URL? {

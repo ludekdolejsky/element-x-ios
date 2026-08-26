@@ -12,6 +12,7 @@ protocol NitroClientProxyProtocol: AnyObject {
     var homeserver: String { get }
     var userID: String { get }
     var nitroTaskService: NitroTaskServiceProtocol { get }
+    var nitroCatchUpService: NitroCatchUpServiceProtocol { get }
     func requestOpenIDToken() async -> Result<NitroOpenIDToken, ClientProxyError>
     func rawAccountData(eventType: String) async -> Result<String?, ClientProxyError>
     func setRawAccountData(eventType: String, content: String) async -> Result<Void, ClientProxyError>
