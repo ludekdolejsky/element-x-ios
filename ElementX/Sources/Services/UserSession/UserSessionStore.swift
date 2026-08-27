@@ -140,9 +140,8 @@ class UserSessionStore: UserSessionStoreProtocol {
             .sqliteStore(config: .init(dataPath: credentials.restorationToken.sessionDirectories.dataPath,
                                        cachePath: credentials.restorationToken.sessionDirectories.cachePath)
                     .passphrase(passphrase: credentials.restorationToken.passphrase))
-            .searchIndexStore(path: credentials.restorationToken.sessionDirectories.dataPath,
-                              password: credentials.restorationToken.passphrase,
-                              enabled: NitroConfiguration.searchIndexingEnabled)
+            .withSearchIndexStore(path: credentials.restorationToken.sessionDirectories.dataPath,
+                                  password: credentials.restorationToken.passphrase)
             .username(username: credentials.userID)
             .homeserverUrl(url: homeserverURL)
         

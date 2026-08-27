@@ -21,20 +21,10 @@ struct NitroConfigurationTests {
         #expect(InfoPlistReader.main.classicAppKeychainAccessGroupIdentifier == nil)
         #expect(InfoPlistReader.main.classicAppDeepLinkURL == nil)
     }
-    
+
     @Test
     func enablesClientPausingAndResuming() {
         #expect(AppSettings.volatile().clientPausingAndResumingEnabled)
-    }
-    
-    @Test
-    func disablesSearchIndexingForNitroOnIOS27() {
-        #expect(NitroConfiguration.resolvedSearchIndexingEnabled(isNitroBuild: true,
-                                                                 operatingSystemMajorVersion: 26))
-        #expect(!NitroConfiguration.resolvedSearchIndexingEnabled(isNitroBuild: true,
-                                                                  operatingSystemMajorVersion: 27))
-        #expect(NitroConfiguration.resolvedSearchIndexingEnabled(isNitroBuild: false,
-                                                                 operatingSystemMajorVersion: 27))
     }
     
     @Test

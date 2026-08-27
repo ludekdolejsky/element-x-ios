@@ -105,9 +105,7 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
                                                                                        reminderBaseURL: flowParameters.appSettings.nitroReminderBaseURL,
                                                                                        userIndicatorController: flowParameters.userIndicatorController))
         
-        if flowParameters.appSettings.globalSearchEnabled,
-           NitroConfiguration.searchIndexingEnabled,
-           #available(iOS 26.0, *) {
+        if flowParameters.appSettings.globalSearchEnabled, #available(iOS 26.0, *) {
             let searchCoordinator = SearchScreenCoordinator(parameters: .init(roomSummaryProvider: flowParameters.userSession.clientProxy.alternateRoomSummaryProvider,
                                                                               clientProxy: flowParameters.userSession.clientProxy,
                                                                               mediaProvider: flowParameters.userSession.mediaProvider,

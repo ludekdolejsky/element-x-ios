@@ -52,9 +52,7 @@ class HomeScreenViewModel: HomeScreenViewModelType, HomeScreenViewModelProtocol 
                                            bindings: .init(filtersState: .init(appSettings: appSettings))),
                    mediaProvider: userSession.mediaProvider)
         
-        if appSettings.globalSearchEnabled,
-           NitroConfiguration.searchIndexingEnabled,
-           #available(iOS 26.0, *) {
+        if appSettings.globalSearchEnabled, #available(iOS 26.0, *) {
             state.isRoomListSearchEnabled = false
         }
         

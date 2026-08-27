@@ -95,13 +95,8 @@ struct DeveloperOptionsScreen: View {
                 
                 Toggle(isOn: $context.globalSearchEnabled) {
                     Text("Global search")
-                    if NitroConfiguration.searchIndexingEnabled {
-                        Text("Moves search to a separate tab")
-                    } else {
-                        Text("Temporarily unavailable on iOS 27")
-                    }
+                    Text("Moves search to a separate tab")
                 }
-                .disabled(!NitroConfiguration.searchIndexingEnabled)
                 
                 Toggle(isOn: $context.userStatusEnabled) {
                     Text("User status")
