@@ -466,7 +466,7 @@ final nonisolated class AppSettings: @unchecked Sendable {
     @UserPreference(defaultValue: false)
     var automaticBackPaginationEnabled: Bool
     
-    @UserPreference(key: "clientPausingAndResumingEnabledV2", defaultValue: false, volatile: true)
+    @UserPreference(key: "clientPausingAndResumingEnabledV2", defaultValue: NitroConfiguration.isEnabled, volatile: true)
     var clientPausingAndResumingEnabled: Bool
     
     @UserPreference(defaultValue: false)

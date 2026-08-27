@@ -21,6 +21,11 @@ struct NitroConfigurationTests {
         #expect(InfoPlistReader.main.classicAppKeychainAccessGroupIdentifier == nil)
         #expect(InfoPlistReader.main.classicAppDeepLinkURL == nil)
     }
+
+    @Test
+    func enablesClientPausingAndResuming() {
+        #expect(AppSettings.volatile().clientPausingAndResumingEnabled)
+    }
     
     @Test
     func nonNitroBuildUsesUpstreamServices() {
