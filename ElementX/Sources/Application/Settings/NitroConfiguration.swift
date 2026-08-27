@@ -19,6 +19,11 @@ nonisolated enum NitroConfiguration {
         InfoPlistReader.main.isNitroBuild
     }
     
+    static var searchIndexingEnabled: Bool {
+        resolvedSearchIndexingEnabled(isNitroBuild: isEnabled,
+                                      operatingSystemMajorVersion: ProcessInfo.processInfo.operatingSystemVersion.majorVersion)
+    }
+    
     static var pushGatewayBaseURL: URL {
         resolvedPushGatewayBaseURL(isNitroBuild: isEnabled,
                                    configuredURL: InfoPlistReader.main.nitroPushGatewayBaseURL)
@@ -47,7 +52,7 @@ nonisolated enum NitroConfiguration {
                                     configuredURL: nil,
                                     defaultURL: defaultSentryURL)
     }
-
+    
     static func resolvedPushGatewayBaseURL(isNitroBuild: Bool, configuredURL: URL?) -> URL {
         guard isNitroBuild else { return defaultPushGatewayBaseURL }
         return configuredURL ?? defaultNitroPushGatewayBaseURL
@@ -58,5 +63,10 @@ nonisolated enum NitroConfiguration {
                                             defaultURL: URL) -> URL? {
         guard isNitroBuild else { return nil }
         return configuredURL ?? defaultURL
+    }
+    
+    static func resolvedSearchIndexingEnabled(isNitroBuild: Bool,
+                                              operatingSystemMajorVersion: Int) -> Bool {
+        !isNitroBuild || operatingSystemMajorVersion < 27
     }
 }

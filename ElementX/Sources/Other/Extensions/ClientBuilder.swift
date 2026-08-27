@@ -63,6 +63,11 @@ nonisolated extension ClientBuilder {
         
         return appHooks.clientBuilderHook.configure(builder)
     }
+    
+    func searchIndexStore(path: String, password: String?, enabled: Bool) -> ClientBuilder {
+        guard enabled else { return self }
+        return withSearchIndexStore(path: path, password: password)
+    }
 }
 
 enum ClientBuilderSlidingSync {
