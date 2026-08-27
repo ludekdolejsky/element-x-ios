@@ -88,6 +88,10 @@ internal nonisolated enum UntranslatedL10n {
   internal static var errorReminderTimeInPastIos: String { return UntranslatedL10n.tr("Untranslated", "error_reminder_time_in_past_ios") }
   /// Audio transcript
   internal static var screenAudioTranscriptTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_audio_transcript_title_ios") }
+  /// Inspects clipboard types and sizes without including copied content.
+  internal static var screenDeveloperOptionsClipboardDiagnosticsHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_clipboard_diagnostics_hint_ios") }
+  /// Clipboard diagnostics
+  internal static var screenDeveloperOptionsClipboardDiagnosticsIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_clipboard_diagnostics_ios") }
   /// Crash now
   internal static var screenDeveloperOptionsCrashNowIos: String { return UntranslatedL10n.tr("Untranslated", "screen_developer_options_crash_now_ios") }
   /// Disable timeline animations

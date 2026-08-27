@@ -135,6 +135,8 @@
 "screen_developer_options_sentry_enabled_hint_ios" = "Test events are sent immediately. Test crashes are sent after the next launch.";
 "screen_developer_options_sentry_disabled_hint_ios" = "Enable analytics in Settings before testing Sentry.";
 "screen_developer_options_trigger_sentry_test_crash_confirmation_ios" = "The app will close immediately. Reopen it to send the crash report.";
+"screen_developer_options_clipboard_diagnostics_ios" = "Clipboard diagnostics";
+"screen_developer_options_clipboard_diagnostics_hint_ios" = "Inspects clipboard types and sizes without including copied content.";
 "soft_logout_clear_data_dialog_content" = "Clear all data currently stored on this device?\nSign in again to access your account data and messages.";
 "soft_logout_clear_data_dialog_title" = "Clear data";
 "soft_logout_clear_data_notice" = "Warning: Your personal data (including encryption keys) is still stored on this device.\n\nClear it if you’re finished using this device, or want to sign in to another account.";

@@ -12,6 +12,7 @@ struct DeveloperOptionsScreen: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showMarkAllRoomsAsReadAlert = false
     @State private var showSentryTestCrashAlert = false
+    @State private var showClipboardDiagnostics = false
     
     @Bindable var context: DeveloperOptionsScreenViewModel.Context
     
@@ -51,12 +52,12 @@ struct DeveloperOptionsScreen: View {
                         context.send(viewAction: .sendSentryTestEvent)
                     }
                     .disabled(!context.viewState.isSentryEnabled)
-
+                    
                     if let eventID = context.viewState.sentryTestEventID {
                         LabeledContent(UntranslatedL10n.screenDeveloperOptionsSentryEventIdIos, value: eventID)
                             .textSelection(.enabled)
                     }
-
+                    
                     Button(UntranslatedL10n.screenDeveloperOptionsTriggerSentryTestCrashIos, role: .destructive) {
                         showSentryTestCrashAlert = true
                     }
@@ -77,8 +78,16 @@ struct DeveloperOptionsScreen: View {
                 } message: {
                     Text(UntranslatedL10n.screenDeveloperOptionsTriggerSentryTestCrashConfirmationIos)
                 }
+                
+                Section {
+                    Button(UntranslatedL10n.screenDeveloperOptionsClipboardDiagnosticsIos) {
+                        showClipboardDiagnostics = true
+                    }
+                } footer: {
+                    Text(UntranslatedL10n.screenDeveloperOptionsClipboardDiagnosticsHintIos)
+                }
             }
-
+            
             Section("General") {
                 Toggle(isOn: $context.linkNewDeviceEnabled) {
                     Text("Link new device with QR code")
@@ -147,19 +156,19 @@ struct DeveloperOptionsScreen: View {
                         Text(UntranslatedL10n.screenDeveloperOptionsTimelineDiagnosticsIos)
                         Text(UntranslatedL10n.screenDeveloperOptionsTimelineDiagnosticsHintIos)
                     }
-
+                    
                     Toggle(isOn: $context.timelineAnimationsDisabled) {
                         Text(UntranslatedL10n.screenDeveloperOptionsDisableTimelineAnimationsIos)
                     }
-
+                    
                     Toggle(isOn: $context.topBannerCompositingDisabled) {
                         Text(UntranslatedL10n.screenDeveloperOptionsDisableTopBannerCompositingIos)
                     }
-
+                    
                     Button(UntranslatedL10n.screenDeveloperOptionsForceReloadTimelineCellsIos) {
                         context.send(viewAction: .forceReloadTimelineCells)
                     }
-
+                    
                     Button(UntranslatedL10n.screenDeveloperOptionsRebuildTimelineViewIos) {
                         context.send(viewAction: .rebuildTimelineView)
                     }
@@ -222,7 +231,7 @@ struct DeveloperOptionsScreen: View {
                 }
             } footer: {
                 Text("""
-                This will send a private read receipt and a read marker in every room you are part of. \ 
+                This will send a private read receipt and a read marker in every room you are part of. \
                 It's a long running operation that might get rate limited. \
                 It will run in the background but the app must be alive for it to finish.
                 """)
@@ -253,6 +262,9 @@ struct DeveloperOptionsScreen: View {
         .navigationTitle(L10n.commonDeveloperOptions)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        .sheet(isPresented: $showClipboardDiagnostics) {
+            NitroClipboardDiagnosticsView()
+        }
     }
     
     @ViewBuilder

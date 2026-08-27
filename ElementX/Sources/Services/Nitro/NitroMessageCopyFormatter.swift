@@ -42,6 +42,25 @@ enum NitroMessageCopyFormatter {
         }
     }
     
+    struct PasteDiagnostics {
+        struct Representation {
+            let typeIdentifier: String
+            let conformsToText: Bool
+            let byteCount: Int?
+        }
+        
+        let supportsTextPaste: Bool
+        let selectedTypeIdentifier: String?
+        let selectedFormat: String?
+        let representations: [Representation]
+    }
+    
+    private struct ResolvedRichPasteContent {
+        let content: RichPasteContent
+        let typeIdentifier: String
+        let format: String
+    }
+    
     static func pasteboardRepresentations(for item: EventBasedMessageTimelineItemProtocol, format: Format) -> [String: Any] {
         switch format {
         case .text:
@@ -63,10 +82,15 @@ enum NitroMessageCopyFormatter {
             ]
         case .html:
             let html = html(for: item)
-            return [
+            let content = renderedContent(forHTML: html, fallbackBody: item.body)
+            var representations: [String: Any] = [
                 UTType.utf8PlainText.identifier: html,
-                UTType.html.identifier: html
+                UTType.html.identifier: utf8HTMLDocument(for: html)
             ]
+            if let rtf = rtfData(from: content.attributedString) {
+                representations[UTType.rtf.identifier] = rtf
+            }
+            return representations
         }
     }
     
@@ -77,32 +101,89 @@ enum NitroMessageCopyFormatter {
     }
     
     static func richPasteContent(from itemProvider: NSItemProvider) async -> RichPasteContent? {
+        await resolvedRichPasteContent(from: itemProvider)?.content
+    }
+    
+    static func pasteDiagnostics(from itemProvider: NSItemProvider) async -> PasteDiagnostics {
+        let resolution = await resolvedRichPasteContent(from: itemProvider)
+        var representations = [PasteDiagnostics.Representation]()
+        
+        for typeIdentifier in itemProvider.registeredTypeIdentifiers {
+            guard !Task.isCancelled else { break }
+            let conformsToText = isTextType(typeIdentifier)
+            let byteCount = conformsToText ? await dataRepresentation(from: itemProvider, type: typeIdentifier)?.count : nil
+            representations.append(.init(typeIdentifier: typeIdentifier,
+                                         conformsToText: conformsToText,
+                                         byteCount: byteCount))
+        }
+        
+        return .init(supportsTextPaste: supportsTextPaste(itemProvider),
+                     selectedTypeIdentifier: resolution?.typeIdentifier,
+                     selectedFormat: resolution?.format,
+                     representations: representations)
+    }
+    
+    private static func resolvedRichPasteContent(from itemProvider: NSItemProvider) async -> ResolvedRichPasteContent? {
         if itemProvider.hasItemConformingToTypeIdentifier(UTType.html.identifier),
            let html = await string(from: itemProvider, type: UTType.html.identifier) {
-            let renderedPlainText = renderedContent(forHTML: html).plainText
+            let composerHTML = htmlBodyFragment(from: html) ?? html
+            let renderedPlainText = renderedContent(forHTML: composerHTML).plainText
             let providedPlainText = await string(from: itemProvider, type: UTType.utf8PlainText.identifier)
-            let plainText = providedPlainText == html ? renderedPlainText : providedPlainText ?? renderedPlainText
-            return .html(html, plainText: plainText)
+            let providedPlainTextIsHTMLSource = providedPlainText == composerHTML || providedPlainText == html ||
+                providedPlainText.map { utf8HTMLDocument(for: $0) == html } == true
+            let plainText = providedPlainTextIsHTMLSource ? renderedPlainText : providedPlainText ?? renderedPlainText
+            return .init(content: .html(composerHTML, plainText: plainText),
+                         typeIdentifier: UTType.html.identifier,
+                         format: "HTML")
         }
         
         if itemProvider.hasItemConformingToTypeIdentifier(markdownTypeIdentifier),
            let markdown = await string(from: itemProvider, type: markdownTypeIdentifier) {
-            return .markdown(markdown)
+            return .init(content: .markdown(markdown),
+                         typeIdentifier: markdownTypeIdentifier,
+                         format: "Markdown")
         }
         
         for type in plainTextTypeIdentifiers where itemProvider.registeredTypeIdentifiers.contains(type) {
             if let plainText = await string(from: itemProvider, type: type) {
-                return .plainText(plainText)
+                return .init(content: .plainText(plainText),
+                             typeIdentifier: type,
+                             format: "Plain text")
             }
         }
-
+        
         if itemProvider.hasItemConformingToTypeIdentifier(UTType.rtf.identifier),
            let data = await data(from: itemProvider, type: UTType.rtf.identifier),
            let plainText = await plainText(fromRTF: data) {
-            return .plainText(plainText)
+            return .init(content: .plainText(plainText),
+                         typeIdentifier: UTType.rtf.identifier,
+                         format: "RTF")
         }
-
+        
+        let registeredTypes = itemProvider.registeredTypeIdentifiers.filter {
+            !plainTextTypeIdentifiers.contains($0) && $0 != UTType.rtf.identifier && isTextType($0)
+        }
+        for type in registeredTypes {
+            if let plainText = await string(from: itemProvider, type: type) {
+                return .init(content: .plainText(plainText),
+                             typeIdentifier: type,
+                             format: "Generic text")
+            }
+        }
+        
+        if itemProvider.hasItemConformingToTypeIdentifier(UTType.text.identifier),
+           let plainText = await string(from: itemProvider, type: UTType.text.identifier) {
+            return .init(content: .plainText(plainText),
+                         typeIdentifier: UTType.text.identifier,
+                         format: "Conforming text fallback")
+        }
+        
         return nil
+    }
+    
+    private static func isTextType(_ typeIdentifier: String) -> Bool {
+        typeIdentifier == markdownTypeIdentifier ||
+            UTType(typeIdentifier)?.conforms(to: .text) == true
     }
     
     private static func string(from itemProvider: NSItemProvider, type: String) async -> String? {
@@ -144,13 +225,13 @@ enum NitroMessageCopyFormatter {
         }
         return await data(from: url)
     }
-
+    
     @concurrent private static func plainText(fromRTF data: Data) async -> String? {
         try? NSAttributedString(data: data,
                                 options: [.documentType: NSAttributedString.DocumentType.rtf],
                                 documentAttributes: nil).string
     }
-
+    
     private static func dataRepresentation(from itemProvider: NSItemProvider, type: String) async -> Data? {
         await withCheckedContinuation { continuation in
             itemProvider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in
@@ -202,6 +283,28 @@ enum NitroMessageCopyFormatter {
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\n", with: "<br>")
         return "<p>\(escaped)</p>"
+    }
+    
+    private static func utf8HTMLDocument(for html: String) -> String {
+        if html.range(of: "<meta[^>]+charset", options: [.regularExpression, .caseInsensitive]) != nil {
+            return html
+        }
+        
+        if let headRange = html.range(of: "<head[^>]*>", options: [.regularExpression, .caseInsensitive]) {
+            var document = html
+            document.insert(contentsOf: #"<meta charset="utf-8">"#, at: headRange.upperBound)
+            return document
+        }
+        
+        return #"<!doctype html><html><head><meta charset="utf-8"></head><body>\#(html)</body></html>"#
+    }
+    
+    private static func htmlBodyFragment(from html: String) -> String? {
+        guard let openingBody = html.range(of: "<body[^>]*>", options: [.regularExpression, .caseInsensitive]),
+              let closingBody = html.range(of: "</body>", options: [.caseInsensitive], range: openingBody.upperBound..<html.endIndex) else {
+            return nil
+        }
+        return String(html[openingBody.upperBound..<closingBody.lowerBound])
     }
     
     private static func rtfData(from attributedString: NSAttributedString) -> Data? {

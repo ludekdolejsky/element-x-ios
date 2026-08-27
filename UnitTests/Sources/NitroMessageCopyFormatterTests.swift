@@ -71,9 +71,24 @@ struct NitroMessageCopyFormatterTests {
         #expect(markdownRepresentations[NitroMessageCopyFormatter.markdownTypeIdentifier] as? String == "__Hello__")
         
         let htmlRepresentations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .html)
-        #expect(htmlRepresentations.count == 2)
+        #expect(htmlRepresentations.count == 3)
         #expect(htmlRepresentations[UTType.utf8PlainText.identifier] as? String == html)
-        #expect(htmlRepresentations[UTType.html.identifier] as? String == html)
+        #expect((htmlRepresentations[UTType.html.identifier] as? String)?.contains(#"<meta charset="utf-8">"#) == true)
+        #expect((htmlRepresentations[UTType.html.identifier] as? String)?.contains(html) == true)
+        #expect(!(htmlRepresentations[UTType.rtf.identifier] as? Data ?? Data()).isEmpty)
+    }
+    
+    @Test
+    func explicitHTMLPreservesUnicodeInRTF() throws {
+        let text = "Příliš žluťoučký kůň — 日本語"
+        let item = textItem(body: text, html: "<strong>\(text)</strong>")
+        let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .html)
+        let rtf = try #require(representations[UTType.rtf.identifier] as? Data)
+        let attributedString = try NSAttributedString(data: rtf,
+                                                      options: [.documentType: NSAttributedString.DocumentType.rtf],
+                                                      documentAttributes: nil)
+        
+        #expect(attributedString.string == text)
     }
     
     @Test
@@ -107,7 +122,13 @@ struct NitroMessageCopyFormatterTests {
     func readsExplicitHTMLPasteContent() async {
         let item = textItem(body: "Hello", html: "<strong>Hello</strong>")
         let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .html)
-        #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider(representations: representations)) == .html("<strong>Hello</strong>", plainText: "Hello"))
+        let content = await NitroMessageCopyFormatter.richPasteContent(from: itemProvider(representations: representations))
+        guard case let .html(html, plainText) = content else {
+            Issue.record("Expected HTML paste content")
+            return
+        }
+        #expect(html == "<strong>Hello</strong>")
+        #expect(plainText == "Hello")
     }
     
     @Test
@@ -128,22 +149,54 @@ struct NitroMessageCopyFormatterTests {
             UTType.rtf.identifier: rtf,
             UTType.utf8PlainText.identifier: "Hello from Notes"
         ])
-
+        
         #expect(NitroMessageCopyFormatter.supportsTextPaste(itemProvider))
         #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) == .plainText("Hello from Notes"))
     }
-
+    
     @Test
     func fallsBackToPlainTextFromRTF() async throws {
         let text = "Only RTF"
         let rtf = try NSAttributedString(string: text).data(from: NSRange(location: 0, length: text.utf16.count),
                                                             documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
         let itemProvider = itemProvider(representations: [UTType.rtf.identifier: rtf])
-
+        
         #expect(NitroMessageCopyFormatter.supportsTextPaste(itemProvider))
         #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) == .plainText(text))
     }
-
+    
+    @Test
+    func readsGenericTextProvider() async {
+        let provider = itemProvider(representations: [
+            UTType.text.identifier: "Selected text from Mail"
+        ])
+        
+        #expect(NitroMessageCopyFormatter.supportsTextPaste(provider))
+        #expect(await NitroMessageCopyFormatter.richPasteContent(from: provider) == .plainText("Selected text from Mail"))
+    }
+    
+    @Test
+    func clipboardDiagnosticsExcludeContent() async {
+        let secret = "private email content"
+        let provider = itemProvider(representations: [
+            UTType.text.identifier: secret,
+            UTType.pdf.identifier: Data("pdf".utf8)
+        ])
+        
+        let report = await NitroClipboardDiagnostics.report(itemProviders: [provider],
+                                                            generatedAt: Date(timeIntervalSince1970: 0),
+                                                            systemName: "iOS",
+                                                            systemVersion: "27.0",
+                                                            appVersion: "1.0",
+                                                            buildNumber: "1")
+        
+        #expect(report.contains("public.text"))
+        #expect(report.contains(UTType.pdf.identifier))
+        #expect(report.contains("Selected format: Generic text"))
+        #expect(report.contains("Content included: no"))
+        #expect(!report.contains(secret))
+    }
+    
     @Test
     func supportsStandardRichTextProviders() {
         let htmlProvider = NSItemProvider(item: "<strong>Hello</strong>" as NSString,
