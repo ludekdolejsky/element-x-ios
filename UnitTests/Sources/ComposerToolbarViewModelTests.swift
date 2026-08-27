@@ -1292,6 +1292,56 @@ extension ComposerToolbarViewModelTests {
     }
     
     @Test
+    func resolvesMailDivHTMLProviderInViewModel() async throws {
+        let html = """
+        <div style="font-family: Aptos; font-size: 12pt">Excellent, thanks Ludek</div>\
+        <div style="font-family: Aptos; font-size: 12pt"><br></div>\
+        <div style="font-family: Aptos; font-size: 12pt">Best wishes</div>
+        """
+        let plainText = "Excellent, thanks Ludek\n\nBest wishes"
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.html.identifier, visibility: .all) { completion in
+            completion(Data(html.utf8), nil)
+            return nil
+        }
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all) { completion in
+            completion(Data(plainText.utf8), nil)
+            return nil
+        }
+        let pasted = deferFulfillment(wysiwygViewModel.$attributedContent) { content in
+            content.text.string.contains("Excellent, thanks Ludek") && content.text.string.contains("Best wishes")
+        }
+        
+        viewModel.process(viewAction: .pasteRichTextProvider(provider))
+        
+        try await pasted.fulfill()
+        #expect(!wysiwygViewModel.content.html.localizedCaseInsensitiveContains("<div"))
+        #expect(wysiwygViewModel.content.markdown == plainText)
+    }
+    
+    @Test
+    func preservesMailDivFormattingInViewModel() async throws {
+        let html = #"<div style="font-weight: 700; font-style: italic">Formatted</div><div>Plain</div>"#
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.html.identifier, visibility: .all) { completion in
+            completion(Data(html.utf8), nil)
+            return nil
+        }
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all) { completion in
+            completion(Data("Formatted\nPlain".utf8), nil)
+            return nil
+        }
+        let pasted = deferFulfillment(wysiwygViewModel.$attributedContent) { content in
+            content.text.string.contains("Formatted") && content.text.string.contains("Plain")
+        }
+        
+        viewModel.process(viewAction: .pasteRichTextProvider(provider))
+        
+        try await pasted.fulfill()
+        #expect(wysiwygViewModel.content.markdown == "__*Formatted*__\nPlain")
+    }
+    
+    @Test
     func resolvesNotesPlainTextProviderInViewModel() async throws {
         let provider = NSItemProvider()
         provider.registerDataRepresentation(forTypeIdentifier: "com.apple.webarchive", visibility: .all) { completion in
@@ -1305,13 +1355,13 @@ extension ComposerToolbarViewModelTests {
         let pasted = deferFulfillment(wysiwygViewModel.$attributedContent) { content in
             content.text.string == "Hello from Notes"
         }
-
+        
         viewModel.process(viewAction: .pasteRichTextProvider(provider))
-
+        
         try await pasted.fulfill()
         #expect(wysiwygViewModel.content.html == "Hello from Notes")
     }
-
+    
     @Test
     func disablesComposerWhileResolvingCustomEmojis() async throws {
         let customEmoji = try CustomEmoji(shortcode: "meatspin",

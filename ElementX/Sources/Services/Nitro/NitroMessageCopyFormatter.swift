@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSoup
 import UIKit
 import UniformTypeIdentifiers
 import WysiwygComposer
@@ -137,15 +138,30 @@ enum NitroMessageCopyFormatter {
     private static func resolvedRichPasteContent(from itemProvider: NSItemProvider) async -> ResolvedRichPasteContent? {
         if itemProvider.hasItemConformingToTypeIdentifier(UTType.html.identifier),
            let html = await string(from: itemProvider, type: UTType.html.identifier) {
-            let composerHTML = htmlBodyFragment(from: html) ?? html
+            let sourceHTML = htmlBodyFragment(from: html) ?? html
+            let composerHTML = composerCompatibleHTML(from: sourceHTML)
+            let normalizedDivs = composerHTML != sourceHTML
             let renderedPlainText = renderedContent(forHTML: composerHTML).plainText
+            let comparablePlainText = (try? SwiftSoup.parseBodyFragment(sourceHTML).text()) ?? renderedPlainText
             let providedPlainText = await string(from: itemProvider, type: UTType.utf8PlainText.identifier)
             let providedPlainTextIsHTMLSource = providedPlainText == composerHTML || providedPlainText == html ||
                 providedPlainText.map { utf8HTMLDocument(for: $0) == html } == true
             let plainText = providedPlainTextIsHTMLSource ? renderedPlainText : providedPlainText ?? renderedPlainText
-            return .init(content: .html(composerHTML, plainText: plainText),
-                         typeIdentifier: UTType.html.identifier,
-                         format: "HTML")
+            let renderedTextMatchesFallback = !normalizedDivs || providedPlainTextIsHTMLSource || providedPlainText == nil ||
+                normalizedPlainText(comparablePlainText) == normalizedPlainText(providedPlainText ?? "")
+            if !renderedPlainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               renderedTextMatchesFallback {
+                return .init(content: .html(composerHTML, plainText: plainText),
+                             typeIdentifier: UTType.html.identifier,
+                             format: "HTML")
+            }
+            if !providedPlainTextIsHTMLSource,
+               let providedPlainText,
+               !providedPlainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return .init(content: .plainText(providedPlainText),
+                             typeIdentifier: UTType.utf8PlainText.identifier,
+                             format: "Plain text fallback")
+            }
         }
         
         if itemProvider.hasItemConformingToTypeIdentifier(markdownTypeIdentifier),
@@ -316,6 +332,75 @@ enum NitroMessageCopyFormatter {
             return nil
         }
         return String(html[openingBody.upperBound..<closingBody.lowerBound])
+    }
+    
+    private static func composerCompatibleHTML(from html: String) -> String {
+        guard let document = try? SwiftSoup.parseBodyFragment(html),
+              let body = document.body(),
+              let divs = try? body.select("div") else {
+            return html
+        }
+        document.outputSettings().prettyPrint(pretty: false)
+        
+        do {
+            for div in divs {
+                if try div.html().range(of: #"^\s*<br\s*/?>\s*$"#,
+                                        options: [.regularExpression, .caseInsensitive]) != nil {
+                    div.empty()
+                }
+                let styles = try inlineStyles(from: div.attr("style"))
+                try div.tagName("p")
+                if isBold(styles["font-weight"]) {
+                    try div.wrap("<strong></strong>")
+                }
+                if isItalic(styles["font-style"]) {
+                    try div.wrap("<em></em>")
+                }
+                let textDecoration = styles["text-decoration-line"] ?? styles["text-decoration"]
+                if textDecoration?.contains("underline") == true {
+                    try div.wrap("<u></u>")
+                }
+                if textDecoration?.contains("line-through") == true {
+                    try div.wrap("<del></del>")
+                }
+            }
+            return try body.html()
+        } catch {
+            return html
+        }
+    }
+    
+    private static func inlineStyles(from style: String) -> [String: String] {
+        style.split(separator: ";").reduce(into: [:]) { styles, declaration in
+            let components = declaration.split(separator: ":", maxSplits: 1).map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            }
+            guard components.count == 2 else { return }
+            styles[components[0]] = components[1]
+        }
+    }
+    
+    private static func isBold(_ fontWeight: String?) -> Bool {
+        guard let fontWeight else { return false }
+        if fontWeight.contains("bold") {
+            return true
+        }
+        return Int(fontWeight.prefix { $0.isNumber }) ?? 0 >= 600
+    }
+    
+    private static func isItalic(_ fontStyle: String?) -> Bool {
+        guard let fontStyle else { return false }
+        return fontStyle.contains("italic") || fontStyle.contains("oblique")
+    }
+    
+    private static func normalizedPlainText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "\u{200B}", with: "")
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
     
     private static func rtfData(from attributedString: NSAttributedString) -> Data? {

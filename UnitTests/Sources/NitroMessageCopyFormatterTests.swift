@@ -141,6 +141,70 @@ struct NitroMessageCopyFormatterTests {
     }
     
     @Test
+    func normalizesMailDivHTMLForComposer() async {
+        let html = """
+        <div style="font-family: Aptos; font-size: 12pt">Excellent, thanks Ludek</div>\
+        <div style="font-family: Aptos; font-size: 12pt"><br></div>\
+        <div style="font-family: Aptos; font-size: 12pt">Best wishes</div>
+        """
+        let plainText = "Excellent, thanks Ludek\n\nBest wishes"
+        let itemProvider = itemProvider(representations: [
+            UTType.html.identifier: html,
+            UTType.utf8PlainText.identifier: plainText
+        ])
+        
+        guard case let .html(composerHTML, fallback) = await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) else {
+            Issue.record("Expected normalized HTML paste content")
+            return
+        }
+        #expect(!composerHTML.localizedCaseInsensitiveContains("<div"))
+        #expect(composerHTML == "<p style=\"font-family: Aptos; font-size: 12pt\">Excellent, thanks Ludek</p><p style=\"font-family: Aptos; font-size: 12pt\"></p><p style=\"font-family: Aptos; font-size: 12pt\">Best wishes</p>")
+        #expect(fallback == plainText)
+    }
+    
+    @Test
+    func preservesMailDivFormatting() async {
+        let html = #"<div style="font-weight: 700; font-style: italic">Formatted</div><div>Plain</div>"#
+        let itemProvider = itemProvider(representations: [
+            UTType.html.identifier: html,
+            UTType.utf8PlainText.identifier: "Formatted\nPlain"
+        ])
+        
+        guard case let .html(composerHTML, _) = await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) else {
+            Issue.record("Expected normalized HTML paste content")
+            return
+        }
+        #expect(composerHTML.contains("<strong>"))
+        #expect(composerHTML.contains("<em>"))
+        #expect(composerHTML.contains(#"<p style="font-weight: 700; font-style: italic">Formatted</p>"#))
+        #expect(composerHTML.hasSuffix("<p>Plain</p>"))
+    }
+    
+    @Test
+    func fallsBackToProvidedPlainTextWhenHTMLRendersEmpty() async {
+        let itemProvider = itemProvider(representations: [
+            UTType.html.identifier: "<div></div>",
+            UTType.utf8PlainText.identifier: "Fallback text"
+        ])
+        
+        #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) == .plainText("Fallback text"))
+    }
+    
+    @Test
+    func acceptsEquivalentTextWithDifferentHTMLLineBreaks() async {
+        let itemProvider = itemProvider(representations: [
+            UTType.html.identifier: "<div>First</div><div><br></div><div>Last</div>",
+            UTType.utf8PlainText.identifier: "First\nLast"
+        ])
+
+        guard case let .html(_, plainText) = await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) else {
+            Issue.record("Expected normalized HTML paste content")
+            return
+        }
+        #expect(plainText == "First\nLast")
+    }
+    
+    @Test
     func readsPlainTextFromNotesProvider() async throws {
         let rtf = try NSAttributedString(string: "Hello from Notes").data(from: NSRange(location: 0, length: 16),
                                                                           documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
