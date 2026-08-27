@@ -47,6 +47,7 @@ enum NitroMessageCopyFormatter {
             let typeIdentifier: String
             let conformsToText: Bool
             let byteCount: Int?
+            let content: String?
         }
         
         let supportsTextPaste: Bool
@@ -111,10 +112,20 @@ enum NitroMessageCopyFormatter {
         for typeIdentifier in itemProvider.registeredTypeIdentifiers {
             guard !Task.isCancelled else { break }
             let conformsToText = isTextType(typeIdentifier)
-            let byteCount = conformsToText ? await dataRepresentation(from: itemProvider, type: typeIdentifier)?.count : nil
+            let data = conformsToText ? await dataRepresentation(from: itemProvider, type: typeIdentifier) : nil
+            let content: String? = if typeIdentifier == UTType.rtf.identifier, let data {
+                await plainText(fromRTF: data)
+            } else if let data {
+                String(data: data, encoding: .utf8) ?? String(data: data, encoding: .unicode)
+            } else if conformsToText {
+                await string(from: itemProvider, type: typeIdentifier)
+            } else {
+                nil
+            }
             representations.append(.init(typeIdentifier: typeIdentifier,
                                          conformsToText: conformsToText,
-                                         byteCount: byteCount))
+                                         byteCount: data?.count ?? content?.utf8.count,
+                                         content: content))
         }
         
         return .init(supportsTextPaste: supportsTextPaste(itemProvider),

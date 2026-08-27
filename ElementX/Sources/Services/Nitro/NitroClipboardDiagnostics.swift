@@ -22,7 +22,7 @@ enum NitroClipboardDiagnostics {
             "System: \(systemName) \(systemVersion)",
             "App: \(appVersion) (\(buildNumber))",
             "Items: \(itemProviders.count)",
-            "Content included: no"
+            "Content included: yes — this report may contain private message text"
         ]
         
         for (index, itemProvider) in itemProviders.enumerated() {
@@ -42,6 +42,10 @@ enum NitroClipboardDiagnostics {
                     ? representation.byteCount.map { "\($0) bytes" } ?? "load failed"
                     : "not loaded (non-text)"
                 lines.append("\(typeIndex + 1). \(representation.typeIdentifier) — \(size)")
+                if let content = representation.content {
+                    lines.append("   Content:")
+                    lines.append(contentsOf: content.components(separatedBy: .newlines).map { "       \($0)" })
+                }
             }
         }
         

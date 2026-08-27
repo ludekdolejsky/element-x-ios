@@ -176,10 +176,12 @@ struct NitroMessageCopyFormatterTests {
     }
     
     @Test
-    func clipboardDiagnosticsExcludeContent() async {
+    func clipboardDiagnosticsIncludeTextContent() async {
         let secret = "private email content"
+        let html = "<strong>private email content</strong>"
         let provider = itemProvider(representations: [
             UTType.text.identifier: secret,
+            UTType.html.identifier: html,
             UTType.pdf.identifier: Data("pdf".utf8)
         ])
         
@@ -192,9 +194,11 @@ struct NitroMessageCopyFormatterTests {
         
         #expect(report.contains("public.text"))
         #expect(report.contains(UTType.pdf.identifier))
-        #expect(report.contains("Selected format: Generic text"))
-        #expect(report.contains("Content included: no"))
-        #expect(!report.contains(secret))
+        #expect(report.contains("Selected format: HTML"))
+        #expect(report.contains("Content included: yes"))
+        #expect(report.contains(secret))
+        #expect(report.contains(html))
+        #expect(report.contains("not loaded (non-text)"))
     }
     
     @Test

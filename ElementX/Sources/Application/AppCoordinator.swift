@@ -31,8 +31,17 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
     private let bugReportService: BugReportServiceProtocol
     private let elementCallService: ElementCallServiceProtocol
     
-    /// Common background task to continue long-running tasks in the background.
-    private var backgroundTask: UIBackgroundTaskIdentifier?
+    private struct LifecycleBackgroundAssertion {
+        let identifier: UIBackgroundTaskIdentifier
+        let transitionToken: UUID
+    }
+    
+    /// Background assertion used to finish suspending the client after the app enters the background.
+    private var lifecycleBackgroundAssertion: LifecycleBackgroundAssertion?
+    private var lifecycleTransitionToken = UUID()
+    
+    /// Background task that keeps services running temporarily for incoming calls.
+    private var delayedPauseBackgroundTask: UIBackgroundTaskIdentifier?
     
     private var userSessionMigrationsOldVersion: Version?
     private var userSession: UserSessionProtocol? {
@@ -59,6 +68,7 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
     private var appDelegateObserver: AnyCancellable?
     private var userSessionObserver: AnyCancellable?
     private var clientProxyObserver: AnyCancellable?
+    private var backgroundRefreshSyncObserver: AnyCancellable?
     private var cancellables = Set<AnyCancellable>()
     
     let windowManager: SecureWindowManagerProtocol
@@ -1086,7 +1096,9 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
     private func showLoginErrorToast() {
         userIndicatorController.submitIndicator(UserIndicator(title: "Failed logging in"))
     }
-    
+}
+
+private extension AppCoordinator {
     // MARK: - Application State
     
     private func pauseClientServices(isBackgroundTask: Bool) async {
@@ -1095,8 +1107,8 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
             return
         }
         
-        await userSession?.clientProxy.pauseServices()
         clientProxyObserver = nil
+        await userSession?.clientProxy.pauseServices()
     }
     
     private func resumeClientServices() async {
@@ -1104,32 +1116,30 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
         
         analyticsService.signpost.startTransaction(.upToDateRoomList)
         
-        await userSession.clientProxy.resumeServices()
-        
-        guard clientProxyObserver == nil else {
-            return
+        if clientProxyObserver == nil {
+            clientProxyObserver = userSession.clientProxy
+                .loadingStatePublisher
+                .dropFirst()
+                .removeDuplicates()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] state in
+                    let toastIdentifier = "StaleDataIndicator"
+                    guard let self else { return }
+                    
+                    switch state {
+                    case .loading:
+                        if self.userSession?.clientProxy.homeserverReachabilityPublisher.value == .reachable,
+                           self.appMediator.networkMonitor.reachabilityPublisher.value == .reachable {
+                            self.userIndicatorController.submitIndicator(.init(id: toastIdentifier, type: .toast(progress: .indeterminate), title: L10n.commonSyncing, persistent: true))
+                        }
+                    case .notLoading:
+                        self.analyticsService.signpost.finishTransaction(.upToDateRoomList)
+                        self.userIndicatorController.retractIndicatorWithId(toastIdentifier)
+                    }
+                }
         }
         
-        clientProxyObserver = userSession.clientProxy
-            .loadingStatePublisher
-            .dropFirst()
-            .removeDuplicates()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
-                let toastIdentifier = "StaleDataIndicator"
-                guard let self else { return }
-                
-                switch state {
-                case .loading:
-                    if self.userSession?.clientProxy.homeserverReachabilityPublisher.value == .reachable,
-                       self.appMediator.networkMonitor.reachabilityPublisher.value == .reachable {
-                        self.userIndicatorController.submitIndicator(.init(id: toastIdentifier, type: .toast(progress: .indeterminate), title: L10n.commonSyncing, persistent: true))
-                    }
-                case .notLoading:
-                    self.analyticsService.signpost.finishTransaction(.upToDateRoomList)
-                    self.userIndicatorController.retractIndicatorWithId(toastIdentifier)
-                }
-            }
+        await userSession.clientProxy.resumeServices()
     }
     
     private func observeApplicationState() {
@@ -1177,7 +1187,7 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
     private func applicationDidEnterBackground() {
         MXLog.info("Application did enter background")
         
-        scheduleDelayedPauseServices()
+        pauseServicesAfterEnteringBackground()
         scheduleBackgroundAppRefresh()
     }
     
@@ -1186,20 +1196,43 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
         MXLog.info("Application will resign active")
     }
     
-    private func scheduleDelayedPauseServices() {
-        guard backgroundTask == nil else {
+    private func pauseServicesAfterEnteringBackground() {
+        guard lifecycleBackgroundAssertion == nil else {
             return
         }
         
-        backgroundTask = appMediator.beginBackgroundTask {
+        let token = UUID()
+        lifecycleTransitionToken = token
+        let identifier = appMediator.beginBackgroundTask {
+            MXLog.info("Lifecycle background task is about to expire.")
+            self.endLifecycleBackgroundTask(token: token)
+        }
+        lifecycleBackgroundAssertion = .init(identifier: identifier, transitionToken: token)
+        
+        Task { @MainActor in
+            guard self.lifecycleTransitionToken == token else {
+                return
+            }
+            
+            await self.pauseClientServices(isBackgroundTask: true)
+            self.endLifecycleBackgroundTask(token: token)
+        }
+    }
+    
+    private func scheduleDelayedPauseServices() {
+        guard delayedPauseBackgroundTask == nil else {
+            return
+        }
+        
+        delayedPauseBackgroundTask = appMediator.beginBackgroundTask {
             MXLog.info("Background task is about to expire.")
             
             // We're intentionally strongly retaining self here to an EXC_BAD_ACCESS
-            // `backgroundTask` will be eventually released in `endActiveBackgroundTask`
+            // `delayedPauseBackgroundTask` will be eventually released in `endDelayedPauseBackgroundTask`
             // https://sentry.tools.element.io/organizations/element/issues/4477794/events/9cfd04e4d045440f87498809cf718de5/
             Task { @MainActor in
                 await self.pauseClientServices(isBackgroundTask: true)
-                self.endActiveBackgroundTask()
+                self.endDelayedPauseBackgroundTask()
             }
         }
     }
@@ -1207,9 +1240,16 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
     @objc
     private func applicationWillEnterForeground() {
         MXLog.info("Application will enter foreground")
-        endActiveBackgroundTask()
-        Task {
-            await resumeClientServices()
+        let token = UUID()
+        lifecycleTransitionToken = token
+        endLifecycleBackgroundTask()
+        endDelayedPauseBackgroundTask()
+        Task { @MainActor in
+            guard self.lifecycleTransitionToken == token else {
+                return
+            }
+            
+            await self.resumeClientServices()
         }
     }
     
@@ -1218,14 +1258,28 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
         MXLog.info("Application did become active")
     }
     
-    private func endActiveBackgroundTask() {
-        guard let backgroundTask else {
+    private func endLifecycleBackgroundTask(token: UUID? = nil) {
+        if let token, token != lifecycleBackgroundAssertion?.transitionToken {
             return
         }
         
-        MXLog.info("Ending background task.")
-        appMediator.endBackgroundTask(backgroundTask)
-        self.backgroundTask = nil
+        guard let lifecycleBackgroundAssertion else {
+            return
+        }
+        
+        MXLog.info("Ending lifecycle background task.")
+        self.lifecycleBackgroundAssertion = nil
+        appMediator.endBackgroundTask(lifecycleBackgroundAssertion.identifier)
+    }
+    
+    private func endDelayedPauseBackgroundTask() {
+        guard let delayedPauseBackgroundTask else {
+            return
+        }
+        
+        MXLog.info("Ending delayed pause background task.")
+        self.delayedPauseBackgroundTask = nil
+        appMediator.endBackgroundTask(delayedPauseBackgroundTask)
     }
     
     // MARK: Background app refresh
@@ -1259,7 +1313,6 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
         }
     }
     
-    private var backgroundRefreshSyncObserver: AnyCancellable?
     private func handleBackgroundAppRefresh(_ task: BGAppRefreshTask) async {
         MXLog.info("Started background app refresh")
         
