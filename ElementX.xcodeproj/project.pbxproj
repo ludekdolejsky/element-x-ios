@@ -663,6 +663,7 @@
 		66E9202BED03B5BB00E812A1 /* URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 227AC5D71A4CE43512062243 /* URL.swift */; };
 		66ED2E6F19B0C669EC71D4CA /* Dictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFDCAC6CAAD65A2C24EA9C4B /* Dictionary.swift */; };
 		67160204A8D362BB7D4AD259 /* Search.swift in Sources */ = {isa = PBXBuildFile; fileRef = 693E16574C6F7F9FA1015A8C /* Search.swift */; };
+		6764F95F36F6927F46C07A20 /* NitroRecentEmojiStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFC1D3E2E54E0E357B9B2D44 /* NitroRecentEmojiStoreTests.swift */; };
 		6786C4B0936AC84D993B20BF /* NotificationSettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5F06F2F09B2EDD067DC2174 /* NotificationSettingsScreen.swift */; };
 		6793E75E3EBE48EBB8F857AF /* ProcessInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 077B01C13BBA2996272C5FB5 /* ProcessInfo.swift */; };
 		67C05C50AD734283374605E3 /* MatrixEntityRegex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AD1A853D605C2146B0DC028 /* MatrixEntityRegex.swift */; };
@@ -947,6 +948,7 @@
 		8F63A813760F3DDA8EA1DE9B /* test_image.png in Resources */ = {isa = PBXBuildFile; fileRef = 137C082DFC0157D66936A0EC /* test_image.png */; };
 		8F7D29BD7FCBEC86B9E49CED /* preview_avatar_room.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 690915157A874D1F21ADE70C /* preview_avatar_room.jpg */; };
 		904F06C9C1AEF884C2077542 /* RoomDirectorySearchScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2E4EF80DFB8FE7C4469B15D /* RoomDirectorySearchScreen.swift */; };
+		904F38747B091F11A3A25E29 /* NitroRecentEmojiStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76E2294D0B1F8F0A131CC5D6 /* NitroRecentEmojiStore.swift */; };
 		90733645AE76FB33DAD28C2B /* URLSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE40D4A5DD857AC16EED945A /* URLSession.swift */; };
 		9097C3B61181B731CACEE28B /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C6AE2DB4FE7FAEA6402663 /* Secrets.swift */; };
 		90C683C87BF6D39419402E5B /* AuthenticationClassicAppBackupInstructionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B0E0A2F16603E7C827C295 /* AuthenticationClassicAppBackupInstructionsView.swift */; };
@@ -2526,6 +2528,7 @@
 		7640A4E77D85B04930AE28B2 /* NitroClientAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitroClientAPI.swift; sourceTree = "<group>"; };
 		76A46ABD27628CB5FC402541 /* Backports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backports.swift; sourceTree = "<group>"; };
 		76DA67522F95328845F3171E /* NitroTaskDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitroTaskDetailsView.swift; sourceTree = "<group>"; };
+		76E2294D0B1F8F0A131CC5D6 /* NitroRecentEmojiStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitroRecentEmojiStore.swift; sourceTree = "<group>"; };
 		7720ACAC6155AB7F9C70B546 /* nb */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = nb; path = nb.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
 		7773CBFDBD458E0B7E270507 /* PillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillView.swift; sourceTree = "<group>"; };
 		77AB44FFCF7DA5300D943169 /* SpaceAddRoomsScreenSelectedItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceAddRoomsScreenSelectedItem.swift; sourceTree = "<group>"; };
@@ -3077,6 +3080,7 @@
 		CF05437C99730E5B3357FC51 /* matrix-rust-sdk */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "matrix-rust-sdk"; path = "../matrix-rust-sdk"; sourceTree = SOURCE_ROOT; };
 		CF19027E7FFA5E63D148873A /* CreateRoomScreenViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateRoomScreenViewModel.swift; sourceTree = "<group>"; };
 		CF847A34FC4C8C937CD39E08 /* LabsScreenViewModelProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabsScreenViewModelProtocol.swift; sourceTree = "<group>"; };
+		CFC1D3E2E54E0E357B9B2D44 /* NitroRecentEmojiStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitroRecentEmojiStoreTests.swift; sourceTree = "<group>"; };
 		CFFA5E881D281810AB428EA3 /* RoomPowerLevelsProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomPowerLevelsProxy.swift; sourceTree = "<group>"; };
 		D03D7ECAC68C2FFB8CF01BCB /* DeactivateAccountScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeactivateAccountScreen.swift; sourceTree = "<group>"; };
 		D046ABB22E680F7C5054441B /* SecurityAndPrivacyScreenViewModelProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityAndPrivacyScreenViewModelProtocol.swift; sourceTree = "<group>"; };
@@ -4414,6 +4418,7 @@
 				201305507D7DFD16E544563A /* EmojiLoaderProtocol.swift */,
 				6C113E0CB7E15E9765B1817A /* EmojiProvider.swift */,
 				8BCCE3D12B0A9C6E559B5B5A /* EmojiProviderProtocol.swift */,
+				76E2294D0B1F8F0A131CC5D6 /* NitroRecentEmojiStore.swift */,
 				EA9DE5EBEC4B101F5F5249DA /* RoomScopedEmojiProvider.swift */,
 			);
 			path = Emojis;
@@ -5472,6 +5477,7 @@
 				9523A8ADC55F84BE45D6FEFB /* NitroClientAPITests.swift */,
 				B0AEDFE342E1061481D42B3C /* NitroConfigurationTests.swift */,
 				51CF44B56BB54195EB6234B9 /* NitroMessageCopyFormatterTests.swift */,
+				CFC1D3E2E54E0E357B9B2D44 /* NitroRecentEmojiStoreTests.swift */,
 				AC7C93350C3461AD3FF177D5 /* NitroReminderCreateScreenViewModelTests.swift */,
 				68B96DC9267AC82F5E5ADA61 /* NitroReminderServiceTests.swift */,
 				38BEC2267578BE8AC929F40D /* NitroRemindersScreenViewModelTests.swift */,
@@ -8644,6 +8650,7 @@
 				E8FECA75E563EAA37B7023BC /* NitroClientAPITests.swift in Sources */,
 				8554E918293FC42FF056ECA7 /* NitroConfigurationTests.swift in Sources */,
 				32B87E4395739100B3A18430 /* NitroMessageCopyFormatterTests.swift in Sources */,
+				6764F95F36F6927F46C07A20 /* NitroRecentEmojiStoreTests.swift in Sources */,
 				EAF4F5116399E94494651CFC /* NitroReminderCreateScreenViewModelTests.swift in Sources */,
 				95A6FE8A2CF87A64C7796B50 /* NitroReminderServiceTests.swift in Sources */,
 				C247F202FAD3434A2F265910 /* NitroRemindersScreenViewModelTests.swift in Sources */,
@@ -9366,6 +9373,7 @@
 				BC01EF77437BD82123D3E42E /* NitroClipboardDiagnosticsView.swift in Sources */,
 				80BE59A2FF4CFF902523B511 /* NitroConfiguration.swift in Sources */,
 				15CE75D257991AD547354E1D /* NitroMessageCopyFormatter.swift in Sources */,
+				904F38747B091F11A3A25E29 /* NitroRecentEmojiStore.swift in Sources */,
 				00B4F5A18DAE0341409B023A /* NitroReminderCreateScreen.swift in Sources */,
 				D27AFF7F134BC88F6680FDCC /* NitroReminderCreateScreenCoordinator.swift in Sources */,
 				78983F88D310AD02EB02357A /* NitroReminderCreateScreenModels.swift in Sources */,

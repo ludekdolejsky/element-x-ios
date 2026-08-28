@@ -15,14 +15,12 @@ nonisolated struct RoomStateEventProxy: Equatable, Sendable {
     let content: String
 }
 
-final class RoomScopedEmojiProvider: EmojiProviderProtocol {
+final class RoomScopedEmojiProvider: EmojiProviderProtocol, NitroEmojiUsageRankingProvider {
     private enum Constants {
         static let stableRoomImagePackEventType = "m.room.image_pack"
         static let legacyRoomImagePackEventType = "im.ponies.room_emotes"
         static let stableGlobalImagePackEventType = "m.image_pack.rooms"
         static let legacyGlobalImagePackEventType = "im.ponies.emote_rooms"
-        static let recentEmojiEventType = "m.recent_emoji"
-        static let legacyRecentEmojiEventType = "io.element.recent_emoji"
         static let emoticonUsage = "emoticon"
         static let customCategoryPrefix = "io.element.elementx.custom."
         static let cacheLifetime: TimeInterval = 5 * 60
@@ -32,8 +30,7 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
         static let maximumConcurrentRoomStateRequests = 4
         static let globalPackPriority = 0
         static let currentRoomPackPriority = 1
-        static let recentEmojiDisplayLimit = 24
-        static let recentEmojiStorageLimit = 100
+        static let recentEmojiDisplayLimit = 40
     }
     
     private struct PackMeta: Decodable {
@@ -107,39 +104,6 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
         let categories: CustomCategories
     }
     
-    private struct RecentEmojiAccountData: Codable {
-        let recentEmoji: [RecentEmojiEntry]
-        
-        enum CodingKeys: String, CodingKey {
-            case recentEmoji = "recent_emoji"
-        }
-    }
-    
-    private struct RecentEmojiEntry: Codable, Equatable {
-        let emoji: String
-        var total: UInt64
-        var shortcode: String?
-    }
-    
-    private struct LegacyRecentEmojiAccountData: Decodable {
-        let recentEmoji: [LegacyRecentEmojiEntry]
-        
-        enum CodingKeys: String, CodingKey {
-            case recentEmoji = "recent_emoji"
-        }
-    }
-    
-    private struct LegacyRecentEmojiEntry: Decodable {
-        let emoji: String
-        let total: UInt64
-        
-        init(from decoder: Decoder) throws {
-            var container = try decoder.unkeyedContainer()
-            emoji = try container.decode(String.self)
-            total = try container.decode(UInt64.self)
-        }
-    }
-    
     private enum JSONValue: Decodable {
         case object([String: JSONValue])
         case array([JSONValue])
@@ -169,21 +133,18 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
     }
     
     typealias AccountDataProvider = (String) async -> Result<String?, ClientProxyError>
-    typealias AccountDataWriter = (String, String) async -> Result<Void, ClientProxyError>
     typealias RoomStateProvider = (String) async -> Result<[RoomStateEventProxy], ClientProxyError>
     
     private let roomID: String
     private let userID: String
     private let baseProvider: EmojiProviderProtocol
     private let accountDataProvider: AccountDataProvider
-    private let accountDataWriter: AccountDataWriter?
+    private let recentEmojiStore: NitroRecentEmojiStoreProtocol
     private let roomStateProvider: RoomStateProvider
     private let now: () -> Date
     
     private var cacheEntry: CacheEntry?
     private var loadingTask: Task<CustomCategories, Never>?
-    private var recentEmojiEntries = [RecentEmojiEntry]()
-    private var recentEmojiWriteTask: Task<Void, Never>?
     private var lastCustomEmojiLoadFailed = false
     private var lastLoadAttemptDate: Date?
     
@@ -191,14 +152,14 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
          userID: String,
          baseProvider: EmojiProviderProtocol,
          accountDataProvider: @escaping AccountDataProvider,
-         accountDataWriter: AccountDataWriter? = nil,
+         recentEmojiStore: NitroRecentEmojiStoreProtocol,
          roomStateProvider: @escaping RoomStateProvider,
          now: @escaping () -> Date = Date.init) {
         self.roomID = roomID
         self.userID = userID
         self.baseProvider = baseProvider
         self.accountDataProvider = accountDataProvider
-        self.accountDataWriter = accountDataWriter
+        self.recentEmojiStore = recentEmojiStore
         self.roomStateProvider = roomStateProvider
         self.now = now
     }
@@ -206,7 +167,7 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
     func categories(searchString: String?) async -> [EmojiCategory] {
         async let customCategories = loadCustomCategories()
         async let baseCategories = loadBaseCategories()
-        async let recentEntries = loadRecentEmojiEntries()
+        async let recentEntries = recentEmojiStore.entries()
         let (loadedCustomCategories, loadedBaseCategories, loadedRecentEntries) = await (customCategories, baseCategories, recentEntries)
         let standardCategories = loadedBaseCategories.filter { $0.id != EmojiCategory.frequentlyUsedCategoryIdentifier }
         let recentCategory = buildRecentCategory(entries: loadedRecentEntries,
@@ -228,6 +189,11 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
         baseProvider.frequentlyUsedSystemEmojis()
     }
     
+    var recentEmojiUsageRanks: [String: Int] {
+        Dictionary(recentEmojiStore.rankedEntries.enumerated().map { ($0.element.emoji, $0.offset) },
+                   uniquingKeysWith: min)
+    }
+    
     func customEmojis() async -> [CustomEmoji] {
         await loadCustomCategories().all.flatMap(\.emojis).compactMap(\.customEmoji)
     }
@@ -246,20 +212,7 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
     }
     
     func markEmojiAsRecentlyUsed(_ emoji: String, shortcode: String?) async {
-        markEmojiAsFrequentlyUsed(emoji)
-        
-        let loadedEntries = await loadRecentEmojiEntries()
-        var updatedEntries = mergedRecentEmojiEntries(primary: loadedEntries, secondary: recentEmojiEntries)
-        if let index = updatedEntries.firstIndex(where: { $0.emoji == emoji }) {
-            var entry = updatedEntries.remove(at: index)
-            entry.total = entry.total == UInt64.max ? UInt64.max : entry.total + 1
-            entry.shortcode = shortcode ?? entry.shortcode
-            updatedEntries.insert(entry, at: 0)
-        } else {
-            updatedEntries.insert(.init(emoji: emoji, total: 1, shortcode: shortcode), at: 0)
-        }
-        recentEmojiEntries = Array(updatedEntries.prefix(Constants.recentEmojiStorageLimit))
-        await persistRecentEmojiEntries(recentEmojiEntries)
+        await recentEmojiStore.recordUsage(emoji: emoji, shortcode: shortcode)
     }
     
     private func loadBaseCategories() async -> [EmojiCategory] {
@@ -469,102 +422,6 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
         }
     }
     
-    private func loadRecentEmojiEntries() async -> [RecentEmojiEntry] {
-        async let stableContent = loadRecentEmojiAccountData(eventType: Constants.recentEmojiEventType)
-        async let legacyContent = loadRecentEmojiAccountData(eventType: Constants.legacyRecentEmojiEventType)
-        let (loadedStableContent, loadedLegacyContent) = await (stableContent, legacyContent)
-        
-        let stableEntries = decodeRecentEmojiAccountData(loadedStableContent)
-        let legacyEntries = decodeLegacyRecentEmojiAccountData(loadedLegacyContent)
-        let localEntries = baseProvider.frequentlyUsedSystemEmojis().map {
-            RecentEmojiEntry(emoji: $0, total: 0, shortcode: nil)
-        }
-        let loadedEntries = mergedRecentEmojiEntries(primary: stableEntries, secondary: legacyEntries)
-        let entriesWithLocalFallback = mergedRecentEmojiEntries(primary: loadedEntries, secondary: localEntries)
-        let entries = mergedRecentEmojiEntries(primary: entriesWithLocalFallback, secondary: recentEmojiEntries)
-        recentEmojiEntries = Array(entries.prefix(Constants.recentEmojiStorageLimit))
-        return recentEmojiEntries
-    }
-    
-    private func loadRecentEmojiAccountData(eventType: String) async -> String? {
-        switch await accountDataProvider(eventType) {
-        case .success(let content):
-            return content
-        case .failure(let error):
-            MXLog.error("Failed loading recent emoji account data for \(eventType): \(error)")
-            return nil
-        }
-    }
-    
-    private func decodeRecentEmojiAccountData(_ content: String?) -> [RecentEmojiEntry] {
-        guard let content, let data = content.data(using: .utf8) else { return [] }
-        
-        do {
-            return try JSONDecoder().decode(RecentEmojiAccountData.self, from: data).recentEmoji
-        } catch {
-            MXLog.error("Failed decoding recent emoji account data")
-            return []
-        }
-    }
-    
-    private func decodeLegacyRecentEmojiAccountData(_ content: String?) -> [RecentEmojiEntry] {
-        guard let content, let data = content.data(using: .utf8) else { return [] }
-        
-        do {
-            return try JSONDecoder().decode(LegacyRecentEmojiAccountData.self, from: data).recentEmoji.map {
-                RecentEmojiEntry(emoji: $0.emoji, total: $0.total, shortcode: nil)
-            }
-        } catch {
-            MXLog.error("Failed decoding legacy recent emoji account data")
-            return []
-        }
-    }
-    
-    private func mergedRecentEmojiEntries(primary: [RecentEmojiEntry], secondary: [RecentEmojiEntry]) -> [RecentEmojiEntry] {
-        var merged = primary.filter { !$0.emoji.isEmpty }
-        for entry in secondary where !entry.emoji.isEmpty {
-            guard let index = merged.firstIndex(where: { $0.emoji == entry.emoji }) else {
-                merged.append(entry)
-                continue
-            }
-            
-            if entry.total > merged[index].total {
-                var replacement = entry
-                replacement.shortcode = entry.shortcode ?? merged[index].shortcode
-                merged[index] = replacement
-            } else if merged[index].shortcode == nil {
-                merged[index].shortcode = entry.shortcode
-            }
-        }
-        return merged
-    }
-    
-    private func persistRecentEmojiEntries(_ entries: [RecentEmojiEntry]) async {
-        guard let accountDataWriter else { return }
-        
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
-            let data = try encoder.encode(RecentEmojiAccountData(recentEmoji: entries))
-            guard let content = String(data: data, encoding: .utf8) else {
-                MXLog.error("Failed encoding recent emoji account data")
-                return
-            }
-            
-            let previousWriteTask = recentEmojiWriteTask
-            let writeTask = Task {
-                await previousWriteTask?.value
-                if case .failure(let error) = await accountDataWriter(Constants.recentEmojiEventType, content) {
-                    MXLog.error("Failed saving recent emoji account data: \(error)")
-                }
-            }
-            recentEmojiWriteTask = writeTask
-            await writeTask.value
-        } catch {
-            MXLog.error("Failed encoding recent emoji account data")
-        }
-    }
-    
     private func loadRoomState(roomID: String, isOptional: Bool = false) async -> [RoomStateEventProxy] {
         guard !Task.isCancelled else { return [] }
         let result = await roomStateProvider(roomID)
@@ -615,7 +472,7 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol {
                                category: EmojiCategory(id: categoryID, name: packName, emojis: items))
     }
     
-    private func buildRecentCategory(entries: [RecentEmojiEntry],
+    private func buildRecentCategory(entries: [NitroRecentEmojiEntry],
                                      standardCategories: [EmojiCategory],
                                      customCategories: [EmojiCategory]) -> EmojiCategory? {
         let standardEmojis = standardCategories.flatMap(\.emojis)

@@ -29,6 +29,7 @@ struct CommonFlowParameters {
     let elementCallService: ElementCallServiceProtocol
     let timelineControllerFactory: TimelineControllerFactoryProtocol
     let emojiProvider: EmojiProviderProtocol
+    var nitroRecentEmojiStore: NitroRecentEmojiStoreProtocol?
     let linkMetadataProvider: LinkMetadataProviderProtocol
     let appMediator: AppMediatorProtocol
     let appSettings: AppSettings

@@ -41,7 +41,7 @@ struct EmojiPickerScreenViewModelTests {
     }
     
     @Test
-    mutating func selectCustomEmojiUpdatesRecentEmojis() async throws {
+    mutating func selectCustomEmojiDoesNotUpdateRecentEmojisBeforeConsumerSucceeds() async throws {
         let customEmoji = try CustomEmoji(shortcode: "party",
                                           body: "Party",
                                           imageURL: #require(URL(string: "mxc://example.org/party")))
@@ -51,7 +51,6 @@ struct EmojiPickerScreenViewModelTests {
                                              customEmoji: customEmoji)
         let emojiProvider = TestEmojiProvider()
         setupViewModel(emojiProvider: emojiProvider)
-        var recentEmojiIterator = emojiProvider.recentEmojiStream.makeAsyncIterator()
         
         let deferred = deferFulfillment(viewModel.actions) { $0 == .dismiss }
         context.send(viewAction: .emojiTapped(emoji: emoji))
@@ -60,7 +59,7 @@ struct EmojiPickerScreenViewModelTests {
         var iterator = emojiPickerStream.makeAsyncIterator()
         #expect(await iterator.next() == emoji)
         #expect(emojiProvider.markedEmojis.isEmpty)
-        #expect(await recentEmojiIterator.next() == .init(emoji: "mxc://example.org/party", shortcode: "party"))
+        #expect(emojiProvider.recentEmojis.isEmpty)
     }
     
     @Test
@@ -97,14 +96,7 @@ private final class TestEmojiProvider: EmojiProviderProtocol {
     }
     
     var markedEmojis = [String]()
-    let recentEmojiStream: AsyncStream<RecentEmoji>
-    private let recentEmojiContinuation: AsyncStream<RecentEmoji>.Continuation
-    
-    init() {
-        let streamAndContinuation = AsyncStream<RecentEmoji>.makeStream()
-        recentEmojiStream = streamAndContinuation.stream
-        recentEmojiContinuation = streamAndContinuation.continuation
-    }
+    var recentEmojis = [RecentEmoji]()
     
     func categories(searchString: String?) async -> [EmojiCategory] {
         []
@@ -119,6 +111,6 @@ private final class TestEmojiProvider: EmojiProviderProtocol {
     }
     
     func markEmojiAsRecentlyUsed(_ emoji: String, shortcode: String?) async {
-        recentEmojiContinuation.yield(.init(emoji: emoji, shortcode: shortcode))
+        recentEmojis.append(.init(emoji: emoji, shortcode: shortcode))
     }
 }

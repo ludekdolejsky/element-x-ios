@@ -70,8 +70,8 @@ struct TimelineControllerMockConfiguration {
         }
         
         toggleReactionToClosure = { [timelineProxy] reaction, eventOrTransactionID in
-            guard let timelineProxy else { return }
-            _ = await timelineProxy.toggleReaction(reaction, to: eventOrTransactionID)
+            guard let timelineProxy else { return .success(()) }
+            return await timelineProxy.toggleReaction(reaction, to: eventOrTransactionID)
         }
         
         redactClosure = { [timelineProxy] eventOrTransactionID in

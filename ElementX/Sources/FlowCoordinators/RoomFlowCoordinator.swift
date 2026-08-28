@@ -111,22 +111,21 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     
     private lazy var emojiProvider: EmojiProviderProtocol = {
         guard NitroConfiguration.isEnabled,
-              let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol else {
+              let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol,
+              let recentEmojiStore = flowParameters.nitroRecentEmojiStore else {
             return flowParameters.emojiProvider
+        }
+        let accountDataProvider: RoomScopedEmojiProvider.AccountDataProvider = { eventType in
+            await clientProxy.rawAccountData(eventType: eventType)
         }
         
         return RoomScopedEmojiProvider(roomID: roomID,
                                        userID: userSession.clientProxy.userID,
                                        baseProvider: flowParameters.emojiProvider,
-                                       accountDataProvider: { eventType in
-                                           await clientProxy.rawAccountData(eventType: eventType)
-                                       },
-                                       accountDataWriter: { eventType, content in
-                                           await clientProxy.setRawAccountData(eventType: eventType, content: content)
-                                       },
-                                       roomStateProvider: { roomID in
-                                           await clientProxy.emojiRoomStateEvents(roomID: roomID)
-                                       })
+                                       accountDataProvider: accountDataProvider,
+                                       recentEmojiStore: recentEmojiStore) { roomID in
+            await clientProxy.emojiRoomStateEvents(roomID: roomID)
+        }
     }()
     
     init(roomID: String,

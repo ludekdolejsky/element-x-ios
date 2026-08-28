@@ -105,52 +105,38 @@ struct RoomScopedEmojiProviderTests {
     }
     
     @Test
-    func recordsCustomEmojiInStableAccountData() async throws {
-        var writtenEventType: String?
-        var writtenContent: String?
+    func delegatesCustomEmojiUsageToRecentStore() async {
+        let recentEmojiStore = TestRecentEmojiStore()
+        let accountDataProvider: RoomScopedEmojiProvider.AccountDataProvider = { _ in .success(nil) }
         let provider = RoomScopedEmojiProvider(roomID: currentRoomID,
                                                userID: userID,
                                                baseProvider: TestRoomEmojiProvider(categories: []),
-                                               accountDataProvider: { eventType in
-                                                   let content = eventType == "m.recent_emoji"
-                                                       ? #"{"recent_emoji":[{"emoji":"👋","total":2}]}"#
-                                                       : nil
-                                                   return .success(content)
-                                               },
-                                               accountDataWriter: { eventType, content in
-                                                   writtenEventType = eventType
-                                                   writtenContent = content
-                                                   return .success(())
-                                               },
-                                               roomStateProvider: { _ in .success([]) })
+                                               accountDataProvider: accountDataProvider,
+                                               recentEmojiStore: recentEmojiStore) { _ in .success([]) }
         
         await provider.markEmojiAsRecentlyUsed("mxc://example.org/party", shortcode: "party")
         
-        let content = try #require(writtenContent?.data(using: .utf8))
-        let accountData = try JSONDecoder().decode(RecentEmojiAccountData.self, from: content)
-        #expect(writtenEventType == "m.recent_emoji")
-        #expect(accountData.recentEmoji == [
-            .init(emoji: "mxc://example.org/party", total: 1, shortcode: "party"),
-            .init(emoji: "👋", total: 2, shortcode: nil)
-        ])
+        #expect(recentEmojiStore.recordedEmoji == "mxc://example.org/party")
+        #expect(recentEmojiStore.recordedShortcode == "party")
     }
     
     @Test
     func loadsCustomEmojisFromColdCacheWithoutLoadingBaseCategories() async {
         let baseEmoji = EmojiItem(label: "Wave", unicode: "👋", keywords: [], shortcodes: ["wave"])
         let baseProvider = TestRoomEmojiProvider(categories: [.init(id: "people", emojis: [baseEmoji])])
+        let accountDataProvider: RoomScopedEmojiProvider.AccountDataProvider = { _ in .success(nil) }
         let provider = RoomScopedEmojiProvider(roomID: currentRoomID,
                                                userID: userID,
                                                baseProvider: baseProvider,
-                                               accountDataProvider: { _ in .success(nil) },
-                                               roomStateProvider: { roomID in
-                                                   .success([
-                                                       imagePackEvent(roomID: roomID,
-                                                                      stateKey: "party-pack",
-                                                                      name: "Party pack",
-                                                                      shortcode: "party")
-                                                   ])
-                                               })
+                                               accountDataProvider: accountDataProvider,
+                                               recentEmojiStore: TestRecentEmojiStore()) { roomID in
+            .success([
+                imagePackEvent(roomID: roomID,
+                               stateKey: "party-pack",
+                               name: "Party pack",
+                               shortcode: "party")
+            ])
+        }
         
         #expect(provider.cachedCustomEmojis().isEmpty)
         
@@ -256,22 +242,23 @@ struct RoomScopedEmojiProviderTests {
         var waiters = [String: CheckedContinuation<Void, Never>]()
         var activeRoomStateLoads = 0
         var maximumActiveRoomStateLoads = 0
+        let accountDataProvider: RoomScopedEmojiProvider.AccountDataProvider = { eventType in
+            guard eventType == "m.image_pack.rooms" else { return .success(nil) }
+            return .success(#"{"rooms":{\#(roomReferences)}}"#)
+        }
         let provider = RoomScopedEmojiProvider(roomID: currentRoomID,
                                                userID: userID,
                                                baseProvider: TestRoomEmojiProvider(categories: []),
-                                               accountDataProvider: { eventType in
-                                                   guard eventType == "m.image_pack.rooms" else { return .success(nil) }
-                                                   return .success(#"{"rooms":{\#(roomReferences)}}"#)
-                                               },
-                                               roomStateProvider: { roomID in
-                                                   guard roomID != currentRoomID else { return .success([]) }
-                                                   activeRoomStateLoads += 1
-                                                   maximumActiveRoomStateLoads = max(maximumActiveRoomStateLoads, activeRoomStateLoads)
-                                                   startedRoomIDsContinuation.yield(roomID)
-                                                   await withCheckedContinuation { waiters[roomID] = $0 }
-                                                   activeRoomStateLoads -= 1
-                                                   return .success([])
-                                               })
+                                               accountDataProvider: accountDataProvider,
+                                               recentEmojiStore: TestRecentEmojiStore()) { roomID in
+            guard roomID != currentRoomID else { return .success([]) }
+            activeRoomStateLoads += 1
+            maximumActiveRoomStateLoads = max(maximumActiveRoomStateLoads, activeRoomStateLoads)
+            startedRoomIDsContinuation.yield(roomID)
+            await withCheckedContinuation { waiters[roomID] = $0 }
+            activeRoomStateLoads -= 1
+            return .success([])
+        }
         let loadTask = Task { await provider.customEmojis() }
         
         var firstBatch = [String]()
@@ -332,25 +319,26 @@ struct RoomScopedEmojiProviderTests {
         var imagePackAccountDataCalls = 0
         var roomStateCalls = 0
         let baseProvider = TestRoomEmojiProvider(categories: [])
+        let accountDataProvider: RoomScopedEmojiProvider.AccountDataProvider = { eventType in
+            if eventType == "m.image_pack.rooms" || eventType == "im.ponies.emote_rooms" {
+                imagePackAccountDataCalls += 1
+            }
+            return .success(nil)
+        }
         let provider = RoomScopedEmojiProvider(roomID: currentRoomID,
                                                userID: userID,
                                                baseProvider: baseProvider,
-                                               accountDataProvider: { eventType in
-                                                   if eventType == "m.image_pack.rooms" || eventType == "im.ponies.emote_rooms" {
-                                                       imagePackAccountDataCalls += 1
-                                                   }
-                                                   return .success(nil)
-                                               },
-                                               roomStateProvider: { roomID in
-                                                   roomStateCalls += 1
-                                                   return .success([
-                                                       imagePackEvent(roomID: roomID,
-                                                                      stateKey: "pack",
-                                                                      name: "Party pack",
-                                                                      shortcode: "banana-dance",
-                                                                      body: "Banana Dance")
-                                                   ])
-                                               })
+                                               accountDataProvider: accountDataProvider,
+                                               recentEmojiStore: TestRecentEmojiStore()) { roomID in
+            roomStateCalls += 1
+            return .success([
+                imagePackEvent(roomID: roomID,
+                               stateKey: "pack",
+                               name: "Party pack",
+                               shortcode: "banana-dance",
+                               body: "Banana Dance")
+            ])
+        }
         
         _ = await provider.categories(searchString: nil)
         let searchResults = await provider.categories(searchString: "banana")
@@ -375,6 +363,7 @@ struct RoomScopedEmojiProviderTests {
                                                    }
                                                    return .success(nil)
                                                },
+                                               recentEmojiStore: TestRecentEmojiStore(),
                                                roomStateProvider: { _ in .success([]) },
                                                now: { now })
         
@@ -392,22 +381,23 @@ struct RoomScopedEmojiProviderTests {
     func inaccessibleOptionalPackRoomDoesNotTriggerRetries() async {
         var imagePackAccountDataCalls = 0
         var roomStateCalls = [String: Int]()
+        let accountDataProvider: RoomScopedEmojiProvider.AccountDataProvider = { eventType in
+            if eventType == "m.image_pack.rooms" || eventType == "im.ponies.emote_rooms" {
+                imagePackAccountDataCalls += 1
+            }
+            let content = eventType == "m.image_pack.rooms"
+                ? #"{"rooms":{"!global:example.org":{"pack":{}}}}"#
+                : nil
+            return .success(content)
+        }
         let provider = RoomScopedEmojiProvider(roomID: currentRoomID,
                                                userID: userID,
                                                baseProvider: TestRoomEmojiProvider(categories: []),
-                                               accountDataProvider: { eventType in
-                                                   if eventType == "m.image_pack.rooms" || eventType == "im.ponies.emote_rooms" {
-                                                       imagePackAccountDataCalls += 1
-                                                   }
-                                                   let content = eventType == "m.image_pack.rooms"
-                                                       ? #"{"rooms":{"!global:example.org":{"pack":{}}}}"#
-                                                       : nil
-                                                   return .success(content)
-                                               },
-                                               roomStateProvider: { roomID in
-                                                   roomStateCalls[roomID, default: 0] += 1
-                                                   return roomID == globalRoomID ? .failure(.forbiddenAccess) : .success([])
-                                               })
+                                               accountDataProvider: accountDataProvider,
+                                               recentEmojiStore: TestRecentEmojiStore()) { roomID in
+            roomStateCalls[roomID, default: 0] += 1
+            return roomID == globalRoomID ? .failure(.forbiddenAccess) : .success([])
+        }
         
         _ = await provider.categories(searchString: nil)
         _ = await provider.categories(searchString: nil)
@@ -426,6 +416,7 @@ struct RoomScopedEmojiProviderTests {
                                                userID: userID,
                                                baseProvider: TestRoomEmojiProvider(categories: []),
                                                accountDataProvider: { _ in .success(nil) },
+                                               recentEmojiStore: TestRecentEmojiStore(),
                                                roomStateProvider: { roomID in
                                                    roomStateCalls += 1
                                                    if roomStateCalls == 1 {
@@ -478,11 +469,15 @@ struct RoomScopedEmojiProviderTests {
     private func makeProvider(baseCategories: [EmojiCategory] = [],
                               accountData: [String: String] = [:],
                               roomStates: [String: [RoomStateEventProxy]]) -> RoomScopedEmojiProvider {
-        RoomScopedEmojiProvider(roomID: currentRoomID,
-                                userID: userID,
-                                baseProvider: TestRoomEmojiProvider(categories: baseCategories),
-                                accountDataProvider: { .success(accountData[$0]) },
-                                roomStateProvider: { .success(roomStates[$0] ?? []) })
+        let baseProvider = TestRoomEmojiProvider(categories: baseCategories)
+        let accountDataProvider: NitroRecentEmojiStore.AccountDataProvider = { .success(accountData[$0]) }
+        let recentEmojiStore = NitroRecentEmojiStore(baseProvider: baseProvider,
+                                                     accountDataProvider: accountDataProvider) { _, _ in .success(()) }
+        return RoomScopedEmojiProvider(roomID: currentRoomID,
+                                       userID: userID,
+                                       baseProvider: baseProvider,
+                                       accountDataProvider: accountDataProvider,
+                                       recentEmojiStore: recentEmojiStore) { .success(roomStates[$0] ?? []) }
     }
     
     private func imagePackEvent(roomID: String,
@@ -509,20 +504,6 @@ struct RoomScopedEmojiProviderTests {
     }
 }
 
-private struct RecentEmojiAccountData: Decodable {
-    struct Entry: Decodable, Equatable {
-        let emoji: String
-        let total: UInt64
-        let shortcode: String?
-    }
-    
-    let recentEmoji: [Entry]
-    
-    enum CodingKeys: String, CodingKey {
-        case recentEmoji = "recent_emoji"
-    }
-}
-
 @MainActor
 private final class TestRoomEmojiProvider: EmojiProviderProtocol {
     private let loadedCategories: [EmojiCategory]
@@ -542,4 +523,20 @@ private final class TestRoomEmojiProvider: EmojiProviderProtocol {
     }
     
     func markEmojiAsFrequentlyUsed(_ emoji: String) { }
+}
+
+@MainActor
+private final class TestRecentEmojiStore: NitroRecentEmojiStoreProtocol {
+    var rankedEntries = [NitroRecentEmojiEntry]()
+    var recordedEmoji: String?
+    var recordedShortcode: String?
+    
+    func entries() async -> [NitroRecentEmojiEntry] {
+        rankedEntries
+    }
+    
+    func recordUsage(emoji: String, shortcode: String?) async {
+        recordedEmoji = emoji
+        recordedShortcode = shortcode
+    }
 }

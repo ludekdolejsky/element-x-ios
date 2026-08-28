@@ -507,6 +507,45 @@ struct CompletionSuggestionServiceTests {
     }
     
     @Test
+    func emojiSuggestionsUseFrequencyButKeepExactMatchFirst() async throws {
+        let exactItem = EmojiItem(label: "Heart",
+                                  unicode: "❤️",
+                                  keywords: [],
+                                  shortcodes: ["heart"])
+        let frequentItem = EmojiItem(label: "Hearts",
+                                     unicode: "💕",
+                                     keywords: [],
+                                     shortcodes: ["hearts"])
+        let emojiProvider = CompletionTestEmojiProvider(categories: [.init(id: "symbols", emojis: [exactItem, frequentItem])],
+                                                        usageRanks: [frequentItem.reactionKey: 0])
+        let roomProxy = JoinedRoomProxyMock(.init(id: "roomID", name: "test"))
+        let roomSummaryProvider = RoomSummaryProviderMock(.init(state: .loaded([])))
+        let service = CompletionSuggestionService(roomProxy: roomProxy,
+                                                  roomListPublisher: roomSummaryProvider.roomListPublisher.eraseToAnyPublisher(),
+                                                  emojiProvider: emojiProvider)
+        
+        var deferred = deferFulfillment(service.suggestionsPublisher) { suggestions in
+            suggestions.map(\.suggestionType) == [.emoji(frequentItem), .emoji(exactItem)]
+        }
+        service.processTextMessage(":hea", selectedRange: .init(location: 4, length: 0))
+        try await deferred.fulfill()
+        
+        emojiProvider.recentEmojiUsageRanks = [exactItem.reactionKey: 0]
+        deferred = deferFulfillment(service.suggestionsPublisher) { suggestions in
+            suggestions.map(\.suggestionType) == [.emoji(exactItem), .emoji(frequentItem)]
+        }
+        service.processTextMessage(":hea", selectedRange: .init(location: 4, length: 0))
+        try await deferred.fulfill()
+        #expect(emojiProvider.categoryRequests == 1)
+        
+        deferred = deferFulfillment(service.suggestionsPublisher) { suggestions in
+            suggestions.map(\.suggestionType) == [.emoji(exactItem), .emoji(frequentItem)]
+        }
+        service.processTextMessage(":heart", selectedRange: .init(location: 6, length: 0))
+        try await deferred.fulfill()
+    }
+    
+    @Test
     func emojiSuggestionsRefreshAfterCacheLifetime() async throws {
         let firstItem = EmojiItem(label: "First",
                                   unicode: "1️⃣",
@@ -589,20 +628,23 @@ struct CompletionSuggestionServiceTests {
     }
 }
 
-private final class CompletionTestEmojiProvider: EmojiProviderProtocol {
+private final class CompletionTestEmojiProvider: EmojiProviderProtocol, NitroEmojiUsageRankingProvider {
     private let categoryResponses: [[EmojiCategory]]
     private let loadFailures: [Bool]
+    var recentEmojiUsageRanks: [String: Int]
     private(set) var categoryRequests = 0
     private var lastLoadFailed = false
     
-    init(categories: [EmojiCategory]) {
+    init(categories: [EmojiCategory], usageRanks: [String: Int] = [:]) {
         categoryResponses = [categories]
         loadFailures = [false]
+        recentEmojiUsageRanks = usageRanks
     }
     
     init(categoryResponses: [[EmojiCategory]], loadFailures: [Bool] = []) {
         self.categoryResponses = categoryResponses
         self.loadFailures = loadFailures
+        recentEmojiUsageRanks = [:]
     }
     
     func categories(searchString: String?) async -> [EmojiCategory] {

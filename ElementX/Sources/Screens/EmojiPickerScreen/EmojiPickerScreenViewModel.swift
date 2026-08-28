@@ -77,12 +77,6 @@ class EmojiPickerScreenViewModel: EmojiPickerScreenViewModelType, EmojiPickerScr
     }
     
     private func selectEmoji(_ emoji: EmojiPickerEmojiViewData) {
-        let emojiProvider = emojiProvider
-        Task {
-            await emojiProvider.markEmojiAsRecentlyUsed(emoji.reactionKey,
-                                                        shortcode: emoji.customEmoji?.shortcode)
-        }
-        
         continuation.yield(emoji)
         continuation.finish()
         

@@ -74,9 +74,9 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         self.userIndicatorController = userIndicatorController
         self.appMediator = appMediator
         self.emojiProvider = emojiProvider
-
+        
         let voiceMessageRecorder = voiceMessageRecorder ?? VoiceMessageRecorder(audioRecorder: AudioRecorder(), mediaPlayerProvider: mediaPlayerProvider)
-
+        
         timelineInteractionHandler = TimelineInteractionHandler(roomProxy: roomProxy,
                                                                 timelineController: timelineController,
                                                                 userSession: userSession,
@@ -180,14 +180,7 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         case .itemSendInfoTapped(let itemID):
             handleItemSendInfoTapped(itemID: itemID)
         case .toggleReaction(let emoji, let itemID):
-            guard case let .event(_, eventOrTransactionID) = itemID else {
-                fatalError()
-            }
-            
-            Task {
-                await timelineController.toggleReaction(emoji, to: eventOrTransactionID)
-                await emojiProvider.markEmojiAsRecentlyUsed(emoji, shortcode: nil)
-            }
+            Task { await timelineInteractionHandler.toggleReaction(emoji, shortcode: nil, itemID: itemID) }
         case .sendReadReceiptIfNeeded(let lastVisibleItemID):
             Task { await sendReadReceiptIfNeeded(for: lastVisibleItemID) }
         case .paginateBackwards:
@@ -652,11 +645,11 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         appSettings.timelineCellReloadRequestIDPublisher
             .weakAssign(to: \.state.timelineCellReloadRequestID, on: self)
             .store(in: &cancellables)
-
+        
         appSettings.timelineViewRebuildRequestIDPublisher
             .weakAssign(to: \.state.timelineViewRebuildRequestID, on: self)
             .store(in: &cancellables)
-
+        
         userSession.clientProxy.timelineMediaVisibilityPublisher
             .removeDuplicates()
             .flatMap { [weak self] timelineMediaVisibility -> AnyPublisher<Bool, Never> in

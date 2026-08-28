@@ -150,15 +150,19 @@ class TimelineController: TimelineControllerProtocol {
     
     func processItemDisappearance(_ itemID: TimelineItemIdentifier) { }
     
-    func toggleReaction(_ reaction: String, to eventOrTransactionID: TimelineItemIdentifier.EventOrTransactionID) async {
+    @discardableResult
+    func toggleReaction(_ reaction: String,
+                        to eventOrTransactionID: TimelineItemIdentifier.EventOrTransactionID) async -> Result<Void, TimelineProxyError> {
         MXLog.info("Toggle reaction \(reaction) to \(eventOrTransactionID)")
         
-        switch await activeTimeline.toggleReaction(reaction, to: eventOrTransactionID) {
+        let result = await activeTimeline.toggleReaction(reaction, to: eventOrTransactionID)
+        switch result {
         case .success:
             MXLog.info("Finished toggling reaction")
         case .failure(let error):
             MXLog.error("Failed toggling reaction with error: \(error)")
         }
+        return result
     }
     
     func edit(_ eventOrTransactionID: TimelineItemIdentifier.EventOrTransactionID,

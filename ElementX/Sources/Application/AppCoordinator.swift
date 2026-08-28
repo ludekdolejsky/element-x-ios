@@ -782,11 +782,26 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
             analyticsService.signpost.startTransaction(.cachedRoomList)
         }
         
+        let emojiProvider = EmojiProvider(appSettings: appSettings)
+        let nitroRecentEmojiStore: NitroRecentEmojiStoreProtocol?
+        if NitroConfiguration.isEnabled,
+           let clientProxy = userSession.clientProxy as? NitroClientProxyProtocol {
+            nitroRecentEmojiStore = NitroRecentEmojiStore(baseProvider: emojiProvider,
+                                                          accountDataProvider: { eventType in
+                                                              await clientProxy.rawAccountData(eventType: eventType)
+                                                          },
+                                                          accountDataWriter: { eventType, content in
+                                                              await clientProxy.setRawAccountData(eventType: eventType, content: content)
+                                                          })
+        } else {
+            nitroRecentEmojiStore = nil
+        }
         let flowParameters = CommonFlowParameters(userSession: userSession,
                                                   bugReportService: bugReportService,
                                                   elementCallService: elementCallService,
                                                   timelineControllerFactory: TimelineControllerFactory(appSettings: appSettings),
-                                                  emojiProvider: EmojiProvider(appSettings: appSettings),
+                                                  emojiProvider: emojiProvider,
+                                                  nitroRecentEmojiStore: nitroRecentEmojiStore,
                                                   linkMetadataProvider: LinkMetadataProvider(),
                                                   appMediator: appMediator,
                                                   appSettings: appSettings,

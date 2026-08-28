@@ -146,6 +146,56 @@ final class TimelineViewModelTests {
         #expect(viewModel.state.timelineState.itemViewStates[2].groupStyle == .last, "Reactions on the last message should not prevent it from being grouped.")
     }
     
+    // MARK: - Recent Emoji
+    
+    @Test
+    func successfulReactionRecordsEmojiUsage() async throws {
+        let item = TextRoomTimelineItem(eventID: "$message")
+        let timelineController = TimelineControllerMock(.init(timelineItems: [item]))
+        timelineController.toggleReactionToReturnValue = .success(())
+        let customEmoji = try CustomEmoji(shortcode: "party",
+                                          body: "Party",
+                                          imageURL: #require(URL(string: "mxc://example.org/party")))
+        let emojiProvider = TimelineTestEmojiProvider(customEmojis: [customEmoji])
+        let interactionHandler = makeInteractionHandler(timelineController: timelineController, emojiProvider: emojiProvider)
+        
+        await interactionHandler.toggleReaction(customEmoji.imageURL.absoluteString,
+                                                shortcode: nil,
+                                                itemID: item.id)
+        
+        #expect(emojiProvider.recordedUsages.count == 1)
+        #expect(emojiProvider.recordedUsages.first?.emoji == customEmoji.imageURL.absoluteString)
+        #expect(emojiProvider.recordedUsages.first?.shortcode == customEmoji.shortcode)
+    }
+    
+    @Test
+    func failedReactionDoesNotRecordEmojiUsage() async {
+        let item = TextRoomTimelineItem(eventID: "$message")
+        let timelineController = TimelineControllerMock(.init(timelineItems: [item]))
+        timelineController.toggleReactionToClosure = { _, _ in
+            .failure(.sdkError(TimelineReactionTestError.failed))
+        }
+        let emojiProvider = TimelineTestEmojiProvider()
+        let interactionHandler = makeInteractionHandler(timelineController: timelineController, emojiProvider: emojiProvider)
+        
+        await interactionHandler.toggleReaction("👋", shortcode: nil, itemID: item.id)
+        
+        #expect(emojiProvider.recordedUsages.isEmpty)
+    }
+    
+    @Test
+    func removingReactionDoesNotRecordEmojiUsage() async {
+        let item = TextRoomTimelineItem(eventID: "$message", ownReaction: "👋")
+        let timelineController = TimelineControllerMock(.init(timelineItems: [item]))
+        timelineController.toggleReactionToReturnValue = .success(())
+        let emojiProvider = TimelineTestEmojiProvider()
+        let interactionHandler = makeInteractionHandler(timelineController: timelineController, emojiProvider: emojiProvider)
+        
+        await interactionHandler.toggleReaction("👋", shortcode: nil, itemID: item.id)
+        
+        #expect(emojiProvider.recordedUsages.isEmpty)
+    }
+    
     // MARK: - Focussing
     
     @Test
@@ -824,6 +874,7 @@ final class TimelineViewModelTests {
                                nitroClientProxy: NitroClientProxyProtocol? = nil,
                                nitroTranscriptionService: NitroTranscriptionServiceProtocol? = nil,
                                voiceMessageRecorder: VoiceMessageRecorderProtocol? = nil,
+                               emojiProvider: EmojiProviderProtocol? = nil,
                                userIndicatorController: UserIndicatorControllerProtocol = UserIndicatorControllerMock()) -> TimelineViewModel {
         let appSettings = appSettings ?? {
             let appSettings = AppSettings.volatile()
@@ -841,12 +892,28 @@ final class TimelineViewModelTests {
                                  appMediator: AppMediatorMock(.init()),
                                  appSettings: appSettings,
                                  analyticsService: AnalyticsServiceMock(.init()),
-                                 emojiProvider: EmojiProvider(appSettings: appSettings),
+                                 emojiProvider: emojiProvider ?? EmojiProvider(appSettings: appSettings),
                                  linkMetadataProvider: LinkMetadataProvider(),
                                  timelineControllerFactory: TimelineControllerFactoryMock(.init()),
                                  nitroClientProxy: nitroClientProxy,
                                  nitroTranscriptionService: nitroTranscriptionService,
                                  voiceMessageRecorder: voiceMessageRecorder)
+    }
+    
+    private func makeInteractionHandler(timelineController: TimelineControllerProtocol,
+                                        emojiProvider: EmojiProviderProtocol) -> TimelineInteractionHandler {
+        TimelineInteractionHandler(roomProxy: JoinedRoomProxyMock(.init(name: "")),
+                                   timelineController: timelineController,
+                                   userSession: UserSessionMock(.init()),
+                                   mediaPlayerProvider: MediaPlayerProviderMock(),
+                                   voiceMessageRecorder: VoiceMessageRecorderMock(),
+                                   userIndicatorController: UserIndicatorControllerMock(),
+                                   appMediator: AppMediatorMock(.init()),
+                                   appSettings: .volatile(),
+                                   analyticsService: AnalyticsServiceMock(.init()),
+                                   emojiProvider: emojiProvider,
+                                   linkMetadataProvider: LinkMetadataProvider(),
+                                   timelineControllerFactory: TimelineControllerFactoryMock(.init()))
     }
     
     private func makeNitroUserSession(mediaProvider: MediaProviderProtocol) -> UserSessionMock {
@@ -957,6 +1024,37 @@ private final nonisolated class ControllableNitroTranscriptionService: NitroTran
     }
 }
 
+private nonisolated enum TimelineReactionTestError: Error {
+    case failed
+}
+
+private final class TimelineTestEmojiProvider: EmojiProviderProtocol {
+    private let customEmojiValues: [CustomEmoji]
+    private(set) var recordedUsages = [(emoji: String, shortcode: String?)]()
+    
+    init(customEmojis: [CustomEmoji] = []) {
+        customEmojiValues = customEmojis
+    }
+    
+    func categories(searchString: String?) async -> [EmojiCategory] {
+        []
+    }
+    
+    func cachedCustomEmojis() -> [CustomEmoji] {
+        customEmojiValues
+    }
+    
+    func frequentlyUsedSystemEmojis() -> [String] {
+        []
+    }
+    
+    func markEmojiAsFrequentlyUsed(_ emoji: String) { }
+    
+    func markEmojiAsRecentlyUsed(_ emoji: String, shortcode: String?) async {
+        recordedUsages.append((emoji, shortcode))
+    }
+}
+
 private extension TextRoomTimelineItem {
     init(text: String, sender: String, addReactions: Bool = false, addReadReceipts: [ReadReceipt] = []) {
         let reactions = addReactions ? [AggregatedReaction(accountOwnerID: "bob", key: "🦄", senders: [ReactionSender(id: sender, timestamp: Date())])] : []
@@ -986,6 +1084,21 @@ private extension TextRoomTimelineItem {
                   canBeRepliedTo: true,
                   sender: .init(id: ""),
                   content: .init(body: "Hello, World!"))
+    }
+    
+    init(eventID: String, ownReaction: String) {
+        self.init(id: .event(uniqueID: .init(UUID().uuidString), eventOrTransactionID: .eventID(eventID)),
+                  timestamp: .mock,
+                  isOutgoing: false,
+                  isEditable: false,
+                  canBeRepliedTo: true,
+                  sender: .init(id: ""),
+                  content: .init(body: "Hello, World!"),
+                  properties: .init(reactions: [
+                      .init(accountOwnerID: "@alice:example.org",
+                            key: ownReaction,
+                            senders: [.init(id: "@alice:example.org", timestamp: .mock)])
+                  ]))
     }
 }
 

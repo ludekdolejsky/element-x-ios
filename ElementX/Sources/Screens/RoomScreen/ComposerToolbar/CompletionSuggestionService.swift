@@ -64,7 +64,8 @@ final class CompletionSuggestionService: CompletionSuggestionServiceProtocol {
                 case .room:
                     return roomSuggestions(suggestionTrigger: suggestionTrigger, roomSummaries: roomSummaries)
                 case .emoji:
-                    return emojiSuggestions(suggestionTrigger: suggestionTrigger, emojiItems: emojiItems)
+                    return emojiSuggestions(suggestionTrigger: suggestionTrigger,
+                                            emojiItems: emojiItems)
                 }
             }
             // We only debounce if the suggestion is nil
@@ -145,10 +146,12 @@ final class CompletionSuggestionService: CompletionSuggestionServiceProtocol {
     private func emojiSuggestions(suggestionTrigger: SuggestionTrigger,
                                   emojiItems: [EmojiItem]) -> [SuggestionItem] {
         let matchingItems = emojiItems.filter { Self.shouldIncludeEmoji($0, searchText: suggestionTrigger.text) }
-        let orderedItems = if suggestionTrigger.text.isEmpty {
-            matchingItems
-        } else {
-            matchingItems.sorted { Self.emojiSortKey($0, searchText: suggestionTrigger.text) < Self.emojiSortKey($1, searchText: suggestionTrigger.text) }
+        let usageRanks = (emojiProvider as? NitroEmojiUsageRankingProvider)?.recentEmojiUsageRanks ?? [:]
+        let orderedItems = matchingItems.sorted {
+            Self.shouldOrderEmoji($0,
+                                  before: $1,
+                                  searchText: suggestionTrigger.text,
+                                  usageRanks: usageRanks)
         }
         return orderedItems
             .prefix(50)
@@ -261,6 +264,25 @@ final class CompletionSuggestionService: CompletionSuggestionServiceProtocol {
         }
         let customRank = emoji.customEmoji == nil ? 1 : 0
         return "\(rank)-\(customRank)-\(shortcode.lowercased())"
+    }
+    
+    private static func shouldOrderEmoji(_ lhs: EmojiItem,
+                                         before rhs: EmojiItem,
+                                         searchText: String,
+                                         usageRanks: [String: Int]) -> Bool {
+        let lhsExactMatch = lhs.shortcodes.contains { $0.caseInsensitiveCompare(searchText) == .orderedSame }
+        let rhsExactMatch = rhs.shortcodes.contains { $0.caseInsensitiveCompare(searchText) == .orderedSame }
+        if lhsExactMatch != rhsExactMatch {
+            return lhsExactMatch
+        }
+        
+        let lhsUsageRank = usageRanks[lhs.reactionKey] ?? Int.max
+        let rhsUsageRank = usageRanks[rhs.reactionKey] ?? Int.max
+        if lhsUsageRank != rhsUsageRank {
+            return lhsUsageRank < rhsUsageRank
+        }
+        
+        return emojiSortKey(lhs, searchText: searchText) < emojiSortKey(rhs, searchText: searchText)
     }
     
     private func detectColonTriggerInText(_ text: String, selectedRange: NSRange) -> SuggestionTrigger? {

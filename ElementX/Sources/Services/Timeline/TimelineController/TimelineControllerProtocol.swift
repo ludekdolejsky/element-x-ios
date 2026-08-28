@@ -82,7 +82,8 @@ protocol TimelineControllerProtocol: Sendable {
     
     func removeCaption(_ eventOrTransactionID: TimelineItemIdentifier.EventOrTransactionID) async
     
-    func toggleReaction(_ reaction: String, to eventOrTransactionID: TimelineItemIdentifier.EventOrTransactionID) async
+    @discardableResult
+    func toggleReaction(_ reaction: String, to eventOrTransactionID: TimelineItemIdentifier.EventOrTransactionID) async -> Result<Void, TimelineProxyError>
     
     func redact(_ eventOrTransactionID: TimelineItemIdentifier.EventOrTransactionID) async
     

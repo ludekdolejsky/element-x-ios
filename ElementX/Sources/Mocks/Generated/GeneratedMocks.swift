@@ -12113,13 +12113,25 @@ nonisolated class TimelineControllerMock: TimelineControllerProtocol, @unchecked
         get { toggleReactionToReceivedInvocationsLock.withLock { toggleReactionToUnderlyingReceivedInvocations } }
         set { toggleReactionToReceivedInvocationsLock.withLock { toggleReactionToUnderlyingReceivedInvocations = newValue } }
     }
-    nonisolated(unsafe) var toggleReactionToClosure: ((String, TimelineItemIdentifier.EventOrTransactionID) async -> Void)?
 
-    @concurrent func toggleReaction(_ reaction: String, to eventOrTransactionID: TimelineItemIdentifier.EventOrTransactionID) async {
+    private let toggleReactionToReturnValueLock = NSLock()
+    private nonisolated(unsafe) var toggleReactionToUnderlyingReturnValue: Result<Void, TimelineProxyError>!
+    var toggleReactionToReturnValue: Result<Void, TimelineProxyError>! {
+        get { toggleReactionToReturnValueLock.withLock { toggleReactionToUnderlyingReturnValue } }
+        set { toggleReactionToReturnValueLock.withLock { toggleReactionToUnderlyingReturnValue = newValue } }
+    }
+    nonisolated(unsafe) var toggleReactionToClosure: ((String, TimelineItemIdentifier.EventOrTransactionID) async -> Result<Void, TimelineProxyError>)?
+
+    @discardableResult
+    @concurrent func toggleReaction(_ reaction: String, to eventOrTransactionID: TimelineItemIdentifier.EventOrTransactionID) async -> Result<Void, TimelineProxyError> {
         toggleReactionToCallsCountLock.withLock { toggleReactionToUnderlyingCallsCount += 1 }
         toggleReactionToReceivedArguments = (reaction: reaction, eventOrTransactionID: eventOrTransactionID)
         toggleReactionToReceivedInvocationsLock.withLock { toggleReactionToUnderlyingReceivedInvocations.append((reaction: reaction, eventOrTransactionID: eventOrTransactionID)) }
-        await toggleReactionToClosure?(reaction, eventOrTransactionID)
+        if let toggleReactionToClosure = toggleReactionToClosure {
+            return await toggleReactionToClosure(reaction, eventOrTransactionID)
+        } else {
+            return toggleReactionToReturnValue
+        }
     }
     //MARK: - redact
 

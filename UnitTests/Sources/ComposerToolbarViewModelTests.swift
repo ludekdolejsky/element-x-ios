@@ -233,6 +233,8 @@ final class ComposerToolbarViewModelTests {
                                              value: ":party:",
                                              label: "Party",
                                              customEmoji: customEmoji)
+        let emojiProvider = ComposerTestEmojiProvider(categories: [])
+        setUpViewModel(emojiProvider: emojiProvider)
         let expectedHTML = #"<img data-mx-emoticon src="mxc://example.org/party" alt="A&amp;B &quot;&lt;&gt;&quot;" title="party&quot;" height="32" />"#
         let deferred = deferFulfillment(viewModel.actions) { action in
             guard case let .sendMessage(plain, html, mode, intentionalMentions) = action else {
@@ -243,10 +245,14 @@ final class ComposerToolbarViewModelTests {
                 mode == .default &&
                 intentionalMentions == .empty
         }
+        let usageRecorded = deferFulfillment(emojiProvider.usageRecordedPublisher) { true }
         
         viewModel.sendEmoji(emoji)
         
         try await deferred.fulfill()
+        try await usageRecorded.fulfill()
+        #expect(emojiProvider.recordedUsages.first?.emoji == customEmoji.imageURL.absoluteString)
+        #expect(emojiProvider.recordedUsages.first?.shortcode == customEmoji.shortcode)
     }
     
     @Test
@@ -1212,6 +1218,47 @@ private extension ComposerToolbarViewModelTests {
 
 extension ComposerToolbarViewModelTests {
     @Test
+    func sendStandardEmojiRecordsUsage() async throws {
+        let emoji = EmojiPickerEmojiViewData(id: "wave",
+                                             value: "👋",
+                                             label: "Wave",
+                                             customEmoji: nil)
+        let emojiProvider = ComposerTestEmojiProvider(categories: [])
+        setUpViewModel(emojiProvider: emojiProvider)
+        let usageRecorded = deferFulfillment(emojiProvider.usageRecordedPublisher) { true }
+        
+        viewModel.sendEmoji(emoji)
+        
+        try await usageRecorded.fulfill()
+        #expect(emojiProvider.recordedUsages.first?.emoji == "👋")
+        #expect(emojiProvider.recordedUsages.first?.shortcode == nil)
+    }
+    
+    @Test
+    func customEmojiPickerUsageWaitsForMediaAcknowledgement() async throws {
+        let customEmoji = try CustomEmoji(shortcode: "meatspin",
+                                          body: "Meatspin",
+                                          imageURL: #require(URL(string: "mxc://example.org/meatspin")))
+        let emoji = EmojiPickerEmojiViewData(id: "meatspin",
+                                             value: ":meatspin:",
+                                             label: "Meatspin",
+                                             customEmoji: customEmoji)
+        let emojiProvider = ComposerTestEmojiProvider(categories: [])
+        setUpViewModel(emojiProvider: emojiProvider, isEncrypted: true)
+        let alertDeferred = deferFulfillment(viewModel.context.$viewState) { $0.bindings.alertInfo != nil }
+        let usageRecorded = deferFulfillment(emojiProvider.usageRecordedPublisher) { true }
+        
+        viewModel.sendEmoji(emoji)
+        try await alertDeferred.fulfill()
+        #expect(emojiProvider.recordedUsages.isEmpty)
+        
+        viewModel.context.alertInfo?.secondaryButton?.action?()
+        try await usageRecorded.fulfill()
+        #expect(emojiProvider.recordedUsages.first?.emoji == customEmoji.imageURL.absoluteString)
+        #expect(emojiProvider.recordedUsages.first?.shortcode == customEmoji.shortcode)
+    }
+    
+    @Test
     func enablesNitroTaskCreationWithRoomPermissions() {
         setUpViewModel(nitroTasksEnabled: true)
         
@@ -1402,7 +1449,13 @@ private final class ComposerTestEmojiProvider: EmojiProviderProtocol {
     private let emojiCategories: [EmojiCategory]
     private let cacheLoaded: Bool
     private let categoriesClosure: (() async -> [EmojiCategory])?
+    private let usageRecordedSubject = PassthroughSubject<Void, Never>()
     private(set) var categoryRequests = 0
+    private(set) var recordedUsages = [(emoji: String, shortcode: String?)]()
+    
+    var usageRecordedPublisher: AnyPublisher<Void, Never> {
+        usageRecordedSubject.eraseToAnyPublisher()
+    }
     
     init(categories: [EmojiCategory],
          cacheLoaded: Bool = true,
@@ -1430,4 +1483,9 @@ private final class ComposerTestEmojiProvider: EmojiProviderProtocol {
     }
     
     func markEmojiAsFrequentlyUsed(_ emoji: String) { }
+    
+    func markEmojiAsRecentlyUsed(_ emoji: String, shortcode: String?) async {
+        recordedUsages.append((emoji, shortcode))
+        usageRecordedSubject.send()
+    }
 }

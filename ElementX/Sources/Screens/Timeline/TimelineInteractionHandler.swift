@@ -80,7 +80,7 @@ class TimelineInteractionHandler {
     var actions: AnyPublisher<TimelineInteractionHandlerAction, Never> {
         actionsSubject.eraseToAnyPublisher()
     }
-
+    
     private var voiceMessageRecorderObserver: AnyCancellable? {
         didSet {
             appMediator.setIdleTimerDisabled(voiceMessageRecorderObserver != nil)
@@ -227,8 +227,7 @@ class TimelineInteractionHandler {
         case .react:
             displayEmojiPicker(for: itemID)
         case .toggleReaction(let key):
-            guard case let .event(_, eventOrTransactionID) = itemID else { fatalError() }
-            Task { await timelineController.toggleReaction(key, to: eventOrTransactionID) }
+            Task { await toggleReaction(key, shortcode: nil, itemID: itemID) }
         case .endPoll(let pollStartID):
             endPoll(pollStartID: pollStartID)
         case .pin:
@@ -267,7 +266,7 @@ class TimelineInteractionHandler {
         let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: format)
         UIPasteboard.general.setItems([representations])
     }
-
+    
     private func processEditMessageEvent(_ messageTimelineItem: EventBasedMessageTimelineItemProtocol) {
         guard case let .event(_, eventOrTransactionID) = messageTimelineItem.id else {
             MXLog.error("Failed editing message, missing event id")
@@ -600,8 +599,7 @@ class TimelineInteractionHandler {
     func displayEmojiPicker(for itemID: TimelineItemIdentifier) {
         guard let timelineItem = timelineController.timelineItems.firstUsingStableID(itemID),
               timelineItem.isReactable,
-              let eventTimelineItem = timelineItem as? EventBasedTimelineItemProtocol,
-              case let .event(_, eventOrTransactionID) = itemID else {
+              let eventTimelineItem = timelineItem as? EventBasedTimelineItemProtocol else {
             return
         }
         let selectedEmojis = Set(eventTimelineItem.properties.reactions.compactMap { $0.isHighlighted ? $0.key : nil })
@@ -611,10 +609,28 @@ class TimelineInteractionHandler {
         
         emojiPickerCancellable = Task { [weak self] in
             for await emoji in stream {
-                await self?.timelineController.toggleReaction(emoji.reactionKey, to: eventOrTransactionID)
+                await self?.toggleReaction(emoji.reactionKey,
+                                           shortcode: emoji.customEmoji?.shortcode,
+                                           itemID: itemID)
             }
         }
         .asCancellable()
+    }
+    
+    func toggleReaction(_ emoji: String,
+                        shortcode: String?,
+                        itemID: TimelineItemIdentifier) async {
+        guard case let .event(_, eventOrTransactionID) = itemID else { fatalError() }
+        let isRemovingReaction = (timelineController.timelineItems.firstUsingStableID(itemID) as? EventBasedTimelineItemProtocol)?
+            .properties.reactions.contains { $0.key == emoji && $0.isHighlighted } ?? false
+        guard case .success = await timelineController.toggleReaction(emoji, to: eventOrTransactionID),
+              !isRemovingReaction else {
+            return
+        }
+        
+        let resolvedShortcode = shortcode
+            ?? emojiProvider.cachedCustomEmojis().first { $0.imageURL.absoluteString == emoji }?.shortcode
+        await emojiProvider.markEmojiAsRecentlyUsed(emoji, shortcode: resolvedShortcode)
     }
     
     func processItemTap(_ itemID: TimelineItemIdentifier) async -> TimelineControllerAction {

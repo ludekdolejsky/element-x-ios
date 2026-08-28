@@ -227,12 +227,14 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
                         html: content.html,
                         mode: state.composerMode,
                         intentionalMentions: .empty,
-                        customEmojis: [customEmoji])
+                        customEmojis: [customEmoji],
+                        recentlyUsedEmoji: emoji)
         } else {
-            actionsSubject.send(.sendMessage(plain: emoji.value,
-                                             html: nil,
-                                             mode: state.composerMode,
-                                             intentionalMentions: .empty))
+            sendMessage(plain: emoji.value,
+                        html: nil,
+                        mode: state.composerMode,
+                        intentionalMentions: .empty,
+                        recentlyUsedEmoji: emoji)
         }
     }
     
@@ -501,7 +503,8 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
                              html: String?,
                              mode: ComposerMode,
                              intentionalMentions: IntentionalMentions,
-                             customEmojis: [CustomEmoji] = []) {
+                             customEmojis: [CustomEmoji] = [],
+                             recentlyUsedEmoji: EmojiPickerEmojiViewData? = nil) {
         let formattedHTML = renderedCustomEmojiHTML(plain: plain, html: html, customEmojis: customEmojis)
         let action = ComposerToolbarViewModelAction.sendMessage(plain: plain,
                                                                 html: formattedHTML,
@@ -509,6 +512,7 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
                                                                 intentionalMentions: intentionalMentions)
         guard shouldWarnBeforeSendingCustomEmoji(html: formattedHTML) else {
             actionsSubject.send(action)
+            recordUsage(of: recentlyUsedEmoji)
             return
         }
         
@@ -523,7 +527,16 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
                                              appSettings.hasAcknowledgedCustomEmojiMediaWarning = true
                                              state.bindings.alertInfo = nil
                                              actionsSubject.send(action)
+                                             recordUsage(of: recentlyUsedEmoji)
                                          })
+    }
+    
+    private func recordUsage(of emoji: EmojiPickerEmojiViewData?) {
+        guard let emoji, let emojiProvider else { return }
+        Task {
+            await emojiProvider.markEmojiAsRecentlyUsed(emoji.reactionKey,
+                                                        shortcode: emoji.customEmoji?.shortcode)
+        }
     }
     
     private func sendMessageResolvingCustomEmojis(plain: String,
