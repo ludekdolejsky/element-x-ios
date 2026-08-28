@@ -70,6 +70,24 @@ struct AppRouteURLParserTests {
     }
     
     @Test
+    func appSchemeMatrixEventURL() throws {
+        let roomID = "!abcdefghijklmnopqrstuvwxyz1234567890:matrix.org"
+        let eventID = "$eventidentifier"
+        var components = URLComponents()
+        components.scheme = InfoPlistReader.app.appScheme
+        components.host = "matrix"
+        components.queryItems = [
+            URLQueryItem(name: "uri",
+                         value: "matrix:roomid/\(roomID.dropFirst())/e/\(eventID.dropFirst())")
+        ]
+        let url = try #require(components.url)
+        
+        let route = appRouteURLParser.route(from: url)
+        
+        #expect(route == .event(eventID: eventID, roomID: roomID, via: []))
+    }
+    
+    @Test
     func webRoomIDURL() throws {
         let id = "!abcdefghijklmnopqrstuvwxyz1234567890:matrix.org"
         let url = try #require(URL(string: "https://app.element.io/#/room/\(id)"))

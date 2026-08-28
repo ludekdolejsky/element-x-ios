@@ -84,6 +84,7 @@ struct AppRouteURLParser {
     init(appSettings: AppSettings) {
         urlParsers = [
             AppGroupURLParser(),
+            AppSchemeMatrixURLParser(),
             MatrixPermalinkParser(),
             ElementWebURLParser(domains: appSettings.elementWebHosts),
             AccountProvisioningURLParser(domain: appSettings.accountProvisioningHost),
@@ -99,6 +100,24 @@ struct AppRouteURLParser {
         }
         
         return nil
+    }
+}
+
+/// Opens Matrix permalinks delivered through the Nitro-specific app scheme
+/// without relying on the shared `matrix:` scheme, which another client may own.
+private struct AppSchemeMatrixURLParser: URLParser {
+    private let permalinkParser = MatrixPermalinkParser()
+    
+    func route(from url: URL) -> AppRoute? {
+        guard url.scheme == InfoPlistReader.app.appScheme,
+              url.host() == "matrix",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let uri = components.queryItems?.first(where: { $0.name == "uri" })?.value,
+              let matrixURL = URL(string: uri) else {
+            return nil
+        }
+        
+        return permalinkParser.route(from: matrixURL)
     }
 }
 
