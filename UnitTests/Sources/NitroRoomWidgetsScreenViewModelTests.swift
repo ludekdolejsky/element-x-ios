@@ -217,6 +217,76 @@ struct NitroRoomWidgetsScreenViewModelTests {
     }
 }
 
+struct NitroRoomWidgetPanelControllerTests {
+    @Test
+    func presentsAtRegularHeightAndDismisses() {
+        let context = context()
+        let controller = NitroRoomWidgetPanelController()
+        
+        controller.present(context: context)
+        
+        #expect(controller.context === context)
+        #expect(controller.layout == .regular)
+        
+        controller.dismiss()
+        
+        #expect(controller.context == nil)
+        #expect(controller.layout == .regular)
+    }
+    
+    @Test
+    func changesLayoutWithoutReplacingTheWidgetContext() {
+        let context = context()
+        let controller = NitroRoomWidgetPanelController()
+        controller.present(context: context)
+        
+        controller.expand()
+        #expect(controller.layout == .expanded)
+        #expect(controller.context === context)
+        
+        controller.collapse()
+        #expect(controller.layout == .regular)
+        #expect(controller.context === context)
+        
+        controller.collapse()
+        #expect(controller.layout == .compact)
+        #expect(controller.context === context)
+    }
+    
+    @Test
+    func settlesDragAtTheNearestLayout() {
+        let controller = NitroRoomWidgetPanelController()
+        let availableHeight: CGFloat = 700
+        
+        controller.settle(proposedHeight: 60, availableHeight: availableHeight)
+        #expect(controller.layout == .compact)
+        
+        controller.settle(proposedHeight: 250, availableHeight: availableHeight)
+        #expect(controller.layout == .regular)
+        
+        controller.settle(proposedHeight: 600, availableHeight: availableHeight)
+        #expect(controller.layout == .expanded)
+    }
+    
+    @Test
+    func keepsEveryLayoutWithinTheAvailableHeight() {
+        let controller = NitroRoomWidgetPanelController()
+        let availableHeight: CGFloat = 240
+        
+        #expect(controller.height(availableHeight: availableHeight) <= availableHeight)
+        controller.expand()
+        #expect(controller.height(availableHeight: availableHeight) <= availableHeight)
+        controller.collapse()
+        controller.collapse()
+        #expect(controller.height(availableHeight: availableHeight) <= availableHeight)
+    }
+    
+    private func context() -> NitroRoomWidgetsScreenViewModel.Context {
+        StateStoreViewModelV2<NitroRoomWidgetsScreenViewState, NitroRoomWidgetsScreenViewAction>(initialViewState: .init(widgets: [],
+                                                                                                                         destination: .list)).context
+    }
+}
+
 private final class NitroRoomWidgetDriverMock: NitroRoomWidgetDriverProtocol {
     private let messageSubject = PassthroughSubject<String, Never>()
     var startedWidgets = [NitroRoomWidget]()

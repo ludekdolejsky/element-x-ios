@@ -52,6 +52,7 @@ enum RoomScreenCoordinatorAction {
     case presentNitroTasks(roomID: String, roomName: String)
     case presentNitroCatchUp(roomID: String, roomName: String)
     case presentNitroRoomWidgets([NitroRoomWidget])
+    case navigateFromNitroRoomWidget(URL)
     case presentNitroTaskCreate(roomID: String)
     case presentThread(threadRootEventID: String, focussedEventID: String?)
     case presentRoom(roomID: String, via: [String])
@@ -66,6 +67,9 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
     
     private var cancellables = Set<AnyCancellable>()
     private var customEmojiPickerCancellable: AnyCancellable?
+    private var nitroRoomWidgetCancellable: AnyCancellable?
+    private var nitroRoomWidgetsCoordinator: NitroRoomWidgetsScreenCoordinator?
+    private let nitroRoomWidgetPanelController = NitroRoomWidgetPanelController()
     
     private let actionsSubject: PassthroughSubject<RoomScreenCoordinatorAction, Never> = .init()
     var actions: AnyPublisher<RoomScreenCoordinatorAction, Never> {
@@ -261,10 +265,43 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
         composerViewModel.process(timelineAction: .setFocus)
     }
     
+    func presentNitroRoomWidgets(_ widgets: [NitroRoomWidget],
+                                 colorScheme: ColorScheme,
+                                 driverFactory: @escaping () -> NitroRoomWidgetDriverProtocol?) {
+        guard !widgets.isEmpty else { return }
+        
+        dismissNitroRoomWidgets()
+        let coordinator = NitroRoomWidgetsScreenCoordinator(parameters: .init(widgets: widgets,
+                                                                              colorScheme: colorScheme,
+                                                                              driverFactory: driverFactory))
+        nitroRoomWidgetsCoordinator = coordinator
+        nitroRoomWidgetCancellable = coordinator.actionsPublisher
+            .sink { [weak self] action in
+                guard let self else { return }
+                switch action {
+                case .dismiss:
+                    dismissNitroRoomWidgets()
+                case .navigate(let url):
+                    dismissNitroRoomWidgets()
+                    actionsSubject.send(.navigateFromNitroRoomWidget(url))
+                }
+            }
+        coordinator.start()
+        nitroRoomWidgetPanelController.present(context: coordinator.context)
+    }
+    
     func stop() {
+        dismissNitroRoomWidgets()
         timelineViewModel.stop()
         composerViewModel.stop()
         roomViewModel.stop()
+    }
+    
+    private func dismissNitroRoomWidgets() {
+        nitroRoomWidgetPanelController.dismiss()
+        nitroRoomWidgetsCoordinator?.stop()
+        nitroRoomWidgetsCoordinator = nil
+        nitroRoomWidgetCancellable = nil
     }
     
     private func presentCustomEmojiPicker() {
@@ -287,7 +324,8 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
         
         return AnyView(RoomScreen(context: roomViewModel.context,
                                   timelineContext: timelineViewModel.context,
-                                  composerToolbar: composerToolbar))
+                                  composerToolbar: composerToolbar,
+                                  nitroRoomWidgetPanelController: nitroRoomWidgetPanelController))
     }
 }
 

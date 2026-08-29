@@ -28,6 +28,10 @@ final class NitroRoomWidgetsScreenCoordinator: CoordinatorProtocol {
         actionsSubject.eraseToAnyPublisher()
     }
     
+    var context: NitroRoomWidgetsScreenViewModel.Context {
+        viewModel.context
+    }
+    
     init(parameters: NitroRoomWidgetsScreenCoordinatorParameters) {
         viewModel = NitroRoomWidgetsScreenViewModel(widgets: parameters.widgets,
                                                     colorScheme: parameters.colorScheme,

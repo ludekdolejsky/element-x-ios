@@ -108,7 +108,6 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     }
     
     private var timelineController: TimelineControllerProtocol?
-    private var pendingNitroRoomWidgetRoute: AppRoute?
     @CancellableTask private var nitroRoomWidgetNavigationTask: Task<Void, Never>?
     
     private lazy var emojiProvider: EmojiProviderProtocol = {
@@ -767,6 +766,9 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                     presentNitroCatchUp(roomID: roomID, roomName: roomName)
                 case .presentNitroRoomWidgets(let widgets):
                     presentNitroRoomWidgets(widgets)
+                case .navigateFromNitroRoomWidget(let url):
+                    guard let route = AppRouteURLParser(appSettings: flowParameters.appSettings).route(from: url) else { return }
+                    handleNitroRoomWidgetRoute(route)
                 case .presentNitroTaskCreate(let roomID):
                     presentNitroTaskCreate(roomID: roomID)
                 case .presentThread(let threadRootEventID, let focussedEventID):
@@ -839,36 +841,15 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     }
     
     private func presentNitroRoomWidgets(_ widgets: [NitroRoomWidget]) {
-        guard !widgets.isEmpty, let roomWidgetProxy = roomProxy as? NitroRoomWidgetRoomProxyProtocol else { return }
+        guard !widgets.isEmpty,
+              let roomWidgetProxy = roomProxy as? NitroRoomWidgetRoomProxyProtocol,
+              let roomScreenCoordinator else {
+            return
+        }
         
-        pendingNitroRoomWidgetRoute = nil
         let colorScheme: ColorScheme = flowParameters.windowManager.mainWindow.traitCollection.userInterfaceStyle == .light ? .light : .dark
-        let coordinator = NitroRoomWidgetsScreenCoordinator(parameters: .init(widgets: widgets,
-                                                                              colorScheme: colorScheme) { [roomWidgetProxy] in
-                roomWidgetProxy.nitroRoomWidgetDriver()
-            })
-        coordinator.actionsPublisher
-            .sink { [weak self, weak coordinator] action in
-                switch action {
-                case .dismiss:
-                    self?.pendingNitroRoomWidgetRoute = nil
-                    coordinator?.stop()
-                    self?.navigationStackCoordinator.setFullScreenCoverCoordinator(nil)
-                case .navigate(let url):
-                    guard let self,
-                          let route = AppRouteURLParser(appSettings: flowParameters.appSettings).route(from: url) else {
-                        return
-                    }
-                    pendingNitroRoomWidgetRoute = route
-                    coordinator?.stop()
-                    navigationStackCoordinator.setFullScreenCoverCoordinator(nil)
-                }
-            }
-            .store(in: &cancellables)
-        navigationStackCoordinator.setFullScreenCoverCoordinator(coordinator) { [weak self] in
-            guard let self, let route = pendingNitroRoomWidgetRoute else { return }
-            pendingNitroRoomWidgetRoute = nil
-            handleNitroRoomWidgetRoute(route)
+        roomScreenCoordinator.presentNitroRoomWidgets(widgets, colorScheme: colorScheme) { [roomWidgetProxy] in
+            roomWidgetProxy.nitroRoomWidgetDriver()
         }
     }
     

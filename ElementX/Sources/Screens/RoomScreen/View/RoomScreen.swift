@@ -14,6 +14,7 @@ import WysiwygComposer
 struct RoomScreen: View {
     @ObservedObject private var context: RoomScreenViewModelType.Context
     @ObservedObject private var timelineContext: TimelineViewModelType.Context
+    @ObservedObject private var nitroRoomWidgetPanelController: NitroRoomWidgetPanelController
     let composerToolbar: ComposerToolbar
     @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
     
@@ -28,13 +29,21 @@ struct RoomScreen: View {
     
     init(context: RoomScreenViewModelType.Context,
          timelineContext: TimelineViewModelType.Context,
-         composerToolbar: ComposerToolbar) {
+         composerToolbar: ComposerToolbar,
+         nitroRoomWidgetPanelController: NitroRoomWidgetPanelController = .init()) {
         self.context = context
         self.timelineContext = timelineContext
         self.composerToolbar = composerToolbar
+        self.nitroRoomWidgetPanelController = nitroRoomWidgetPanelController
     }
     
     var body: some View {
+        GeometryReader { geometry in
+            roomContent(availableHeight: geometry.size.height)
+        }
+    }
+    
+    private func roomContent(availableHeight: CGFloat) -> some View {
         TimelineView(timelineContext: timelineContext)
             .overlay {
                 // Sits below the bottom-trailing overlay in z-order, so taps on the pill or
@@ -95,6 +104,10 @@ struct RoomScreen: View {
                         }
                     }
                 }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                NitroRoomWidgetPanel(controller: nitroRoomWidgetPanelController,
+                                     availableHeight: availableHeight)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {

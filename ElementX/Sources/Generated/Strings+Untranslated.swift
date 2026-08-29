@@ -10,6 +10,10 @@ import Foundation
 // swiftlint:disable explicit_type_interface function_parameter_count identifier_name line_length
 // swiftlint:disable nesting type_body_length type_name vertical_whitespace_opening_braces
 internal nonisolated enum UntranslatedL10n {
+  /// Collapse app panel
+  internal static var a11yNitroRoomWidgetCollapseIos: String { return UntranslatedL10n.tr("Untranslated", "a11y_nitro_room_widget_collapse_ios") }
+  /// Expand app panel
+  internal static var a11yNitroRoomWidgetExpandIos: String { return UntranslatedL10n.tr("Untranslated", "a11y_nitro_room_widget_expand_ios") }
   /// Room actions
   internal static var a11yRoomActionsIos: String { return UntranslatedL10n.tr("Untranslated", "a11y_room_actions_ios") }
   /// Add task

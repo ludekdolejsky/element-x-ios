@@ -14,10 +14,10 @@ struct NitroRoomWidgetsScreen: View {
     
     var body: some View {
         ElementNavigationStack {
-            content
+            NitroRoomWidgetContent(context: context)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.compound.bgCanvasDefault)
-                .navigationTitle(title)
+                .navigationTitle(context.viewState.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -32,9 +32,105 @@ struct NitroRoomWidgetsScreen: View {
         .task { context.send(viewAction: .appeared) }
         .onDisappear { context.send(viewAction: .disappeared) }
     }
+}
+
+struct NitroRoomWidgetPanel: View {
+    @ObservedObject var controller: NitroRoomWidgetPanelController
+    let availableHeight: CGFloat
     
-    @ViewBuilder
-    private var content: some View {
+    @GestureState private var dragTranslation: CGFloat = 0
+    
+    var body: some View {
+        if let context = controller.context {
+            let baseHeight = controller.height(availableHeight: availableHeight)
+            let panelHeight = min(max(baseHeight + dragTranslation, 52), availableHeight)
+            
+            VStack(spacing: 0) {
+                header(context: context)
+                Divider()
+                NitroRoomWidgetContent(context: context)
+                    .id(ObjectIdentifier(context))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(height: panelHeight)
+            .background(Color.compound.bgCanvasDefault)
+            .overlay(alignment: .bottom) {
+                resizeHandle(baseHeight: baseHeight)
+            }
+            .clipped()
+            .animation(.elementDefault, value: controller.layout)
+            .task(id: ObjectIdentifier(context)) { context.send(viewAction: .appeared) }
+        }
+    }
+    
+    private func header(context: NitroRoomWidgetsScreenViewModel.Context) -> some View {
+        HStack(spacing: 8) {
+            CompoundIcon(\.code, size: .small, relativeTo: .compound.bodyLGSemibold)
+            Text(context.viewState.title)
+                .font(.compound.bodyLGSemibold)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            
+            if controller.layout != .compact {
+                Button {
+                    controller.collapse()
+                } label: {
+                    CompoundIcon(\.chevronUp, size: .small, relativeTo: .compound.bodyLG)
+                        .frame(width: 38, height: 38)
+                }
+                .accessibilityLabel(UntranslatedL10n.a11yNitroRoomWidgetCollapseIos)
+                .buttonStyle(.compound(.tertiary, size: .toolbarIcon))
+            }
+            
+            if controller.layout != .expanded {
+                Button {
+                    controller.expand()
+                } label: {
+                    CompoundIcon(\.chevronDown, size: .small, relativeTo: .compound.bodyLG)
+                        .frame(width: 38, height: 38)
+                }
+                .accessibilityLabel(UntranslatedL10n.a11yNitroRoomWidgetExpandIos)
+                .buttonStyle(.compound(.tertiary, size: .toolbarIcon))
+            }
+            
+            Button {
+                context.send(viewAction: .dismiss)
+            } label: {
+                CompoundIcon(\.close, size: .small, relativeTo: .compound.bodyLG)
+                    .frame(width: 38, height: 38)
+            }
+            .accessibilityLabel(L10n.actionClose)
+            .buttonStyle(.compound(.tertiary, size: .toolbarIcon))
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 44)
+    }
+    
+    private func resizeHandle(baseHeight: CGFloat) -> some View {
+        Color.clear
+            .frame(height: 16)
+            .contentShape(Rectangle())
+            .overlay {
+                Capsule()
+                    .fill(Color.compound.borderInteractiveSecondary)
+                    .frame(width: 36, height: 4)
+            }
+            .gesture(DragGesture(minimumDistance: 4)
+                .updating($dragTranslation) { value, state, _ in
+                    state = value.translation.height
+                }
+                .onEnded { value in
+                    controller.settle(proposedHeight: baseHeight + value.translation.height,
+                                      availableHeight: availableHeight)
+                })
+            .accessibilityHidden(true)
+    }
+}
+
+private struct NitroRoomWidgetContent: View {
+    let context: NitroRoomWidgetsScreenViewModel.Context
+    
+    var body: some View {
         switch context.viewState.destination {
         case .list:
             List(context.viewState.widgets) { widget in
@@ -63,9 +159,11 @@ struct NitroRoomWidgetsScreen: View {
             .padding(24)
         }
     }
-    
-    private var title: String {
-        switch context.viewState.destination {
+}
+
+private extension NitroRoomWidgetsScreenViewState {
+    var title: String {
+        switch destination {
         case .list:
             UntranslatedL10n.screenNitroRoomWidgetsTitleIos
         case .loading(let widget), .widget(let widget, _), .error(let widget):
@@ -283,7 +381,34 @@ struct NitroRoomWidgetsScreen_Previews: PreviewProvider, TestablePreview {
                 .previewDisplayName("Widget")
             NitroRoomWidgetsScreen(context: context(destination: .error(widgets[0])))
                 .previewDisplayName("Error")
+            panelPreview(layout: .compact)
+                .previewDisplayName("Panel - Compact")
+            panelPreview(layout: .regular)
+                .previewDisplayName("Panel - Regular")
+            panelPreview(layout: .expanded)
+                .previewDisplayName("Panel - Expanded")
         }
+    }
+    
+    private static func panelPreview(layout: NitroRoomWidgetPanelLayout) -> some View {
+        VStack(spacing: 0) {
+            NitroRoomWidgetPanel(controller: panelController(layout: layout), availableHeight: 700)
+            Color.compound.bgCanvasDefault
+        }
+    }
+    
+    private static func panelController(layout: NitroRoomWidgetPanelLayout) -> NitroRoomWidgetPanelController {
+        let controller = NitroRoomWidgetPanelController()
+        controller.present(context: context(destination: .list))
+        switch layout {
+        case .compact:
+            controller.collapse()
+        case .regular:
+            break
+        case .expanded:
+            controller.expand()
+        }
+        return controller
     }
     
     private static func context(destination: NitroRoomWidgetsScreenDestination) -> NitroRoomWidgetsScreenViewModel.Context {

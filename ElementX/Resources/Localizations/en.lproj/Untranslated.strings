@@ -1,5 +1,7 @@
 "custom_emoji_media_warning_message" = "Custom emoji files are not encrypted and may be visible to your homeserver, even though this room is encrypted.";
 "custom_emoji_media_warning_title" = "Custom emoji media isn’t encrypted";
+"a11y_nitro_room_widget_collapse_ios" = "Collapse app panel";
+"a11y_nitro_room_widget_expand_ios" = "Expand app panel";
 "action_send_transcript_to_thread_ios" = "Send transcript to thread";
 "action_transcribe_and_insert_ios" = "Transcribe & insert";
 "action_transcribe_audio_ios" = "Transcribe audio";
