@@ -63,7 +63,7 @@ class RoomScreenViewModel: RoomScreenViewModelType, RoomScreenViewModelProtocol 
         self.appSettings = appSettings
         self.analyticsService = analyticsService
         self.userIndicatorController = userIndicatorController
-        
+
         self.initialSelectedPinnedEventID = initialSelectedPinnedEventID
         pinnedEventStringBuilder = .pinnedEventStringBuilder(userID: roomProxy.ownUserID)
         
@@ -82,6 +82,13 @@ class RoomScreenViewModel: RoomScreenViewModelType, RoomScreenViewModelProtocol 
         
         Task {
             await updateVerificationBadge()
+        }
+
+        if NitroConfiguration.isEnabled, let roomWidgetProxy = roomProxy as? NitroRoomWidgetRoomProxyProtocol {
+            roomWidgetProxy.nitroRoomWidgetsPublisher
+                .removeDuplicates()
+                .weakAssign(to: \.state.nitroRoomWidgets, on: self)
+                .store(in: &cancellables)
         }
     }
     
@@ -121,6 +128,9 @@ class RoomScreenViewModel: RoomScreenViewModelType, RoomScreenViewModelProtocol 
             actionsSubject.send(.displayNitroTasks(roomID: roomProxy.id, roomName: state.roomTitle))
         case .displayNitroCatchUp:
             actionsSubject.send(.displayNitroCatchUp(roomID: roomProxy.id, roomName: state.roomTitle))
+        case .displayNitroRoomWidgets:
+            guard !state.nitroRoomWidgets.isEmpty else { return }
+            actionsSubject.send(.displayNitroRoomWidgets(state.nitroRoomWidgets))
         case .tappedStopLiveLocation:
             actionsSubject.send(.stopLiveLocationSharing)
         case .tappedOpenLiveLocation:

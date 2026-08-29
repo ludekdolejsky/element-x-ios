@@ -307,13 +307,13 @@ struct RoomScreen: View {
             }
         }
         
-        if context.viewState.shouldShowNitroTasksButton || context.viewState.roomThreadListEnabled {
+        if context.viewState.shouldShowRoomToolsMenu {
             if #available(iOS 26, *) {
                 ToolbarSpacer(.fixed, placement: .primaryAction)
             }
         }
         
-        if context.viewState.shouldShowNitroTasksButton {
+        if context.viewState.shouldShowNitroTasksButton || !context.viewState.nitroRoomWidgets.isEmpty {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     if context.viewState.roomThreadListEnabled {
@@ -324,16 +324,26 @@ struct RoomScreen: View {
                         }
                     }
                     
-                    Button {
-                        context.send(viewAction: .displayNitroTasks)
-                    } label: {
-                        Label(UntranslatedL10n.screenNitroTasksTitleIos, icon: \.checkCircle)
+                    if context.viewState.shouldShowNitroTasksButton {
+                        Button {
+                            context.send(viewAction: .displayNitroTasks)
+                        } label: {
+                            Label(UntranslatedL10n.screenNitroTasksTitleIos, icon: \.checkCircle)
+                        }
+
+                        Button {
+                            context.send(viewAction: .displayNitroCatchUp)
+                        } label: {
+                            Label(UntranslatedL10n.screenNitroCatchUpTitleIos, icon: \.history)
+                        }
                     }
                     
-                    Button {
-                        context.send(viewAction: .displayNitroCatchUp)
-                    } label: {
-                        Label(UntranslatedL10n.screenNitroCatchUpTitleIos, icon: \.history)
+                    if !context.viewState.nitroRoomWidgets.isEmpty {
+                        Button {
+                            context.send(viewAction: .displayNitroRoomWidgets)
+                        } label: {
+                            Label(UntranslatedL10n.screenNitroRoomWidgetsTitleIos, icon: \.code)
+                        }
                     }
                 } label: {
                     CompoundIcon(\.overflowHorizontal)

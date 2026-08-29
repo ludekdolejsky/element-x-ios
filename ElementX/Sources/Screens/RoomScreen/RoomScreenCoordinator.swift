@@ -51,6 +51,7 @@ enum RoomScreenCoordinatorAction {
     case presentThreadList
     case presentNitroTasks(roomID: String, roomName: String)
     case presentNitroCatchUp(roomID: String, roomName: String)
+    case presentNitroRoomWidgets([NitroRoomWidget])
     case presentNitroTaskCreate(roomID: String)
     case presentThread(threadRootEventID: String, focussedEventID: String?)
     case presentRoom(roomID: String, via: [String])
@@ -228,6 +229,8 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
                     actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
                 case .displayNitroCatchUp(let roomID, let roomName):
                     actionsSubject.send(.presentNitroCatchUp(roomID: roomID, roomName: roomName))
+                case .displayNitroRoomWidgets(let widgets):
+                    actionsSubject.send(.presentNitroRoomWidgets(widgets))
                 case .displayThread(let threadRootEventID, let focussedEventID):
                     actionsSubject.send(.presentThread(threadRootEventID: threadRootEventID, focussedEventID: focussedEventID))
                 case .stopLiveLocationSharing:

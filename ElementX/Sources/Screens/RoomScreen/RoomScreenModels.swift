@@ -14,6 +14,7 @@ enum RoomScreenViewModelAction: Equatable {
     case displayThreadList
     case displayNitroTasks(roomID: String, roomName: String)
     case displayNitroCatchUp(roomID: String, roomName: String)
+    case displayNitroRoomWidgets([NitroRoomWidget])
     case displayThread(threadRootEventID: String, focussedEventID: String)
     case displayPinnedEventsTimeline
     case displayRoomDetails
@@ -39,6 +40,7 @@ enum RoomScreenViewAction {
     case displayThreadList
     case displayNitroTasks
     case displayNitroCatchUp
+    case displayNitroRoomWidgets
     case tappedOpenLiveLocation
     case tappedStopLiveLocation
 }
@@ -47,7 +49,7 @@ struct RoomScreenViewState: BindableState {
     var roomTitle = ""
     var roomAvatar: RoomAvatar
     var dmRecipientDetails = RoomHeaderView.DMRecipientDetails()
-    
+
     var lastScrollDirection: ScrollDirection?
     // This is used to control the banner
     var pinnedEventsBannerState: PinnedEventsBannerState = .loading(numbersOfEvents: 0)
@@ -78,6 +80,7 @@ struct RoomScreenViewState: BindableState {
     
     var roomThreadListEnabled = false
     var nitroTasksEnabled = false
+    var nitroRoomWidgets = [NitroRoomWidget]()
     var isKnockableRoom = false
     var canAcceptKnocks = false
     var canDeclineKnocks = false
@@ -91,6 +94,10 @@ struct RoomScreenViewState: BindableState {
         nitroTasksEnabled && !hasSuccessor
     }
     
+    var shouldShowRoomToolsMenu: Bool {
+        shouldShowNitroTasksButton || roomThreadListEnabled || !nitroRoomWidgets.isEmpty
+    }
+
     var displayedKnockRequests: [KnockRequestInfo] {
         unseenKnockRequests.filter { !handledEventIDs.contains($0.eventID) }
     }

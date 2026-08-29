@@ -220,6 +220,12 @@ nonisolated extension SDKListener: RoomInfoListener where T == RoomInfo {
     }
 }
 
+nonisolated extension SDKListener: RoomUpdateListener where T == Void {
+    func call() {
+        onUpdateClosure(())
+    }
+}
+
 nonisolated extension SDKListener: CallDeclineListener where T == String {
     func call(declinerUserId: String) {
         onUpdateClosure(declinerUserId)

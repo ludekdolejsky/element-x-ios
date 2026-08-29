@@ -234,6 +234,14 @@ internal nonisolated enum UntranslatedL10n {
   internal static var screenNitroRemindersTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_title_ios") }
   /// Upcoming
   internal static var screenNitroRemindersUpcomingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_upcoming_ios") }
+  /// This app couldn’t be opened.
+  internal static var screenNitroRoomWidgetsErrorIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_room_widgets_error_ios") }
+  /// Loading app…
+  internal static var screenNitroRoomWidgetsLoadingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_room_widgets_loading_ios") }
+  /// Try again
+  internal static var screenNitroRoomWidgetsRetryIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_room_widgets_retry_ios") }
+  /// Apps
+  internal static var screenNitroRoomWidgetsTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_room_widgets_title_ios") }
   /// Assignee
   internal static var screenNitroTaskAssigneeIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_task_assignee_ios") }
   /// New task

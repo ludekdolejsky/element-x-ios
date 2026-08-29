@@ -11,21 +11,23 @@ import Foundation
 import MatrixRustSDK
 import UIKit
 
-class JoinedRoomProxy: JoinedRoomProxyProtocol {
+class JoinedRoomProxy: JoinedRoomProxyProtocol, NitroRoomWidgetRoomProxyProtocol {
     private let roomListService: RoomListServiceProtocol
     private let room: RoomProtocol
     private let appSettings: AppSettings
     private let analyticsService: AnalyticsServiceProtocol
     private let eventStringBuilder: RoomEventStringBuilder
-    
+
     private var roomInfoObservationToken: TaskHandle?
+    // periphery:ignore - required for instance retention in the rust codebase
+    private var nitroRoomWidgetUpdatesObservationToken: TaskHandle?
     // periphery:ignore - required for instance retention in the rust codebase
     private var typingNotificationObservationToken: TaskHandle?
     // periphery:ignore - required for instance retention in the rust codebase
     private var identityStatusChangesObservationToken: TaskHandle?
     // periphery:ignore - required for instance retention in the rust codebase
     private var knockRequestsChangesObservationToken: TaskHandle?
-    
+
     private var innerPinnedEventsTimeline: TimelineProxyProtocol?
     private var innerPinnedEventsTimelineTask: Task<Result<TimelineProxyProtocol, RoomProxyError>, Never>?
     
@@ -69,6 +71,13 @@ class JoinedRoomProxy: JoinedRoomProxyProtocol {
         knockRequestsStateSubject.asCurrentValuePublisher()
     }
     
+    private let nitroRoomWidgetsSubject = CurrentValueSubject<[NitroRoomWidget], Never>([])
+    var nitroRoomWidgetsPublisher: CurrentValuePublisher<[NitroRoomWidget], Never> {
+        nitroRoomWidgetsSubject.asCurrentValuePublisher()
+    }
+
+    @CancellableTask private var loadNitroRoomWidgetsTask: Task<Void, Never>?
+
     init(roomListService: RoomListServiceProtocol,
          room: RoomProtocol,
          appSettings: AppSettings,
@@ -79,9 +88,9 @@ class JoinedRoomProxy: JoinedRoomProxyProtocol {
         self.appSettings = appSettings
         self.analyticsService = analyticsService
         self.eventStringBuilder = eventStringBuilder
-        
+
         infoSubject = try await .init(RoomInfoProxy(roomInfo: room.roomInfo()))
-        
+
         let openRoomSpan = analyticsService.signpost.addSpan(.timelineLoad, toTransaction: .openRoom)
         timeline = try await TimelineProxy(timeline: room.timelineWithConfiguration(configuration: .init(focus: .live(hideThreadedEvents: appSettings.threadsEnabled),
                                                                                                          filter: .eventFilter(filter: Self.excludedEventsFilter),
@@ -91,7 +100,7 @@ class JoinedRoomProxy: JoinedRoomProxyProtocol {
                                                                                                          reportUtds: true)),
                                            kind: .live)
         openRoomSpan?.finish()
-        
+
         Task {
             await updateMembers()
             
@@ -104,15 +113,20 @@ class JoinedRoomProxy: JoinedRoomProxyProtocol {
             }
         }
     }
-    
+
     func subscribeForUpdates() async {
         guard !subscribedForUpdates else {
             MXLog.warning("Room already subscribed for updates")
             return
         }
-        
+
         subscribedForUpdates = true
-        
+
+        if NitroConfiguration.isEnabled {
+            subscribeToNitroRoomWidgetUpdates()
+            loadNitroRoomWidgets()
+        }
+
         do {
             try await roomListService.subscribeToRooms(roomIds: [id])
         } catch {
@@ -133,7 +147,49 @@ class JoinedRoomProxy: JoinedRoomProxyProtocol {
             }
         }
     }
-    
+
+    private func nitroRoomWidgets() async -> [NitroRoomWidget] {
+        var events = [String]()
+
+        for eventType in NitroRoomWidgetConfiguration.stateEventTypes {
+            do {
+                let stateEvents = try await room.getStateEvents(eventType: eventType)
+                events.append(contentsOf: stateEvents.map { event in
+                    switch event {
+                    case .sync(let json), .stripped(let json):
+                        json
+                    }
+                })
+            } catch {
+                MXLog.error("Failed loading Nitro room widgets for event type \(eventType): \(error)")
+            }
+        }
+
+        return NitroRoomWidgetParser.parse(events)
+    }
+
+    private func subscribeToNitroRoomWidgetUpdates() {
+        guard nitroRoomWidgetUpdatesObservationToken == nil else { return }
+
+        nitroRoomWidgetUpdatesObservationToken = room.subscribeToRoomStateUpdates(eventTypes: NitroRoomWidgetConfiguration.stateEventTypes,
+                                                                                  listener: SDKListener.onMainActor { [weak self] _ in
+                                                                                      self?.loadNitroRoomWidgets()
+                                                                                  })
+    }
+
+    private func loadNitroRoomWidgets() {
+        loadNitroRoomWidgetsTask = Task { [weak self] in
+            guard let self else { return }
+            let widgets = await nitroRoomWidgets()
+            guard !Task.isCancelled else { return }
+            nitroRoomWidgetsSubject.send(widgets)
+        }
+    }
+
+    func nitroRoomWidgetDriver() -> NitroRoomWidgetDriverProtocol {
+        NitroRoomWidgetDriver(room: room)
+    }
+
     func subscribeToRoomInfoUpdates() {
         guard roomInfoObservationToken == nil else {
             return

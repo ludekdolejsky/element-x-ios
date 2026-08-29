@@ -1565,6 +1565,11 @@ private struct ClientProxyServices {
         let syncService = try await syncServiceBuilder.finish()
         
         let roomListService = syncService.roomListService()
+        if NitroConfiguration.isEnabled {
+            roomListService.setRoomSubscriptionExtraRequiredState(requiredState: NitroRoomWidgetConfiguration.stateEventTypes.map {
+                .init(eventType: $0, stateKey: "*")
+            })
+        }
         
         let roomMessageEventStringBuilder = RoomMessageEventStringBuilder(attributedStringBuilder: AttributedStringBuilder(cacheKey: "roomList",
                                                                                                                            mentionBuilder: PlainMentionBuilder()),

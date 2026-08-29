@@ -23,7 +23,7 @@ struct RoomCallControlsToolbar: ToolbarContent {
             }
         } else {
             if viewState.isDM {
-                if viewState.roomThreadListEnabled || viewState.shouldShowNitroTasksButton {
+                if viewState.shouldShowRoomToolsMenu {
                     // Extra room actions leave insufficient space for two call buttons.
                     ToolbarItem(placement: .primaryAction) {
                         Menu {

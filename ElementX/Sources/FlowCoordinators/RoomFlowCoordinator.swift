@@ -19,7 +19,7 @@ enum RoomFlowCoordinatorAction: Equatable {
     /// and a space flow should be started to continue.
     case continueWithSpaceFlow(SpaceRoomListProxyProtocol)
     case finished
-    
+
     static func == (lhs: RoomFlowCoordinatorAction, rhs: RoomFlowCoordinatorAction) -> Bool {
         switch (lhs, rhs) {
         case (.presentCallScreen(let lhsRoomProxy, let lhsIsVoiceCall), .presentCallScreen(let rhsRoomProxy, let rhsIsVoiceCall)):
@@ -49,7 +49,7 @@ enum RoomFlowCoordinatorEntryPoint: Hashable {
     case share(ShareExtensionPayload)
     /// The flow to change the the owner of the room
     case transferOwnership
-    
+
     var isEventID: Bool {
         guard case .eventID = self else { return false }
         return true
@@ -80,7 +80,7 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     private var userSession: UserSessionProtocol {
         flowParameters.userSession
     }
-    
+
     private var roomProxy: JoinedRoomProxyProtocol!
     
     private var roomScreenCoordinator: RoomScreenCoordinator?
@@ -763,6 +763,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                     actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
                 case .presentNitroCatchUp(let roomID, let roomName):
                     presentNitroCatchUp(roomID: roomID, roomName: roomName)
+                case .presentNitroRoomWidgets(let widgets):
+                    presentNitroRoomWidgets(widgets)
                 case .presentNitroTaskCreate(let roomID):
                     presentNitroTaskCreate(roomID: roomID)
                 case .presentThread(let threadRootEventID, let focussedEventID):
@@ -834,6 +836,27 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
         navigationStackCoordinator.setSheetCoordinator(coordinator)
     }
     
+    private func presentNitroRoomWidgets(_ widgets: [NitroRoomWidget]) {
+        guard !widgets.isEmpty, let roomWidgetProxy = roomProxy as? NitroRoomWidgetRoomProxyProtocol else { return }
+
+        let colorScheme: ColorScheme = flowParameters.windowManager.mainWindow.traitCollection.userInterfaceStyle == .light ? .light : .dark
+        let coordinator = NitroRoomWidgetsScreenCoordinator(parameters: .init(widgets: widgets,
+                                                                              colorScheme: colorScheme,
+                                                                              driverFactory: { [roomWidgetProxy] in
+                                                                                  roomWidgetProxy.nitroRoomWidgetDriver()
+                                                                              }))
+        coordinator.actionsPublisher
+            .sink { [weak self, weak coordinator] action in
+                switch action {
+                case .dismiss:
+                    coordinator?.stop()
+                    self?.navigationStackCoordinator.setFullScreenCoverCoordinator(nil)
+                }
+            }
+            .store(in: &cancellables)
+        navigationStackCoordinator.setFullScreenCoverCoordinator(coordinator)
+    }
+
     private func presentThread(threadRootEventID: String, focusEventID: String?, animated: Bool) async {
         showLoadingIndicator()
         defer { hideLoadingIndicator() }
