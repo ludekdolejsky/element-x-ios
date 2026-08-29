@@ -16,6 +16,7 @@ struct NitroRoomWidgetsScreenCoordinatorParameters {
 
 enum NitroRoomWidgetsScreenCoordinatorAction {
     case dismiss
+    case navigate(URL)
 }
 
 final class NitroRoomWidgetsScreenCoordinator: CoordinatorProtocol {
@@ -39,6 +40,8 @@ final class NitroRoomWidgetsScreenCoordinator: CoordinatorProtocol {
                 switch action {
                 case .dismiss:
                     self?.actionsSubject.send(.dismiss)
+                case .navigate(let url):
+                    self?.actionsSubject.send(.navigate(url))
                 }
             }
             .store(in: &cancellables)

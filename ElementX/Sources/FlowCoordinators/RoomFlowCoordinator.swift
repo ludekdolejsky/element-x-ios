@@ -19,7 +19,7 @@ enum RoomFlowCoordinatorAction: Equatable {
     /// and a space flow should be started to continue.
     case continueWithSpaceFlow(SpaceRoomListProxyProtocol)
     case finished
-
+    
     static func == (lhs: RoomFlowCoordinatorAction, rhs: RoomFlowCoordinatorAction) -> Bool {
         switch (lhs, rhs) {
         case (.presentCallScreen(let lhsRoomProxy, let lhsIsVoiceCall), .presentCallScreen(let rhsRoomProxy, let rhsIsVoiceCall)):
@@ -49,7 +49,7 @@ enum RoomFlowCoordinatorEntryPoint: Hashable {
     case share(ShareExtensionPayload)
     /// The flow to change the the owner of the room
     case transferOwnership
-
+    
     var isEventID: Bool {
         guard case .eventID = self else { return false }
         return true
@@ -80,7 +80,7 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     private var userSession: UserSessionProtocol {
         flowParameters.userSession
     }
-
+    
     private var roomProxy: JoinedRoomProxyProtocol!
     
     private var roomScreenCoordinator: RoomScreenCoordinator?
@@ -108,6 +108,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     }
     
     private var timelineController: TimelineControllerProtocol?
+    private var pendingNitroRoomWidgetRoute: AppRoute?
+    @CancellableTask private var nitroRoomWidgetNavigationTask: Task<Void, Never>?
     
     private lazy var emojiProvider: EmojiProviderProtocol = {
         guard NitroConfiguration.isEnabled,
@@ -838,25 +840,77 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     
     private func presentNitroRoomWidgets(_ widgets: [NitroRoomWidget]) {
         guard !widgets.isEmpty, let roomWidgetProxy = roomProxy as? NitroRoomWidgetRoomProxyProtocol else { return }
-
+        
+        pendingNitroRoomWidgetRoute = nil
         let colorScheme: ColorScheme = flowParameters.windowManager.mainWindow.traitCollection.userInterfaceStyle == .light ? .light : .dark
         let coordinator = NitroRoomWidgetsScreenCoordinator(parameters: .init(widgets: widgets,
-                                                                              colorScheme: colorScheme,
-                                                                              driverFactory: { [roomWidgetProxy] in
-                                                                                  roomWidgetProxy.nitroRoomWidgetDriver()
-                                                                              }))
+                                                                              colorScheme: colorScheme) { [roomWidgetProxy] in
+                roomWidgetProxy.nitroRoomWidgetDriver()
+            })
         coordinator.actionsPublisher
             .sink { [weak self, weak coordinator] action in
                 switch action {
                 case .dismiss:
+                    self?.pendingNitroRoomWidgetRoute = nil
                     coordinator?.stop()
                     self?.navigationStackCoordinator.setFullScreenCoverCoordinator(nil)
+                case .navigate(let url):
+                    guard let self,
+                          let route = AppRouteURLParser(appSettings: flowParameters.appSettings).route(from: url) else {
+                        return
+                    }
+                    pendingNitroRoomWidgetRoute = route
+                    coordinator?.stop()
+                    navigationStackCoordinator.setFullScreenCoverCoordinator(nil)
                 }
             }
             .store(in: &cancellables)
-        navigationStackCoordinator.setFullScreenCoverCoordinator(coordinator)
+        navigationStackCoordinator.setFullScreenCoverCoordinator(coordinator) { [weak self] in
+            guard let self, let route = pendingNitroRoomWidgetRoute else { return }
+            pendingNitroRoomWidgetRoute = nil
+            handleNitroRoomWidgetRoute(route)
+        }
     }
-
+    
+    private func handleNitroRoomWidgetRoute(_ route: AppRoute) {
+        switch route {
+        case .room(let roomID, let via):
+            openNitroRoomWidgetTarget(roomID: roomID, via: via, eventID: nil)
+        case .roomAlias(let alias):
+            resolveNitroRoomWidgetTarget(alias: alias, eventID: nil)
+        case .event(let eventID, let roomID, let via):
+            openNitroRoomWidgetTarget(roomID: roomID, via: via, eventID: eventID)
+        case .eventOnRoomAlias(let eventID, let alias):
+            resolveNitroRoomWidgetTarget(alias: alias, eventID: eventID)
+        default:
+            break
+        }
+    }
+    
+    private func resolveNitroRoomWidgetTarget(alias: String, eventID: String?) {
+        nitroRoomWidgetNavigationTask = Task { [weak self] in
+            guard let self else { return }
+            switch await userSession.clientProxy.resolveRoomAlias(alias) {
+            case .success(let resolved):
+                guard !Task.isCancelled, stateMachine.state != .complete else { return }
+                openNitroRoomWidgetTarget(roomID: resolved.roomId, via: resolved.servers, eventID: eventID)
+            case .failure:
+                guard !Task.isCancelled, stateMachine.state != .complete else { return }
+                showErrorIndicator()
+            }
+        }
+    }
+    
+    private func openNitroRoomWidgetTarget(roomID: String, via: [String], eventID: String?) {
+        let isCurrentRoom = roomID == self.roomID
+        let route: AppRoute = if let eventID {
+            isCurrentRoom ? .event(eventID: eventID, roomID: roomID, via: via) : .childEvent(eventID: eventID, roomID: roomID, via: via)
+        } else {
+            isCurrentRoom ? .room(roomID: roomID, via: via) : .childRoom(roomID: roomID, via: via)
+        }
+        handleAppRoute(route, animated: true)
+    }
+    
     private func presentThread(threadRootEventID: String, focusEventID: String?, animated: Bool) async {
         showLoadingIndicator()
         defer { hideLoadingIndicator() }
@@ -1001,6 +1055,7 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     }
     
     private func dismissFlow(animated: Bool, continuingWith spaceRoomListProxy: SpaceRoomListProxyProtocol? = nil) {
+        nitroRoomWidgetNavigationTask = nil
         childRoomFlowCoordinator?.clearRoute(animated: animated)
         
         if isChildFlow {

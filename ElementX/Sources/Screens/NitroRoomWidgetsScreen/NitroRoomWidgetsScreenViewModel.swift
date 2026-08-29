@@ -13,15 +13,21 @@ typealias NitroRoomWidgetsScreenViewModelType = StateStoreViewModelV2<NitroRoomW
 final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType, NitroRoomWidgetsScreenViewModelProtocol {
     private static let maximumPendingMessageCount = 256
     
+    private struct PendingDriverMessage {
+        let body: String
+        let navigationURL: URL?
+    }
+    
     private let driverFactory: () -> NitroRoomWidgetDriverProtocol?
     private let colorScheme: ColorScheme
     private let actionsSubject = PassthroughSubject<NitroRoomWidgetsScreenViewModelAction, Never>()
     private var driver: NitroRoomWidgetDriverProtocol?
     private var driverMessageCancellable: AnyCancellable?
-    private var pendingDriverMessages = [String]()
+    private var pendingDriverMessages = [PendingDriverMessage]()
     private var pendingWidgetMessages = [String]()
     private var driverSessionID: UUID?
     private var driverMessagePumpID: UUID?
+    private var navigationCapabilityRequested = false
     
     @CancellableTask private var startTask: Task<Void, Never>?
     @CancellableTask private var driverMessageTask: Task<Void, Never>?
@@ -66,7 +72,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
             guard let driverSessionID else { return }
             failCurrentWidget(sessionID: driverSessionID)
         case .widgetMessage(let message):
-            enqueueWidgetMessage(message)
+            handleWidgetMessage(message)
         }
     }
     
@@ -78,6 +84,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
         widgetMessageTask = nil
         pendingDriverMessages.removeAll()
         pendingWidgetMessages.removeAll()
+        navigationCapabilityRequested = false
         driverSessionID = nil
         driver?.stop()
         driver = nil
@@ -120,7 +127,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
         }
     }
     
-    private func enqueueDriverMessage(_ message: String, sessionID: UUID) {
+    private func enqueueDriverMessage(_ message: String, sessionID: UUID, navigationURL: URL? = nil) {
         guard driverSessionID == sessionID else { return }
         guard pendingDriverMessages.count < Self.maximumPendingMessageCount else {
             MXLog.error("Nitro room widget message queue exceeded its limit.")
@@ -128,8 +135,23 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
             return
         }
         
-        pendingDriverMessages.append(message)
+        let body = NitroRoomWidgetNavigationBridge.addingNavigationSupport(to: message,
+                                                                           capabilityRequested: navigationCapabilityRequested)
+        pendingDriverMessages.append(.init(body: body, navigationURL: navigationURL))
         startDriverMessagePumpIfNeeded()
+    }
+    
+    private func handleWidgetMessage(_ message: String) {
+        guard let driverSessionID else { return }
+        if let request = NitroRoomWidgetNavigationBridge.navigationRequest(from: message) {
+            enqueueDriverMessage(request.response, sessionID: driverSessionID, navigationURL: request.url)
+            return
+        }
+        
+        if NitroRoomWidgetNavigationBridge.requestsNavigationCapability(message) {
+            navigationCapabilityRequested = true
+        }
+        enqueueWidgetMessage(message)
     }
     
     private func startDriverMessagePumpIfNeeded() {
@@ -154,13 +176,16 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
               let javaScriptEvaluator = state.bindings.javaScriptEvaluator,
               !pendingDriverMessages.isEmpty {
             let message = pendingDriverMessages[0]
-            let wasPosted = await postToWidget(message, using: javaScriptEvaluator)
+            let wasPosted = await postToWidget(message.body, using: javaScriptEvaluator)
             guard driverSessionID == sessionID, driverMessagePumpID == pumpID else { return }
             guard wasPosted else {
                 failCurrentWidget(sessionID: sessionID)
                 return
             }
             pendingDriverMessages.removeFirst()
+            if let navigationURL = message.navigationURL {
+                actionsSubject.send(.navigate(navigationURL))
+            }
         }
         
         guard driverSessionID == sessionID, driverMessagePumpID == pumpID else { return }

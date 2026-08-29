@@ -175,6 +175,39 @@ struct NitroRoomWidgetsScreenViewModelTests {
         #expect(driver.stopCallCount >= 1)
     }
     
+    @Test
+    func handlesNavigationWithoutForwardingItToTheRustDriver() async throws {
+        let widget = try widget(id: "cockpit")
+        let driver = NitroRoomWidgetDriverMock()
+        let viewModel = NitroRoomWidgetsScreenViewModel(widgets: [widget], colorScheme: .dark) { driver }
+        defer { viewModel.stop() }
+        let expectedURL = try #require(URL(string: "https://matrix.to/#/!room:example.org/$event:example.org"))
+        let destination = deferFulfillment(viewModel.context.observe(\.viewState.destination)) {
+            guard case .widget = $0 else { return false }
+            return true
+        }
+        let navigation = deferFulfillment(viewModel.actions) { action in
+            guard case .navigate(let url) = action else { return false }
+            return url == expectedURL
+        }
+        var evaluatedScripts = [String]()
+        
+        viewModel.context.send(viewAction: .appeared)
+        try await destination.fulfill()
+        viewModel.context.send(viewAction: .webViewReady { script in
+            evaluatedScripts.append(script)
+        })
+        let message = #"{"api":"fromWidget","widgetId":"cockpit","requestId":"request","action":"org.matrix.msc2931.navigate","data":{"uri":"https://matrix.to/#/!room:example.org/$event:example.org"}}"#
+        viewModel.context.send(viewAction: .widgetMessage(message))
+        try await navigation.fulfill()
+        
+        #expect(evaluatedScripts.count == 1)
+        if let script = evaluatedScripts.first {
+            #expect(script.contains("\"response\":{}"))
+        }
+        #expect(driver.startedMessages.isEmpty)
+    }
+    
     private func widget(id: String) throws -> NitroRoomWidget {
         try .init(id: id,
                   name: id,

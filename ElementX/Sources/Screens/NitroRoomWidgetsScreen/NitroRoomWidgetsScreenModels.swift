@@ -11,6 +11,7 @@ typealias NitroRoomWidgetJavaScriptEvaluator = (String) async throws -> Void
 
 enum NitroRoomWidgetsScreenViewModelAction {
     case dismiss
+    case navigate(URL)
 }
 
 enum NitroRoomWidgetsScreenViewAction {
