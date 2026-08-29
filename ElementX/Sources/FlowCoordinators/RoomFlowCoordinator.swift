@@ -108,6 +108,7 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     }
     
     private var timelineController: TimelineControllerProtocol?
+    private var nitroRoomWidgetRestorationCancellable: AnyCancellable?
     @CancellableTask private var nitroRoomWidgetNavigationTask: Task<Void, Never>?
     
     private lazy var emojiProvider: EmojiProviderProtocol = {
@@ -647,7 +648,7 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
         flowParameters.analytics.trackViewRoom(isDM: roomProxy.infoPublisher.value.isDirect, isSpace: roomProxy.infoPublisher.value.isSpace)
         
         let coordinator = makeRoomScreenCoordinator(presentationAction: presentationAction, animated: animated)
-        roomScreenCoordinator = coordinator
+        installRoomScreenCoordinator(coordinator)
         
         if !isChildFlow {
             navigationStackCoordinator.setRootCoordinator(coordinator, animated: animated) { [weak self] in
@@ -677,10 +678,7 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
     }
     
     private func makeRoomScreenCoordinator(presentationAction: PresentationAction?, animated: Bool) -> RoomScreenCoordinator {
-        let userID = userSession.clientProxy.userID
-        let timelineItemFactory = RoomTimelineItemFactory(userID: userID,
-                                                          attributedStringBuilder: AttributedStringBuilder(mentionBuilder: MentionBuilder()),
-                                                          stateEventStringBuilder: RoomStateEventStringBuilder(userID: userID))
+        let timelineItemFactory = makeRoomTimelineItemFactory()
         let timelineController = flowParameters.timelineControllerFactory.buildTimelineController(roomProxy: roomProxy,
                                                                                                   initialFocussedEventID: presentationAction?.focusedEvent?.eventID,
                                                                                                   timelineItemFactory: timelineItemFactory,
@@ -710,7 +708,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                                                          analytics: flowParameters.analytics,
                                                          composerDraftService: composerDraftService,
                                                          timelineControllerFactory: flowParameters.timelineControllerFactory,
-                                                         userIndicatorController: flowParameters.userIndicatorController)
+                                                         userIndicatorController: flowParameters.userIndicatorController,
+                                                         nitroRoomWidgetSessionStore: flowParameters.nitroRoomWidgetSessionStore)
         
         let coordinator = RoomScreenCoordinator(parameters: parameters)
         coordinator.actions
@@ -784,6 +783,18 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
         return coordinator
     }
     
+    private func makeRoomTimelineItemFactory() -> RoomTimelineItemFactory {
+        let userID = userSession.clientProxy.userID
+        return RoomTimelineItemFactory(userID: userID,
+                                       attributedStringBuilder: AttributedStringBuilder(mentionBuilder: MentionBuilder()),
+                                       stateEventStringBuilder: RoomStateEventStringBuilder(userID: userID))
+    }
+    
+    private func installRoomScreenCoordinator(_ coordinator: RoomScreenCoordinator) {
+        roomScreenCoordinator = coordinator
+        restoreNitroRoomWidgetsIfNeeded()
+    }
+    
     private func presentThreadList(animated: Bool) async {
         let coordinator = RoomThreadListScreenCoordinator(parameters: .init(threadListServiceProxy: roomProxy.threadListService(),
                                                                             mediaProvider: userSession.mediaProvider))
@@ -840,7 +851,7 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
         navigationStackCoordinator.setSheetCoordinator(coordinator)
     }
     
-    private func presentNitroRoomWidgets(_ widgets: [NitroRoomWidget]) {
+    private func presentNitroRoomWidgets(_ widgets: [NitroRoomWidget], restoring session: NitroRoomWidgetSession? = nil) {
         guard !widgets.isEmpty,
               let roomWidgetProxy = roomProxy as? NitroRoomWidgetRoomProxyProtocol,
               let roomScreenCoordinator else {
@@ -848,9 +859,27 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
         }
         
         let colorScheme: ColorScheme = flowParameters.windowManager.mainWindow.traitCollection.userInterfaceStyle == .light ? .light : .dark
-        roomScreenCoordinator.presentNitroRoomWidgets(widgets, colorScheme: colorScheme) { [roomWidgetProxy] in
+        roomScreenCoordinator.presentNitroRoomWidgets(widgets, colorScheme: colorScheme, restoring: session) { [roomWidgetProxy] in
             roomWidgetProxy.nitroRoomWidgetDriver()
         }
+    }
+    
+    private func restoreNitroRoomWidgetsIfNeeded() {
+        guard let session = flowParameters.nitroRoomWidgetSessionStore.session(for: roomID),
+              let roomWidgetProxy = roomProxy as? NitroRoomWidgetRoomProxyProtocol else {
+            return
+        }
+        
+        nitroRoomWidgetRestorationCancellable = roomWidgetProxy.nitroRoomWidgetsPublisher
+            .filter { !$0.isEmpty }
+            .prefix(1)
+            .sink { [weak self] widgets in
+                guard let self,
+                      flowParameters.nitroRoomWidgetSessionStore.session(for: roomID) == session else {
+                    return
+                }
+                presentNitroRoomWidgets(widgets, restoring: session)
+            }
     }
     
     private func handleNitroRoomWidgetRoute(_ route: AppRoute) {

@@ -44,6 +44,17 @@ struct NitroRoomWidgetsScreenViewModelTests {
     }
     
     @Test
+    func restoresSelectedWidgetFromAPreviousRoomVisit() throws {
+        let selectedWidget = try widget(id: "b")
+        let driver = NitroRoomWidgetDriverMock()
+        let viewModel = try NitroRoomWidgetsScreenViewModel(widgets: [widget(id: "a"), selectedWidget],
+                                                            initialWidgetID: selectedWidget.id,
+                                                            colorScheme: .light) { driver }
+        
+        #expect(viewModel.context.viewState.destination == .loading(selectedWidget))
+    }
+    
+    @Test
     func sendsWidgetMessagesSerially() async throws {
         let widget = try widget(id: "cockpit")
         let driver = NitroRoomWidgetDriverMock()
@@ -254,6 +265,18 @@ struct NitroRoomWidgetPanelControllerTests {
     }
     
     @Test
+    func restoresThePreviousLayout() {
+        let context = context()
+        let controller = NitroRoomWidgetPanelController()
+        
+        controller.present(context: context, layout: .expanded)
+        
+        #expect(controller.context === context)
+        #expect(controller.layout == .expanded)
+        #expect(controller.isPresented)
+    }
+    
+    @Test
     func settlesDragAtTheNearestLayout() {
         let controller = NitroRoomWidgetPanelController()
         let availableHeight: CGFloat = 700
@@ -284,6 +307,26 @@ struct NitroRoomWidgetPanelControllerTests {
     private func context() -> NitroRoomWidgetsScreenViewModel.Context {
         StateStoreViewModelV2<NitroRoomWidgetsScreenViewState, NitroRoomWidgetsScreenViewAction>(initialViewState: .init(widgets: [],
                                                                                                                          destination: .list)).context
+    }
+}
+
+struct NitroRoomWidgetSessionStoreTests {
+    @Test
+    func keepsSessionsScopedByRoomAndRemovesExplicitlyClosedOnes() {
+        let store = NitroRoomWidgetSessionStore()
+        let firstSession = NitroRoomWidgetSession(widgetID: "cockpit", layout: .expanded)
+        let secondSession = NitroRoomWidgetSession(widgetID: nil, layout: .compact)
+        
+        store.setSession(firstSession, for: "!first:example.org")
+        store.setSession(secondSession, for: "!second:example.org")
+        
+        #expect(store.session(for: "!first:example.org") == firstSession)
+        #expect(store.session(for: "!second:example.org") == secondSession)
+        
+        store.removeSession(for: "!first:example.org")
+        
+        #expect(store.session(for: "!first:example.org") == nil)
+        #expect(store.session(for: "!second:example.org") == secondSession)
     }
 }
 

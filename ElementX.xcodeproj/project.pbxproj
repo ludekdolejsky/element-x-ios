@@ -1408,6 +1408,7 @@
 		D5FE90A6AF5FD5AE91BD37C7 /* NotificationSettingsEditScreenViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 780258F1B9D15E30549FF4BE /* NotificationSettingsEditScreenViewModel.swift */; };
 		D6152E21036B88C44ECB22E7 /* EncryptionResetPasswordScreenViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303D9438EFB481F57A366E82 /* EncryptionResetPasswordScreenViewModel.swift */; };
 		D63974A88CF2BC721F109C77 /* Compound in Frameworks */ = {isa = PBXBuildFile; productRef = DCA3C4A997AD28E6918D4CE5 /* Compound */; };
+		D67985EA494E9BEEC0BED03E /* NitroRoomWidgetSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA4A05C6D6D0D551D1527C1C /* NitroRoomWidgetSessionStore.swift */; };
 		D69CCEC785E6C819551B402F /* SearchScreenViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5413213B56FB76C1071E2BFB /* SearchScreenViewModelTests.swift */; };
 		D6DE764B17FB4A9A12C33BF4 /* MessageComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F1DF3FFFE5ED2B8133F43A7 /* MessageComposer.swift */; };
 		D75C591C44C2510FDFA9C3D8 /* Macros in Frameworks */ = {isa = PBXBuildFile; productRef = AF574A0FC6F3A83D3BFFC9B3 /* Macros */; };
@@ -3255,6 +3256,7 @@
 		E9A3D3CFA199FA7897364547 /* CallInviteRoomTimelineItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallInviteRoomTimelineItem.swift; sourceTree = "<group>"; };
 		E9B796D347E53631576F631C /* PreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewTests.swift; sourceTree = "<group>"; };
 		E9D059BFE329BE09B6D96A9F /* ro */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = ro; path = ro.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
+		EA4A05C6D6D0D551D1527C1C /* NitroRoomWidgetSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitroRoomWidgetSessionStore.swift; sourceTree = "<group>"; };
 		EA551A98778CEE7366838CE2 /* QRCodeLoginScreenCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeLoginScreenCoordinator.swift; sourceTree = "<group>"; };
 		EA880E78AF4BD24E45A7808C /* bg */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = bg; path = bg.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		EA9DE5EBEC4B101F5F5249DA /* RoomScopedEmojiProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomScopedEmojiProvider.swift; sourceTree = "<group>"; };
@@ -3583,6 +3585,7 @@
 				1A377F6ABEFF2947A1BED686 /* NitroRoomWidget.swift */,
 				B2B8F8E6D26C4C5B13003D04 /* NitroRoomWidgetDriver.swift */,
 				042B022ED84EDD42CB60A93A /* NitroRoomWidgetNavigationBridge.swift */,
+				EA4A05C6D6D0D551D1527C1C /* NitroRoomWidgetSessionStore.swift */,
 			);
 			path = NitroRoomWidgets;
 			sourceTree = "<group>";
@@ -9449,6 +9452,7 @@
 				596E8FFF9E160DA54729024E /* NitroRoomWidget.swift in Sources */,
 				F4B5A219534285E80D5D3617 /* NitroRoomWidgetDriver.swift in Sources */,
 				BEEBE30D4C8CDA039DE70606 /* NitroRoomWidgetNavigationBridge.swift in Sources */,
+				D67985EA494E9BEEC0BED03E /* NitroRoomWidgetSessionStore.swift in Sources */,
 				F061019B167F189DD6442990 /* NitroRoomWidgetsScreen.swift in Sources */,
 				FB2B261A900082BA804E22D4 /* NitroRoomWidgetsScreenCoordinator.swift in Sources */,
 				AC6B9112EADFFAE998EB4223 /* NitroRoomWidgetsScreenModels.swift in Sources */,

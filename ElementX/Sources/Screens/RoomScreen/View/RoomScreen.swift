@@ -83,7 +83,10 @@ struct RoomScreen: View {
             .background(Color.compound.bgCanvasDefault.ignoresSafeArea())
             .topBanners([
                 TopBannerLayer(verticalBanners: [
-                    TopBannerItem(pinnedItemsBanner, isVisible: context.viewState.shouldShowPinnedEventsBanner && !isVoiceOverEnabled),
+                    TopBannerItem(pinnedItemsBanner,
+                                  isVisible: context.viewState.shouldShowPinnedEventsBanner
+                                      && !isVoiceOverEnabled
+                                      && !nitroRoomWidgetPanelController.isPresented),
                     TopBannerItem(liveLocationBanner, isVisible: context.viewState.isSharingLiveLocation && !isVoiceOverEnabled)
                 ]),
                 // This can overlay on top of the stacked banners
@@ -94,9 +97,10 @@ struct RoomScreen: View {
                 // hides itself and the .overlay layout above would permanently obscure the top of
                 // the timeline. So whenever VoiceOver is enabled we use a safe area inset to
                 // vertically stack it above the timeline instead.
-                if context.viewState.shouldShowPinnedEventsBanner || context.viewState.isSharingLiveLocation, isVoiceOverEnabled {
+                if (context.viewState.shouldShowPinnedEventsBanner && !nitroRoomWidgetPanelController.isPresented)
+                    || context.viewState.isSharingLiveLocation, isVoiceOverEnabled {
                     VStack(spacing: 0) {
-                        if context.viewState.shouldShowPinnedEventsBanner {
+                        if context.viewState.shouldShowPinnedEventsBanner, !nitroRoomWidgetPanelController.isPresented {
                             pinnedItemsBanner
                         }
                         if context.viewState.isSharingLiveLocation {
@@ -343,7 +347,7 @@ struct RoomScreen: View {
                         } label: {
                             Label(UntranslatedL10n.screenNitroTasksTitleIos, icon: \.checkCircle)
                         }
-
+                        
                         Button {
                             context.send(viewAction: .displayNitroCatchUp)
                         } label: {

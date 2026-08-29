@@ -30,6 +30,7 @@ struct CommonFlowParameters {
     let timelineControllerFactory: TimelineControllerFactoryProtocol
     let emojiProvider: EmojiProviderProtocol
     var nitroRecentEmojiStore: NitroRecentEmojiStoreProtocol?
+    var nitroRoomWidgetSessionStore: NitroRoomWidgetSessionStoreProtocol = NitroRoomWidgetSessionStore()
     let linkMetadataProvider: LinkMetadataProviderProtocol
     let appMediator: AppMediatorProtocol
     let appSettings: AppSettings

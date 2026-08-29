@@ -38,11 +38,19 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
     }
     
     init(widgets: [NitroRoomWidget],
+         initialWidgetID: String? = nil,
          colorScheme: ColorScheme,
          driverFactory: @escaping () -> NitroRoomWidgetDriverProtocol?) {
         self.driverFactory = driverFactory
         self.colorScheme = colorScheme
-        let destination: NitroRoomWidgetsScreenDestination = widgets.count == 1 ? .loading(widgets[0]) : .list
+        let initialWidget = widgets.first { $0.id == initialWidgetID }
+        let destination: NitroRoomWidgetsScreenDestination = if let initialWidget {
+            .loading(initialWidget)
+        } else if widgets.count == 1 {
+            .loading(widgets[0])
+        } else {
+            .list
+        }
         super.init(initialViewState: .init(widgets: widgets, destination: destination))
     }
     

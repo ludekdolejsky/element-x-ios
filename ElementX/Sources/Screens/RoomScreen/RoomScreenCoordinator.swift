@@ -30,6 +30,7 @@ struct RoomScreenCoordinatorParameters {
     let composerDraftService: ComposerDraftServiceProtocol
     let timelineControllerFactory: TimelineControllerFactoryProtocol
     let userIndicatorController: UserIndicatorControllerProtocol
+    var nitroRoomWidgetSessionStore: NitroRoomWidgetSessionStoreProtocol = NitroRoomWidgetSessionStore()
 }
 
 enum RoomScreenCoordinatorAction {
@@ -64,6 +65,7 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
     private var composerViewModel: ComposerToolbarViewModelProtocol
     private let appSettings: AppSettings
     private let roomID: String
+    private let nitroRoomWidgetSessionStore: NitroRoomWidgetSessionStoreProtocol
     
     private var cancellables = Set<AnyCancellable>()
     private var customEmojiPickerCancellable: AnyCancellable?
@@ -79,6 +81,7 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
     init(parameters: RoomScreenCoordinatorParameters) {
         appSettings = parameters.appSettings
         roomID = parameters.roomProxy.id
+        nitroRoomWidgetSessionStore = parameters.nitroRoomWidgetSessionStore
         
         var selectedPinnedEventID: String?
         if let focussedEvent = parameters.focussedEvent {
@@ -267,11 +270,13 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
     
     func presentNitroRoomWidgets(_ widgets: [NitroRoomWidget],
                                  colorScheme: ColorScheme,
+                                 restoring session: NitroRoomWidgetSession? = nil,
                                  driverFactory: @escaping () -> NitroRoomWidgetDriverProtocol?) {
         guard !widgets.isEmpty else { return }
         
-        dismissNitroRoomWidgets()
+        tearDownNitroRoomWidgets()
         let coordinator = NitroRoomWidgetsScreenCoordinator(parameters: .init(widgets: widgets,
+                                                                              initialWidgetID: session?.widgetID,
                                                                               colorScheme: colorScheme,
                                                                               driverFactory: driverFactory))
         nitroRoomWidgetsCoordinator = coordinator
@@ -282,22 +287,40 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
                 case .dismiss:
                     dismissNitroRoomWidgets()
                 case .navigate(let url):
-                    dismissNitroRoomWidgets()
+                    suspendNitroRoomWidgets()
                     actionsSubject.send(.navigateFromNitroRoomWidget(url))
                 }
             }
         coordinator.start()
-        nitroRoomWidgetPanelController.present(context: coordinator.context)
+        let layout = session?.layout ?? .regular
+        nitroRoomWidgetPanelController.present(context: coordinator.context, layout: layout)
+        nitroRoomWidgetSessionStore.setSession(.init(widgetID: coordinator.context.viewState.destination.widgetID,
+                                                     layout: layout),
+                                               for: roomID)
     }
     
     func stop() {
-        dismissNitroRoomWidgets()
+        suspendNitroRoomWidgets()
         timelineViewModel.stop()
         composerViewModel.stop()
         roomViewModel.stop()
     }
     
     private func dismissNitroRoomWidgets() {
+        nitroRoomWidgetSessionStore.removeSession(for: roomID)
+        tearDownNitroRoomWidgets()
+    }
+    
+    private func suspendNitroRoomWidgets() {
+        if let nitroRoomWidgetsCoordinator {
+            nitroRoomWidgetSessionStore.setSession(.init(widgetID: nitroRoomWidgetsCoordinator.context.viewState.destination.widgetID,
+                                                         layout: nitroRoomWidgetPanelController.layout),
+                                                   for: roomID)
+        }
+        tearDownNitroRoomWidgets()
+    }
+    
+    private func tearDownNitroRoomWidgets() {
         nitroRoomWidgetPanelController.dismiss()
         nitroRoomWidgetsCoordinator?.stop()
         nitroRoomWidgetsCoordinator = nil

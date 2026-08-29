@@ -10,6 +10,7 @@ import SwiftUI
 
 struct NitroRoomWidgetsScreenCoordinatorParameters {
     let widgets: [NitroRoomWidget]
+    let initialWidgetID: String?
     let colorScheme: ColorScheme
     let driverFactory: () -> NitroRoomWidgetDriverProtocol?
 }
@@ -34,6 +35,7 @@ final class NitroRoomWidgetsScreenCoordinator: CoordinatorProtocol {
     
     init(parameters: NitroRoomWidgetsScreenCoordinatorParameters) {
         viewModel = NitroRoomWidgetsScreenViewModel(widgets: parameters.widgets,
+                                                    initialWidgetID: parameters.initialWidgetID,
                                                     colorScheme: parameters.colorScheme,
                                                     driverFactory: parameters.driverFactory)
     }

@@ -45,19 +45,17 @@ struct NitroRoomWidgetsScreenViewStateBindings {
     var javaScriptEvaluator: NitroRoomWidgetJavaScriptEvaluator?
 }
 
-enum NitroRoomWidgetPanelLayout: CaseIterable, Equatable {
-    case compact
-    case regular
-    case expanded
-}
-
 final class NitroRoomWidgetPanelController: ObservableObject {
     @Published private(set) var context: NitroRoomWidgetsScreenViewModel.Context?
     @Published private(set) var layout = NitroRoomWidgetPanelLayout.regular
     
-    func present(context: NitroRoomWidgetsScreenViewModel.Context) {
+    var isPresented: Bool {
+        context != nil
+    }
+    
+    func present(context: NitroRoomWidgetsScreenViewModel.Context, layout: NitroRoomWidgetPanelLayout = .regular) {
         self.context = context
-        layout = .regular
+        self.layout = layout
     }
     
     func dismiss() {
@@ -106,6 +104,17 @@ final class NitroRoomWidgetPanelController: ObservableObject {
             return regularHeight
         case .expanded:
             return max(regularHeight, usableHeight * 0.78)
+        }
+    }
+}
+
+extension NitroRoomWidgetsScreenDestination {
+    var widgetID: String? {
+        switch self {
+        case .list:
+            nil
+        case .loading(let widget), .widget(let widget, _), .error(let widget):
+            widget.id
         }
     }
 }
