@@ -69,6 +69,16 @@ struct NitroRoomWidgetParserTests {
         #expect(NitroRoomWidgetLocale.languageTag(for: Locale(identifier: "sr_Latn_RS")) == "sr-Latn-RS")
     }
     
+    @Test
+    func mapsIframeLoadingToTheInverseContentLoadedSetting() throws {
+        let url = try #require(URL(string: "https://pub-artifacts.nitrovery.com/widget"))
+        let waitsForIframe = NitroRoomWidget(id: "iframe", name: "iframe", type: "com.nitrovery.c2m.widget", url: url, waitForIframeLoad: true)
+        let waitsForContent = NitroRoomWidget(id: "content", name: "content", type: "com.nitrovery.c2m.widget", url: url, waitForIframeLoad: false)
+        
+        #expect(!NitroRoomWidgetDriver.settings(for: waitsForIframe).initAfterContentLoad)
+        #expect(NitroRoomWidgetDriver.settings(for: waitsForContent).initAfterContentLoad)
+    }
+    
     private func event(stateKey: String, type: String, url: String, name: String) -> String {
         """
         {

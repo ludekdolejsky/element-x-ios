@@ -44,9 +44,7 @@ final class NitroRoomWidgetDriver: WidgetCapabilitiesProvider, NitroRoomWidgetDr
         
         guard let room = room as? Room else { return .failure(.invalidRoom) }
         
-        let settings = WidgetSettings(widgetId: widget.id,
-                                      initAfterContentLoad: widget.waitForIframeLoad,
-                                      rawUrl: widget.url.absoluteString)
+        let settings = Self.settings(for: widget)
         let urlString: String
         let languageTag = NitroRoomWidgetLocale.languageTag(for: .current)
         do {
@@ -96,6 +94,12 @@ final class NitroRoomWidgetDriver: WidgetCapabilitiesProvider, NitroRoomWidgetDr
         receiveTask = nil
         runTask = nil
         widgetDriver = nil
+    }
+    
+    static func settings(for widget: NitroRoomWidget) -> WidgetSettings {
+        WidgetSettings(widgetId: widget.id,
+                       initAfterContentLoad: !widget.waitForIframeLoad,
+                       rawUrl: widget.url.absoluteString)
     }
     
     nonisolated func acquireCapabilities(capabilities: WidgetCapabilities) -> WidgetCapabilities {

@@ -37,13 +37,24 @@ struct NitroRoomWidgetsScreen: View {
 struct NitroRoomWidgetPanel: View {
     @ObservedObject var controller: NitroRoomWidgetPanelController
     let availableHeight: CGFloat
+    let onResizeStarted: () -> Void
     
-    @GestureState private var dragTranslation: CGFloat = 0
+    @GestureState private var resizeGestureState = ResizeGestureState()
+    
+    init(controller: NitroRoomWidgetPanelController,
+         availableHeight: CGFloat,
+         onResizeStarted: @escaping () -> Void = { }) {
+        self.controller = controller
+        self.availableHeight = availableHeight
+        self.onResizeStarted = onResizeStarted
+    }
     
     var body: some View {
         if let context = controller.context {
             let baseHeight = controller.height(availableHeight: availableHeight)
-            let panelHeight = min(max(baseHeight + dragTranslation, 52), availableHeight)
+            let resizeBaseHeight = resizeGestureState.baseHeight ?? baseHeight
+            let resizeAvailableHeight = resizeGestureState.availableHeight ?? availableHeight
+            let panelHeight = min(max(resizeBaseHeight + resizeGestureState.translation, 52), resizeAvailableHeight)
             
             VStack(spacing: 0) {
                 header(context: context)
@@ -108,7 +119,7 @@ struct NitroRoomWidgetPanel: View {
     
     private func resizeHandle(baseHeight: CGFloat) -> some View {
         Color.clear
-            .frame(height: 16)
+            .frame(width: 96, height: 32)
             .contentShape(Rectangle())
             .overlay {
                 Capsule()
@@ -116,15 +127,29 @@ struct NitroRoomWidgetPanel: View {
                     .frame(width: 36, height: 4)
             }
             .gesture(DragGesture(minimumDistance: 4)
-                .updating($dragTranslation) { value, state, _ in
-                    state = value.translation.height
+                .updating($resizeGestureState) { value, state, _ in
+                    if state.baseHeight == nil {
+                        state.baseHeight = baseHeight
+                        state.availableHeight = availableHeight
+                    }
+                    state.translation = value.translation.height
+                }
+                .onChanged { _ in
+                    onResizeStarted()
                 }
                 .onEnded { value in
-                    controller.settle(proposedHeight: baseHeight + value.translation.height,
-                                      availableHeight: availableHeight)
+                    controller.settle(translation: value.translation.height,
+                                      predictedTranslation: value.predictedEndTranslation.height,
+                                      availableHeight: resizeGestureState.availableHeight ?? availableHeight)
                 })
             .accessibilityHidden(true)
     }
+}
+
+private struct ResizeGestureState {
+    var baseHeight: CGFloat?
+    var availableHeight: CGFloat?
+    var translation: CGFloat = 0
 }
 
 private struct NitroRoomWidgetContent: View {

@@ -46,6 +46,8 @@ struct NitroRoomWidgetsScreenViewStateBindings {
 }
 
 final class NitroRoomWidgetPanelController: ObservableObject {
+    private static let decisiveDragThreshold: CGFloat = 44
+    
     @Published private(set) var context: NitroRoomWidgetsScreenViewModel.Context?
     @Published private(set) var layout = NitroRoomWidgetPanelLayout.regular
     
@@ -81,11 +83,19 @@ final class NitroRoomWidgetPanelController: ObservableObject {
         }
     }
     
-    func settle(proposedHeight: CGFloat, availableHeight: CGFloat) {
-        layout = NitroRoomWidgetPanelLayout.allCases.min {
+    func settle(translation: CGFloat, predictedTranslation: CGFloat, availableHeight: CGFloat) {
+        let intendedTranslation = abs(predictedTranslation) > abs(translation) ? predictedTranslation : translation
+        let proposedHeight = height(availableHeight: availableHeight) + intendedTranslation
+        let nearestLayout = NitroRoomWidgetPanelLayout.allCases.min {
             abs(height(for: $0, availableHeight: availableHeight) - proposedHeight)
                 < abs(height(for: $1, availableHeight: availableHeight) - proposedHeight)
-        } ?? .regular
+        } ?? layout
+        
+        if nearestLayout == layout, abs(intendedTranslation) >= Self.decisiveDragThreshold {
+            layout = adjacentLayout(in: intendedTranslation)
+        } else {
+            layout = nearestLayout
+        }
     }
     
     func height(availableHeight: CGFloat) -> CGFloat {
@@ -104,6 +114,21 @@ final class NitroRoomWidgetPanelController: ObservableObject {
             return regularHeight
         case .expanded:
             return max(regularHeight, usableHeight * 0.78)
+        }
+    }
+    
+    private func adjacentLayout(in translation: CGFloat) -> NitroRoomWidgetPanelLayout {
+        switch (layout, translation.sign) {
+        case (.compact, .plus):
+            .regular
+        case (.regular, .plus):
+            .expanded
+        case (.expanded, .minus):
+            .regular
+        case (.regular, .minus):
+            .compact
+        default:
+            layout
         }
     }
 }

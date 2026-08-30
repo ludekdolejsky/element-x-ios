@@ -31,7 +31,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
         #expect(viewModel.context.viewState.destination == .widget(widget, expectedURL))
         #expect(driver.stopCallCount >= 1)
     }
-
+    
     @Test
     func multipleWidgetsWaitForSelection() throws {
         let driver = NitroRoomWidgetDriverMock()
@@ -42,7 +42,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
         #expect(viewModel.context.viewState.destination == .list)
         #expect(driver.startedWidgets.isEmpty)
     }
-
+    
     @Test
     func restoresSelectedWidgetFromAPreviousRoomVisit() throws {
         let selectedWidget = try widget(id: "b")
@@ -50,7 +50,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
         let viewModel = try NitroRoomWidgetsScreenViewModel(widgets: [widget(id: "a"), selectedWidget],
                                                             initialWidgetID: selectedWidget.id,
                                                             colorScheme: .light) { driver }
-
+        
         #expect(viewModel.context.viewState.destination == .loading(selectedWidget))
     }
     
@@ -71,7 +71,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
                 break
             }
         }
-
+        
         viewModel.context.send(viewAction: .appeared)
         try await destination.fulfill()
         
@@ -96,7 +96,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
         
         #expect(driver.sentMessages == ["first", "second"])
     }
-
+    
     @Test
     func buffersDriverMessagesUntilWebViewIsReady() async throws {
         let widget = try widget(id: "cockpit")
@@ -110,21 +110,21 @@ struct NitroRoomWidgetsScreenViewModelTests {
             $0 == .widget(widget, expectedURL)
         }
         var evaluatedScripts = [String]()
-
+        
         viewModel.context.send(viewAction: .appeared)
         try await destination.fulfill()
         #expect(evaluatedScripts.isEmpty)
-
+        
         await waitForConfirmation(timeout: .seconds(1)) { messageForwarded in
             viewModel.context.send(viewAction: .webViewReady { script in
                 evaluatedScripts.append(script)
                 messageForwarded()
             })
         }
-
+        
         #expect(evaluatedScripts == ["window.postMessage(\(message), \"https://pub-artifacts.nitrovery.com\")"])
     }
-
+    
     @Test
     func forwardsDriverReplyBeforeWebViewFinishesLoading() async throws {
         let widget = try widget(id: "cockpit")
@@ -150,7 +150,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
         #expect(driver.sentMessages == [request])
         #expect(evaluatedScripts == ["window.postMessage(\(response), \"https://pub-artifacts.nitrovery.com\")"])
     }
-
+    
     @Test
     func keepsDriverMessageQueuedWhenWebViewStopsDuringEvaluation() async throws {
         let widget = try widget(id: "cockpit")
@@ -309,14 +309,42 @@ struct NitroRoomWidgetPanelControllerTests {
         let controller = NitroRoomWidgetPanelController()
         let availableHeight: CGFloat = 700
         
-        controller.settle(proposedHeight: 60, availableHeight: availableHeight)
+        controller.settle(translation: -178, predictedTranslation: -178, availableHeight: availableHeight)
         #expect(controller.layout == .compact)
         
-        controller.settle(proposedHeight: 250, availableHeight: availableHeight)
+        controller.settle(translation: 198, predictedTranslation: 198, availableHeight: availableHeight)
         #expect(controller.layout == .regular)
         
-        controller.settle(proposedHeight: 600, availableHeight: availableHeight)
+        controller.settle(translation: 350, predictedTranslation: 350, availableHeight: availableHeight)
         #expect(controller.layout == .expanded)
+    }
+    
+    @Test
+    func keepsTheCurrentLayoutForASmallDrag() {
+        let controller = NitroRoomWidgetPanelController()
+        
+        controller.settle(translation: 20, predictedTranslation: 24, availableHeight: 700)
+        
+        #expect(controller.layout == .regular)
+    }
+    
+    @Test
+    func advancesOneLayoutForADecisiveDrag() {
+        let controller = NitroRoomWidgetPanelController()
+        
+        controller.settle(translation: 50, predictedTranslation: 54, availableHeight: 700)
+        
+        #expect(controller.layout == .expanded)
+    }
+    
+    @Test
+    func usesThePredictedTranslationForAFlick() {
+        let controller = NitroRoomWidgetPanelController()
+        controller.expand()
+        
+        controller.settle(translation: -12, predictedTranslation: -100, availableHeight: 700)
+        
+        #expect(controller.layout == .regular)
     }
     
     @Test
@@ -352,38 +380,38 @@ struct NitroRoomWidgetSessionStoreTests {
         #expect(store.session(for: "!second:example.org") == secondSession)
         
         store.removeSession(for: "!first:example.org")
-
+        
         #expect(store.session(for: "!first:example.org") == nil)
         #expect(store.session(for: "!second:example.org") == secondSession)
         #expect(try store.primaryWidgetID(in: [widget(id: "cockpit"), widget(id: "catch-up")], for: "!first:example.org") == "cockpit")
     }
-
+    
     @Test
     func remembersExplicitlySelectedWidgetWithoutRestoringItsPanel() throws {
         let store = NitroRoomWidgetSessionStore()
-
+        
         store.setPreferredWidgetID("catch-up", for: "!room:example.org")
-
+        
         #expect(store.session(for: "!room:example.org") == nil)
         #expect(try store.primaryWidgetID(in: [widget(id: "cockpit"), widget(id: "catch-up")], for: "!room:example.org") == "catch-up")
     }
-
+    
     @Test
     func resolvesPrimaryWidgetFromHistoryOrAnUnambiguousList() throws {
         let store = NitroRoomWidgetSessionStore()
         let cockpit = try widget(id: "cockpit")
         let catchUp = try widget(id: "catch-up")
         let roomID = "!room:example.org"
-
+        
         #expect(store.primaryWidgetID(in: [cockpit], for: roomID) == cockpit.id)
         #expect(store.primaryWidgetID(in: [cockpit, catchUp], for: roomID) == nil)
-
+        
         store.setPreferredWidgetID(catchUp.id, for: roomID)
-
+        
         #expect(store.primaryWidgetID(in: [cockpit, catchUp], for: roomID) == catchUp.id)
         #expect(store.primaryWidgetID(in: [cockpit], for: roomID) == cockpit.id)
     }
-
+    
     private func widget(id: String) throws -> NitroRoomWidget {
         try .init(id: id,
                   name: id,
@@ -424,11 +452,11 @@ private final class NitroRoomWidgetDriverMock: NitroRoomWidgetDriverProtocol {
         sentMessages.append(message)
         onSendCompleted?(message)
     }
-
+    
     func stop() {
         stopCallCount += 1
     }
-
+    
     func emit(_ message: String) {
         messageSubject.send(message)
     }
