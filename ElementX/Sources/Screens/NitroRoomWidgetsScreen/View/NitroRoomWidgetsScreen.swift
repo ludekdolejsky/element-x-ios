@@ -168,8 +168,8 @@ private struct NitroRoomWidgetContent: View {
             .compoundList()
         case .loading:
             ProgressView(UntranslatedL10n.screenNitroRoomWidgetsLoadingIos)
-        case .widget(_, let url):
-            NitroRoomWidgetWebView(url: url, context: context)
+        case .widget(let widget, let url):
+            NitroRoomWidgetWebView(widget: widget, url: url, context: context)
                 .id(url)
                 .ignoresSafeArea(edges: .bottom)
         case .error:
@@ -198,11 +198,12 @@ private extension NitroRoomWidgetsScreenViewState {
 }
 
 private struct NitroRoomWidgetWebView: UIViewRepresentable {
+    let widget: NitroRoomWidget
     let url: URL
     let context: NitroRoomWidgetsScreenViewModel.Context
     
     func makeCoordinator() -> Coordinator {
-        Coordinator(context: context, allowedURL: url)
+        Coordinator(context: context, widget: widget, allowedURL: url)
     }
     
     func makeUIView(context: Context) -> WKWebView {
@@ -219,14 +220,17 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
     
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         private static let handlerName = "widgetAction"
+        private static let diagnosticsHandlerName = "widgetDiagnostics"
         private let context: NitroRoomWidgetsScreenViewModel.Context
         private let allowedURL: URL
+        private let diagnostics: NitroRoomWidgetDiagnostics
         private var loadedURL: URL?
         let webView: WKWebView
         
-        init(context: NitroRoomWidgetsScreenViewModel.Context, allowedURL: URL) {
+        init(context: NitroRoomWidgetsScreenViewModel.Context, widget: NitroRoomWidget, allowedURL: URL) {
             self.context = context
             self.allowedURL = allowedURL
+            diagnostics = .init(widgetID: widget.id, url: allowedURL)
             
             let userContentController = WKUserContentController()
             let script = """
@@ -237,6 +241,12 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                 const data = event.data;
                 if ((data.response && data.api === 'toWidget') || (!data.response && data.api === 'fromWidget')) {
                     window.webkit.messageHandlers.\(Self.handlerName).postMessage(JSON.stringify(data));
+                }
+            }, false);
+            window.addEventListener('nitro-widget-diagnostic', function(event) {
+                const detail = event.detail;
+                if (detail && typeof detail === 'object') {
+                    window.webkit.messageHandlers.\(Self.diagnosticsHandlerName).postMessage(JSON.stringify(detail));
                 }
             }, false);
             """
@@ -250,6 +260,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
             super.init()
             
             userContentController.add(NitroRoomWidgetScriptMessageHandler(self), name: Self.handlerName)
+            userContentController.add(NitroRoomWidgetScriptMessageHandler(self), name: Self.diagnosticsHandlerName)
             webView.navigationDelegate = self
             webView.allowsLinkPreview = true
             webView.isInspectable = true
@@ -263,6 +274,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
             webView.stopLoading()
             webView.navigationDelegate = nil
             webView.configuration.userContentController.removeScriptMessageHandler(forName: Self.handlerName)
+            webView.configuration.userContentController.removeScriptMessageHandler(forName: Self.diagnosticsHandlerName)
         }
         
         func load(_ url: URL) {
@@ -272,17 +284,22 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         }
         
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard message.name == Self.handlerName,
-                  message.frameInfo.isMainFrame,
+            guard message.frameInfo.isMainFrame,
                   isAllowed(message.frameInfo.securityOrigin),
                   let body = message.body as? String else {
                 return
             }
+            if message.name == Self.diagnosticsHandlerName {
+                diagnostics.handleJavaScriptMessage(body)
+                return
+            }
+            guard message.name == Self.handlerName else { return }
             context.send(viewAction: .widgetMessage(body, javaScriptEvaluator: evaluateJavaScript))
         }
         
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
             guard let url = navigationAction.request.url else {
+                diagnostics.recordHTTPFailure(statusCode: nil)
                 context.send(viewAction: .webViewFailed)
                 return .cancel
             }
@@ -307,6 +324,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
             guard navigationResponse.isForMainFrame else { return .allow }
             guard let response = navigationResponse.response as? HTTPURLResponse,
                   (200..<400).contains(response.statusCode) else {
+                diagnostics.recordHTTPFailure(statusCode: (navigationResponse.response as? HTTPURLResponse)?.statusCode)
                 context.send(viewAction: .webViewFailed)
                 return .cancel
             }
@@ -319,6 +337,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             guard let url = webView.url, NitroRoomWidgetOrigin(url: allowedURL)?.matches(url) == true else {
+                diagnostics.recordHTTPFailure(statusCode: nil)
                 context.send(viewAction: .webViewFailed)
                 return
             }
@@ -334,6 +353,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         }
         
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            diagnostics.recordWebContentProcessTermination()
             context.send(viewAction: .webViewFailed)
         }
         
@@ -347,6 +367,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         private func handleNavigationFailure(_ error: any Error) {
             let error = error as NSError
             guard error.domain != NSURLErrorDomain || error.code != NSURLErrorCancelled else { return }
+            diagnostics.recordNavigationFailure(phase: "navigation_failed", error: error)
             context.send(viewAction: .webViewFailed)
         }
         
