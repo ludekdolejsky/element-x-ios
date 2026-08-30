@@ -25,7 +25,7 @@ enum NitroRoomWidgetsScreenViewAction {
     case webViewReady(NitroRoomWidgetJavaScriptEvaluator)
     case webViewStopped
     case webViewFailed
-    case widgetMessage(String)
+    case widgetMessage(String, javaScriptEvaluator: NitroRoomWidgetJavaScriptEvaluator)
 }
 
 enum NitroRoomWidgetsScreenDestination: Equatable, Sendable {

@@ -9,6 +9,7 @@
 import Combine
 import Compound
 import SwiftUI
+import UIKit
 import WysiwygComposer
 
 struct RoomScreen: View {
@@ -17,7 +18,7 @@ struct RoomScreen: View {
     @ObservedObject private var nitroRoomWidgetPanelController: NitroRoomWidgetPanelController
     let composerToolbar: ComposerToolbar
     @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
-    
+
     enum MarkAsReadSource {
         case up
         case down
@@ -366,6 +367,9 @@ struct RoomScreen: View {
                     CompoundIcon(\.overflowHorizontal)
                 }
                 .accessibilityLabel(UntranslatedL10n.a11yRoomActionsIos)
+                .modifier(PrimaryRoomWidgetShortcutModifier(isEnabled: !context.viewState.nitroRoomWidgets.isEmpty) {
+                    context.send(viewAction: .displayPrimaryNitroRoomWidget)
+                })
             }
         } else if context.viewState.roomThreadListEnabled {
             ToolbarItem(placement: .primaryAction) {
@@ -375,6 +379,25 @@ struct RoomScreen: View {
                     CompoundIcon(\.threads)
                 }
             }
+        }
+    }
+}
+
+private struct PrimaryRoomWidgetShortcutModifier: ViewModifier {
+    let isEnabled: Bool
+    let action: () -> Void
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content
+                .highPriorityGesture(LongPressGesture(minimumDuration: 0.5)
+                    .onEnded { _ in
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        action()
+                    })
+                .accessibilityAction(named: UntranslatedL10n.screenNitroRoomWidgetsTitleIos, action)
+        } else {
+            content
         }
     }
 }

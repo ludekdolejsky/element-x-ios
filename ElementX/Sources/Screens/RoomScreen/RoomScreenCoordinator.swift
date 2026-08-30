@@ -52,7 +52,7 @@ enum RoomScreenCoordinatorAction {
     case presentThreadList
     case presentNitroTasks(roomID: String, roomName: String)
     case presentNitroCatchUp(roomID: String, roomName: String)
-    case presentNitroRoomWidgets([NitroRoomWidget])
+    case presentNitroRoomWidgets([NitroRoomWidget], initialWidgetID: String?)
     case navigateFromNitroRoomWidget(URL)
     case presentNitroTaskCreate(roomID: String)
     case presentThread(threadRootEventID: String, focussedEventID: String?)
@@ -237,7 +237,11 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
                 case .displayNitroCatchUp(let roomID, let roomName):
                     actionsSubject.send(.presentNitroCatchUp(roomID: roomID, roomName: roomName))
                 case .displayNitroRoomWidgets(let widgets):
-                    actionsSubject.send(.presentNitroRoomWidgets(widgets))
+                    actionsSubject.send(.presentNitroRoomWidgets(widgets, initialWidgetID: nil))
+                case .displayPrimaryNitroRoomWidget(let widgets):
+                    let activeWidgetID = nitroRoomWidgetsCoordinator?.context.viewState.destination.widgetID
+                    let initialWidgetID = activeWidgetID ?? nitroRoomWidgetSessionStore.primaryWidgetID(in: widgets, for: roomID)
+                    actionsSubject.send(.presentNitroRoomWidgets(widgets, initialWidgetID: initialWidgetID))
                 case .displayThread(let threadRootEventID, let focussedEventID):
                     actionsSubject.send(.presentThread(threadRootEventID: threadRootEventID, focussedEventID: focussedEventID))
                 case .stopLiveLocationSharing:
@@ -307,6 +311,9 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
     }
     
     private func dismissNitroRoomWidgets() {
+        if let widgetID = nitroRoomWidgetsCoordinator?.context.viewState.destination.widgetID {
+            nitroRoomWidgetSessionStore.setPreferredWidgetID(widgetID, for: roomID)
+        }
         nitroRoomWidgetSessionStore.removeSession(for: roomID)
         tearDownNitroRoomWidgets()
     }

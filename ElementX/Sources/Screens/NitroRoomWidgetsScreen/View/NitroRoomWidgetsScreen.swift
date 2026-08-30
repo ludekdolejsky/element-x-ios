@@ -253,7 +253,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                   let body = message.body as? String else {
                 return
             }
-            context.send(viewAction: .widgetMessage(body))
+            context.send(viewAction: .widgetMessage(body, javaScriptEvaluator: evaluateJavaScript))
         }
         
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {

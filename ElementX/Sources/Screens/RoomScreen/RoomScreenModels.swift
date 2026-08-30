@@ -15,6 +15,7 @@ enum RoomScreenViewModelAction: Equatable {
     case displayNitroTasks(roomID: String, roomName: String)
     case displayNitroCatchUp(roomID: String, roomName: String)
     case displayNitroRoomWidgets([NitroRoomWidget])
+    case displayPrimaryNitroRoomWidget([NitroRoomWidget])
     case displayThread(threadRootEventID: String, focussedEventID: String)
     case displayPinnedEventsTimeline
     case displayRoomDetails
@@ -41,6 +42,7 @@ enum RoomScreenViewAction {
     case displayNitroTasks
     case displayNitroCatchUp
     case displayNitroRoomWidgets
+    case displayPrimaryNitroRoomWidget
     case tappedOpenLiveLocation
     case tappedStopLiveLocation
 }
@@ -56,7 +58,7 @@ struct RoomScreenViewState: BindableState {
     var shouldShowPinnedEventsBanner: Bool {
         !pinnedEventsBannerState.isEmpty && lastScrollDirection != .top
     }
-    
+
     var isSharingLiveLocation = false
     
     var canSendMessage = true
@@ -93,7 +95,7 @@ struct RoomScreenViewState: BindableState {
     var shouldShowNitroTasksButton: Bool {
         nitroTasksEnabled && !hasSuccessor
     }
-    
+
     var shouldShowRoomToolsMenu: Bool {
         shouldShowNitroTasksButton || roomThreadListEnabled || !nitroRoomWidgets.isEmpty
     }

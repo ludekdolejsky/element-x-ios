@@ -31,7 +31,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
         #expect(viewModel.context.viewState.destination == .widget(widget, expectedURL))
         #expect(driver.stopCallCount >= 1)
     }
-    
+
     @Test
     func multipleWidgetsWaitForSelection() throws {
         let driver = NitroRoomWidgetDriverMock()
@@ -42,7 +42,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
         #expect(viewModel.context.viewState.destination == .list)
         #expect(driver.startedWidgets.isEmpty)
     }
-    
+
     @Test
     func restoresSelectedWidgetFromAPreviousRoomVisit() throws {
         let selectedWidget = try widget(id: "b")
@@ -50,7 +50,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
         let viewModel = try NitroRoomWidgetsScreenViewModel(widgets: [widget(id: "a"), selectedWidget],
                                                             initialWidgetID: selectedWidget.id,
                                                             colorScheme: .light) { driver }
-        
+
         #expect(viewModel.context.viewState.destination == .loading(selectedWidget))
     }
     
@@ -71,7 +71,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
                 break
             }
         }
-        
+
         viewModel.context.send(viewAction: .appeared)
         try await destination.fulfill()
         
@@ -80,8 +80,8 @@ struct NitroRoomWidgetsScreenViewModelTests {
                 guard message == "first" else { return }
                 firstMessageStarted()
             }
-            viewModel.context.send(viewAction: .widgetMessage("first"))
-            viewModel.context.send(viewAction: .widgetMessage("second"))
+            viewModel.context.send(viewAction: .widgetMessage("first") { _ in })
+            viewModel.context.send(viewAction: .widgetMessage("second") { _ in })
         }
         #expect(driver.startedMessages == ["first"])
         
@@ -96,7 +96,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
         
         #expect(driver.sentMessages == ["first", "second"])
     }
-    
+
     @Test
     func buffersDriverMessagesUntilWebViewIsReady() async throws {
         let widget = try widget(id: "cockpit")
@@ -110,21 +110,47 @@ struct NitroRoomWidgetsScreenViewModelTests {
             $0 == .widget(widget, expectedURL)
         }
         var evaluatedScripts = [String]()
-        
+
         viewModel.context.send(viewAction: .appeared)
         try await destination.fulfill()
         #expect(evaluatedScripts.isEmpty)
-        
+
         await waitForConfirmation(timeout: .seconds(1)) { messageForwarded in
             viewModel.context.send(viewAction: .webViewReady { script in
                 evaluatedScripts.append(script)
                 messageForwarded()
             })
         }
-        
+
         #expect(evaluatedScripts == ["window.postMessage(\(message), \"https://pub-artifacts.nitrovery.com\")"])
     }
-    
+
+    @Test
+    func forwardsDriverReplyBeforeWebViewFinishesLoading() async throws {
+        let widget = try widget(id: "cockpit")
+        let driver = NitroRoomWidgetDriverMock()
+        let viewModel = NitroRoomWidgetsScreenViewModel(widgets: [widget], colorScheme: .dark) { driver }
+        defer { viewModel.stop() }
+        let destination = deferFulfillment(viewModel.context.observe(\.viewState.destination)) {
+            guard case .widget = $0 else { return false }
+            return true
+        }
+        let request = #"{"api":"fromWidget","action":"content_loaded"}"#
+        let response = #"{"api":"toWidget","action":"content_loaded","response":{}}"#
+        driver.onSend = { _ in driver.emit(response) }
+        viewModel.context.send(viewAction: .appeared)
+        try await destination.fulfill()
+        var evaluatedScripts = [String]()
+        await waitForConfirmation(timeout: .seconds(1)) { messageForwarded in
+            viewModel.context.send(viewAction: .widgetMessage(request) { script in
+                evaluatedScripts.append(script)
+                messageForwarded()
+            })
+        }
+        #expect(driver.sentMessages == [request])
+        #expect(evaluatedScripts == ["window.postMessage(\(response), \"https://pub-artifacts.nitrovery.com\")"])
+    }
+
     @Test
     func keepsDriverMessageQueuedWhenWebViewStopsDuringEvaluation() async throws {
         let widget = try widget(id: "cockpit")
@@ -209,7 +235,9 @@ struct NitroRoomWidgetsScreenViewModelTests {
             evaluatedScripts.append(script)
         })
         let message = #"{"api":"fromWidget","widgetId":"cockpit","requestId":"request","action":"org.matrix.msc2931.navigate","data":{"uri":"https://matrix.to/#/!room:example.org/$event:example.org"}}"#
-        viewModel.context.send(viewAction: .widgetMessage(message))
+        viewModel.context.send(viewAction: .widgetMessage(message) { script in
+            evaluatedScripts.append(script)
+        })
         try await navigation.fulfill()
         
         #expect(evaluatedScripts.count == 1)
@@ -312,7 +340,7 @@ struct NitroRoomWidgetPanelControllerTests {
 
 struct NitroRoomWidgetSessionStoreTests {
     @Test
-    func keepsSessionsScopedByRoomAndRemovesExplicitlyClosedOnes() {
+    func keepsSessionsScopedByRoomAndRemovesExplicitlyClosedOnes() throws {
         let store = NitroRoomWidgetSessionStore()
         let firstSession = NitroRoomWidgetSession(widgetID: "cockpit", layout: .expanded)
         let secondSession = NitroRoomWidgetSession(widgetID: nil, layout: .compact)
@@ -324,9 +352,44 @@ struct NitroRoomWidgetSessionStoreTests {
         #expect(store.session(for: "!second:example.org") == secondSession)
         
         store.removeSession(for: "!first:example.org")
-        
+
         #expect(store.session(for: "!first:example.org") == nil)
         #expect(store.session(for: "!second:example.org") == secondSession)
+        #expect(try store.primaryWidgetID(in: [widget(id: "cockpit"), widget(id: "catch-up")], for: "!first:example.org") == "cockpit")
+    }
+
+    @Test
+    func remembersExplicitlySelectedWidgetWithoutRestoringItsPanel() throws {
+        let store = NitroRoomWidgetSessionStore()
+
+        store.setPreferredWidgetID("catch-up", for: "!room:example.org")
+
+        #expect(store.session(for: "!room:example.org") == nil)
+        #expect(try store.primaryWidgetID(in: [widget(id: "cockpit"), widget(id: "catch-up")], for: "!room:example.org") == "catch-up")
+    }
+
+    @Test
+    func resolvesPrimaryWidgetFromHistoryOrAnUnambiguousList() throws {
+        let store = NitroRoomWidgetSessionStore()
+        let cockpit = try widget(id: "cockpit")
+        let catchUp = try widget(id: "catch-up")
+        let roomID = "!room:example.org"
+
+        #expect(store.primaryWidgetID(in: [cockpit], for: roomID) == cockpit.id)
+        #expect(store.primaryWidgetID(in: [cockpit, catchUp], for: roomID) == nil)
+
+        store.setPreferredWidgetID(catchUp.id, for: roomID)
+
+        #expect(store.primaryWidgetID(in: [cockpit, catchUp], for: roomID) == catchUp.id)
+        #expect(store.primaryWidgetID(in: [cockpit], for: roomID) == cockpit.id)
+    }
+
+    private func widget(id: String) throws -> NitroRoomWidget {
+        try .init(id: id,
+                  name: id,
+                  type: "com.nitrovery.c2m.\(id)",
+                  url: #require(URL(string: "https://pub-artifacts.nitrovery.com/\(id)")),
+                  waitForIframeLoad: false)
     }
 }
 
@@ -361,8 +424,12 @@ private final class NitroRoomWidgetDriverMock: NitroRoomWidgetDriverProtocol {
         sentMessages.append(message)
         onSendCompleted?(message)
     }
-    
+
     func stop() {
         stopCallCount += 1
+    }
+
+    func emit(_ message: String) {
+        messageSubject.send(message)
     }
 }

@@ -79,7 +79,9 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
         case .webViewFailed:
             guard let driverSessionID else { return }
             failCurrentWidget(sessionID: driverSessionID)
-        case .widgetMessage(let message):
+        case .widgetMessage(let message, let javaScriptEvaluator):
+            state.bindings.javaScriptEvaluator = javaScriptEvaluator
+            startDriverMessagePumpIfNeeded()
             handleWidgetMessage(message)
         }
     }

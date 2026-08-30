@@ -763,8 +763,9 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                     actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
                 case .presentNitroCatchUp(let roomID, let roomName):
                     presentNitroCatchUp(roomID: roomID, roomName: roomName)
-                case .presentNitroRoomWidgets(let widgets):
-                    presentNitroRoomWidgets(widgets)
+                case .presentNitroRoomWidgets(let widgets, let initialWidgetID):
+                    let session = initialWidgetID.map { NitroRoomWidgetSession(widgetID: $0, layout: .regular) }
+                    presentNitroRoomWidgets(widgets, restoring: session)
                 case .navigateFromNitroRoomWidget(let url):
                     guard let route = AppRouteURLParser(appSettings: flowParameters.appSettings).route(from: url) else { return }
                     handleNitroRoomWidgetRoute(route)
