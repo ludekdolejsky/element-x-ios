@@ -380,6 +380,100 @@ private final class NitroRoomWidgetScriptMessageHandler: NSObject, WKScriptMessa
     }
 }
 
+struct NitroRoomToolsMenuButton: View {
+    @Binding var isMenuPresented: Bool
+    let longPressAction: (() -> Void)?
+    
+    var body: some View {
+        ZStack {
+            CompoundIcon(\.overflowHorizontal)
+                .accessibilityHidden(true)
+            NitroRoomToolsMenuButtonRepresentable(tapAction: { isMenuPresented = true },
+                                                  longPressAction: longPressAction,
+                                                  accessibilityLabel: UntranslatedL10n.a11yRoomActionsIos,
+                                                  accessibilityLongPressLabel: UntranslatedL10n.screenNitroRoomWidgetsTitleIos)
+        }
+        .frame(width: 44, height: 44)
+    }
+}
+
+private struct NitroRoomToolsMenuButtonRepresentable: UIViewRepresentable {
+    let tapAction: () -> Void
+    let longPressAction: (() -> Void)?
+    let accessibilityLabel: String
+    let accessibilityLongPressLabel: String
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(tapAction: tapAction, longPressAction: longPressAction)
+    }
+    
+    func makeUIView(context: Context) -> UIButton {
+        let button = UIButton(type: .custom)
+        button.addTarget(context.coordinator, action: #selector(Coordinator.didTap), for: .touchUpInside)
+        button.accessibilityLabel = accessibilityLabel
+        button.accessibilityTraits = .button
+        
+        let longPressGestureRecognizer = UILongPressGestureRecognizer(target: context.coordinator,
+                                                                      action: #selector(Coordinator.didLongPress(_:)))
+        longPressGestureRecognizer.minimumPressDuration = 0.5
+        button.addGestureRecognizer(longPressGestureRecognizer)
+        context.coordinator.update(button: button,
+                                   tapAction: tapAction,
+                                   longPressAction: longPressAction,
+                                   accessibilityLongPressLabel: accessibilityLongPressLabel)
+        return button
+    }
+    
+    func updateUIView(_ button: UIButton, context: Context) {
+        context.coordinator.update(button: button,
+                                   tapAction: tapAction,
+                                   longPressAction: longPressAction,
+                                   accessibilityLongPressLabel: accessibilityLongPressLabel)
+        button.accessibilityLabel = accessibilityLabel
+    }
+    
+    final class Coordinator: NSObject {
+        private var tapAction: () -> Void
+        private var longPressAction: (() -> Void)?
+        
+        init(tapAction: @escaping () -> Void, longPressAction: (() -> Void)?) {
+            self.tapAction = tapAction
+            self.longPressAction = longPressAction
+        }
+        
+        func update(button: UIButton,
+                    tapAction: @escaping () -> Void,
+                    longPressAction: (() -> Void)?,
+                    accessibilityLongPressLabel: String) {
+            self.tapAction = tapAction
+            self.longPressAction = longPressAction
+            button.accessibilityCustomActions = if longPressAction == nil {
+                nil
+            } else {
+                [UIAccessibilityCustomAction(name: accessibilityLongPressLabel,
+                                             target: self,
+                                             selector: #selector(performAccessibilityLongPress))]
+            }
+        }
+        
+        @objc func didTap() {
+            tapAction()
+        }
+        
+        @objc func didLongPress(_ gestureRecognizer: UILongPressGestureRecognizer) {
+            guard gestureRecognizer.state == .began, let longPressAction else { return }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            longPressAction()
+        }
+        
+        @objc private func performAccessibilityLongPress() -> Bool {
+            guard let longPressAction else { return false }
+            longPressAction()
+            return true
+        }
+    }
+}
+
 // MARK: - Previews
 
 struct NitroRoomWidgetsScreen_Previews: PreviewProvider, TestablePreview {
