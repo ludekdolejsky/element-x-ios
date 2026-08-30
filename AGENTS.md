@@ -83,6 +83,14 @@ CI test commands:
 - Unit tests: `swift run tools ci unit-tests`
 - CI help: `swift run tools ci --help`
 
+### Nitro TestFlight
+
+- Build/sign/upload host: `eramac00.local`.
+- Archive with `Tools/Scripts/nitroTestFlightArchive.sh <build-number>` from an isolated release worktree.
+- Release DerivedData is persistent at `~/Library/Developer/Xcode/DerivedData/NitroElementXRelease`.
+- Never delete that directory or SwiftPM caches for routine disk cleanup. Remove old `~/Builds/ElementX-TestFlight/<build-number>` artifacts first.
+- Override paths with `NITRO_TESTFLIGHT_DERIVED_DATA_PATH` and `NITRO_TESTFLIGHT_BUILD_ROOT` when needed.
+
 ### Targets & Layout
 
 Key targets (each has `target.yml`):
