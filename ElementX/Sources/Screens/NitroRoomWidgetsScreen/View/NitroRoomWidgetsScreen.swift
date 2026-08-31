@@ -295,11 +295,13 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                 return
             }
             if message.name == Self.diagnosticsHandlerName {
-                diagnostics.handleJavaScriptMessage(body)
+                let phase = diagnostics.handleJavaScriptMessage(body)
+                if phase == "widget_api_ready" || phase == "authorization_ready" {
+                    stopWidgetAPIWatchdog()
+                }
                 return
             }
             guard message.name == Self.handlerName else { return }
-            stopWidgetAPIWatchdog()
             context.send(viewAction: .widgetMessage(body, javaScriptEvaluator: evaluateJavaScript))
         }
         

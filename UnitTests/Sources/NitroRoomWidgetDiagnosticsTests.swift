@@ -51,8 +51,9 @@ struct NitroRoomWidgetDiagnosticsTests {
                                                          url: #require(URL(string: "https://widgets.example.org/open")),
                                                          reporter: { reports.append($0) })
         
-        diagnostics.handleJavaScriptMessage(#"{"phase":"diagnostic_bridge_ready","elapsed_ms":0}"#)
+        let phase = diagnostics.handleJavaScriptMessage(#"{"phase":"diagnostic_bridge_ready","elapsed_ms":0}"#)
         
+        #expect(phase == "diagnostic_bridge_ready")
         #expect(reports.map(\.kind) == [.readiness])
         #expect(reports.map(\.phase) == ["diagnostic_bridge_ready"])
     }

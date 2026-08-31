@@ -74,11 +74,12 @@ final class NitroRoomWidgetDiagnostics {
         recordFailure(phase: "web_content_process_terminated")
     }
     
-    func handleJavaScriptMessage(_ body: String) {
+    @discardableResult
+    func handleJavaScriptMessage(_ body: String) -> String? {
         guard let data = body.data(using: .utf8),
               let report = try? JSONDecoder().decode(JavaScriptReport.self, from: data) else {
             recordFailure(phase: "diagnostic_payload_invalid")
-            return
+            return nil
         }
         
         switch report.phase {
@@ -87,7 +88,7 @@ final class NitroRoomWidgetDiagnostics {
                                 phase: report.phase,
                                 elapsedMilliseconds: report.elapsedMilliseconds))
         case "widget_api_ready", "authorization_ready":
-            guard hasReportedJavaScriptFailure, !hasReportedJavaScriptRecovery else { return }
+            guard hasReportedJavaScriptFailure, !hasReportedJavaScriptRecovery else { return report.phase }
             hasReportedJavaScriptRecovery = true
             reporter(makeReport(kind: .recovery,
                                 phase: report.phase,
@@ -108,6 +109,7 @@ final class NitroRoomWidgetDiagnostics {
                                 elapsedMilliseconds: report.elapsedMilliseconds,
                                 statusCode: report.statusCode))
         }
+        return report.phase
     }
     
     func recordNativeWidgetAPITimeout() {
