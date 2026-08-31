@@ -43,4 +43,39 @@ struct NitroRoomWidgetDiagnosticsTests {
         #expect(reports[0].errorDomain == NSURLErrorDomain)
         #expect(reports[0].errorCode == NSURLErrorTimedOut)
     }
+    
+    @Test
+    func reportsDiagnosticBridgeReadiness() throws {
+        var reports = [NitroRoomWidgetDiagnosticReport]()
+        let diagnostics = try NitroRoomWidgetDiagnostics(widgetID: "cockpit",
+                                                         url: #require(URL(string: "https://widgets.example.org/open")),
+                                                         reporter: { reports.append($0) })
+        
+        diagnostics.handleJavaScriptMessage(#"{"phase":"diagnostic_bridge_ready","elapsed_ms":0}"#)
+        
+        #expect(reports.map(\.kind) == [.readiness])
+        #expect(reports.map(\.phase) == ["diagnostic_bridge_ready"])
+    }
+    
+    @Test
+    func nativeWatchdogReportsOnlyWhenJavaScriptDidNotReportTheFailure() throws {
+        var reports = [NitroRoomWidgetDiagnosticReport]()
+        let diagnostics = try NitroRoomWidgetDiagnostics(widgetID: "cockpit",
+                                                         url: #require(URL(string: "https://widgets.example.org/open")),
+                                                         reporter: { reports.append($0) })
+        
+        diagnostics.recordNativeWidgetAPITimeout()
+        diagnostics.recordNativeWidgetAPITimeout()
+        
+        #expect(reports.map(\.phase) == ["native_widget_api_timeout"])
+        
+        reports.removeAll()
+        let javaScriptDiagnostics = try NitroRoomWidgetDiagnostics(widgetID: "cockpit",
+                                                                   url: #require(URL(string: "https://widgets.example.org/open")),
+                                                                   reporter: { reports.append($0) })
+        javaScriptDiagnostics.handleJavaScriptMessage(#"{"phase":"widget_api_timeout","attempt":1}"#)
+        javaScriptDiagnostics.recordNativeWidgetAPITimeout()
+        
+        #expect(reports.map(\.phase) == ["widget_api_timeout"])
+    }
 }

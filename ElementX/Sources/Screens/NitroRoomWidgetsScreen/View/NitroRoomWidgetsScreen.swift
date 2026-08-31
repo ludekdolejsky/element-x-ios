@@ -225,6 +225,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         private let allowedURL: URL
         private let diagnostics: NitroRoomWidgetDiagnostics
         private var loadedURL: URL?
+        private var widgetAPIWatchdogTask: Task<Void, Never>?
         let webView: WKWebView
         
         init(context: NitroRoomWidgetsScreenViewModel.Context, widget: NitroRoomWidget, allowedURL: URL) {
@@ -249,6 +250,9 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                     window.webkit.messageHandlers.\(Self.diagnosticsHandlerName).postMessage(JSON.stringify(detail));
                 }
             }, false);
+            window.dispatchEvent(new CustomEvent('nitro-widget-diagnostic', {
+                detail: { phase: 'diagnostic_bridge_ready', elapsed_ms: 0 }
+            }));
             """
             userContentController.addUserScript(.init(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
             
@@ -270,6 +274,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         }
         
         func stop() {
+            stopWidgetAPIWatchdog()
             context.send(viewAction: .webViewStopped)
             webView.stopLoading()
             webView.navigationDelegate = nil
@@ -294,6 +299,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                 return
             }
             guard message.name == Self.handlerName else { return }
+            stopWidgetAPIWatchdog()
             context.send(viewAction: .widgetMessage(body, javaScriptEvaluator: evaluateJavaScript))
         }
         
@@ -332,6 +338,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         }
         
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+            stopWidgetAPIWatchdog()
             context.send(viewAction: .webViewStopped)
         }
         
@@ -342,6 +349,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                 return
             }
             context.send(viewAction: .webViewReady(evaluateJavaScript))
+            startWidgetAPIWatchdog()
         }
         
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
@@ -365,10 +373,29 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         }
         
         private func handleNavigationFailure(_ error: any Error) {
+            stopWidgetAPIWatchdog()
             let error = error as NSError
             guard error.domain != NSURLErrorDomain || error.code != NSURLErrorCancelled else { return }
             diagnostics.recordNavigationFailure(phase: "navigation_failed", error: error)
             context.send(viewAction: .webViewFailed)
+        }
+        
+        private func startWidgetAPIWatchdog() {
+            stopWidgetAPIWatchdog()
+            widgetAPIWatchdogTask = Task { [weak self] in
+                do {
+                    try await Task.sleep(for: .seconds(25))
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                self?.diagnostics.recordNativeWidgetAPITimeout()
+            }
+        }
+        
+        private func stopWidgetAPIWatchdog() {
+            widgetAPIWatchdogTask?.cancel()
+            widgetAPIWatchdogTask = nil
         }
         
         private func evaluateJavaScript(_ script: String) async throws {

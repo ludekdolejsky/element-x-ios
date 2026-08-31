@@ -13,6 +13,7 @@ struct NitroRoomWidgetDiagnosticReport: Equatable {
     enum Kind: Equatable {
         case failure
         case recovery
+        case readiness
         case breadcrumb
     }
     
@@ -81,6 +82,10 @@ final class NitroRoomWidgetDiagnostics {
         }
         
         switch report.phase {
+        case "diagnostic_bridge_ready":
+            reporter(makeReport(kind: .readiness,
+                                phase: report.phase,
+                                elapsedMilliseconds: report.elapsedMilliseconds))
         case "widget_api_ready", "authorization_ready":
             guard hasReportedJavaScriptFailure, !hasReportedJavaScriptRecovery else { return }
             hasReportedJavaScriptRecovery = true
@@ -103,6 +108,11 @@ final class NitroRoomWidgetDiagnostics {
                                 elapsedMilliseconds: report.elapsedMilliseconds,
                                 statusCode: report.statusCode))
         }
+    }
+    
+    func recordNativeWidgetAPITimeout() {
+        guard !hasReportedJavaScriptFailure else { return }
+        recordFailure(phase: "native_widget_api_timeout")
     }
     
     private func recordFailure(phase: String,
@@ -153,7 +163,13 @@ final class NitroRoomWidgetDiagnostics {
         
         guard report.kind != .breadcrumb else { return }
         let event = Event(level: report.kind == .failure ? .warning : .info)
-        event.message = SentryMessage(formatted: report.kind == .failure ? "Nitro room widget failure" : "Nitro room widget recovered")
+        let message = switch report.kind {
+        case .failure: "Nitro room widget failure"
+        case .recovery: "Nitro room widget recovered"
+        case .readiness: "Nitro room widget diagnostics ready"
+        case .breadcrumb: "Nitro room widget breadcrumb"
+        }
+        event.message = SentryMessage(formatted: message)
         event.tags = [
             "nitro.widget.phase": report.phase,
             "nitro.widget.id": report.widgetID,
