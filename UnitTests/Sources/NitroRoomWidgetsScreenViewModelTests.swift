@@ -74,14 +74,16 @@ struct NitroRoomWidgetsScreenViewModelTests {
         
         viewModel.context.send(viewAction: .appeared)
         try await destination.fulfill()
+        let documentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(documentID))
         
         await waitForConfirmation(timeout: .seconds(1)) { firstMessageStarted in
             driver.onSendStarted = { message in
                 guard message == "first" else { return }
                 firstMessageStarted()
             }
-            viewModel.context.send(viewAction: .widgetMessage("first") { _ in })
-            viewModel.context.send(viewAction: .widgetMessage("second") { _ in })
+            viewModel.context.send(viewAction: .widgetMessage("first", documentID: documentID) { _ in })
+            viewModel.context.send(viewAction: .widgetMessage("second", documentID: documentID) { _ in })
         }
         #expect(driver.startedMessages == ["first"])
         
@@ -114,9 +116,11 @@ struct NitroRoomWidgetsScreenViewModelTests {
         viewModel.context.send(viewAction: .appeared)
         try await destination.fulfill()
         #expect(evaluatedScripts.isEmpty)
+        let documentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(documentID))
         
         await waitForConfirmation(timeout: .seconds(1)) { messageForwarded in
-            viewModel.context.send(viewAction: .webViewReady { script in
+            viewModel.context.send(viewAction: .webViewReady(documentID) { script in
                 evaluatedScripts.append(script)
                 messageForwarded()
             })
@@ -140,9 +144,11 @@ struct NitroRoomWidgetsScreenViewModelTests {
         driver.onSend = { _ in driver.emit(response) }
         viewModel.context.send(viewAction: .appeared)
         try await destination.fulfill()
+        let documentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(documentID))
         var evaluatedScripts = [String]()
         await waitForConfirmation(timeout: .seconds(1)) { messageForwarded in
-            viewModel.context.send(viewAction: .widgetMessage(request) { script in
+            viewModel.context.send(viewAction: .widgetMessage(request, documentID: documentID) { script in
                 evaluatedScripts.append(script)
                 messageForwarded()
             })
@@ -152,7 +158,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
     }
     
     @Test
-    func keepsDriverMessageQueuedWhenWebViewStopsDuringEvaluation() async throws {
+    func restartsDriverWhenWebViewStopsDuringEvaluation() async throws {
         let widget = try widget(id: "cockpit")
         let driver = NitroRoomWidgetDriverMock()
         let message = #"{"api":"toWidget","action":"capabilities"}"#
@@ -168,20 +174,24 @@ struct NitroRoomWidgetsScreenViewModelTests {
         
         viewModel.context.send(viewAction: .appeared)
         try await destination.fulfill()
+        let firstDocumentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(firstDocumentID))
         
         await waitForConfirmation(timeout: .seconds(1)) { evaluationStarted in
-            viewModel.context.send(viewAction: .webViewReady { script in
+            viewModel.context.send(viewAction: .webViewReady(firstDocumentID) { script in
                 evaluatedScripts.append(script)
                 evaluationStarted()
                 for await _ in blockedEvaluation { }
             })
         }
         
-        viewModel.context.send(viewAction: .webViewStopped)
+        viewModel.context.send(viewAction: .webViewStopped(firstDocumentID))
         blockedEvaluationContinuation.finish()
+        let secondDocumentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(secondDocumentID))
         
         await waitForConfirmation(timeout: .seconds(1)) { messageForwarded in
-            viewModel.context.send(viewAction: .webViewReady { script in
+            viewModel.context.send(viewAction: .webViewReady(secondDocumentID) { script in
                 evaluatedScripts.append(script)
                 messageForwarded()
             })
@@ -191,6 +201,128 @@ struct NitroRoomWidgetsScreenViewModelTests {
             "window.postMessage(\(message), \"https://pub-artifacts.nitrovery.com\")",
             "window.postMessage(\(message), \"https://pub-artifacts.nitrovery.com\")"
         ])
+        #expect(driver.restartCallCount == 1)
+    }
+
+    @Test
+    func restartsWidgetAPIHandshakeForANewWebViewDocument() async throws {
+        let widget = try widget(id: "cockpit")
+        let driver = NitroRoomWidgetDriverMock()
+        let handshake = #"{"api":"toWidget","action":"supported_api_versions"}"#
+        driver.messagesToEmitOnStart = [handshake]
+        let viewModel = NitroRoomWidgetsScreenViewModel(widgets: [widget], colorScheme: .dark) { driver }
+        defer { viewModel.stop() }
+        let destination = deferFulfillment(viewModel.context.observe(\.viewState.destination)) {
+            guard case .widget = $0 else { return false }
+            return true
+        }
+        var evaluatedScripts = [String]()
+
+        viewModel.context.send(viewAction: .appeared)
+        try await destination.fulfill()
+
+        let firstDocumentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(firstDocumentID))
+        await waitForConfirmation(timeout: .seconds(1)) { firstHandshake in
+            viewModel.context.send(viewAction: .webViewReady(firstDocumentID) { script in
+                evaluatedScripts.append(script)
+                firstHandshake()
+            })
+        }
+
+        let secondDocumentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(secondDocumentID))
+        await waitForConfirmation(timeout: .seconds(1)) { secondHandshake in
+            viewModel.context.send(viewAction: .webViewReady(secondDocumentID) { script in
+                evaluatedScripts.append(script)
+                secondHandshake()
+            })
+        }
+
+        #expect(driver.restartCallCount == 1)
+        #expect(evaluatedScripts == [
+            "window.postMessage(\(handshake), \"https://pub-artifacts.nitrovery.com\")",
+            "window.postMessage(\(handshake), \"https://pub-artifacts.nitrovery.com\")"
+        ])
+    }
+
+    @Test
+    func ignoresLifecycleCallbacksFromAnOldWebViewDocument() async throws {
+        let widget = try widget(id: "cockpit")
+        let driver = NitroRoomWidgetDriverMock()
+        let viewModel = NitroRoomWidgetsScreenViewModel(widgets: [widget], colorScheme: .dark) { driver }
+        defer { viewModel.stop() }
+        let expectedURL = try #require(URL(string: "https://pub-artifacts.nitrovery.com/open"))
+        let destination = deferFulfillment(viewModel.context.observe(\.viewState.destination)) {
+            $0 == .widget(widget, expectedURL)
+        }
+        viewModel.context.send(viewAction: .appeared)
+        try await destination.fulfill()
+        let oldDocumentID = NitroRoomWidgetDocumentID()
+        let activeDocumentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(oldDocumentID))
+        viewModel.context.send(viewAction: .webViewStarted(activeDocumentID))
+        let stopCallCount = driver.stopCallCount
+
+        viewModel.context.send(viewAction: .webViewStopped(oldDocumentID))
+        viewModel.context.send(viewAction: .webViewFailed(oldDocumentID))
+
+        #expect(viewModel.context.viewState.destination == .widget(widget, expectedURL))
+        #expect(driver.stopCallCount == stopCallCount)
+    }
+
+    @Test
+    func resetsNavigationCapabilityForANewWebViewDocument() async throws {
+        let widget = try widget(id: "cockpit")
+        let driver = NitroRoomWidgetDriverMock()
+        let viewModel = NitroRoomWidgetsScreenViewModel(widgets: [widget], colorScheme: .dark) { driver }
+        defer { viewModel.stop() }
+        let destination = deferFulfillment(viewModel.context.observe(\.viewState.destination)) {
+            guard case .widget = $0 else { return false }
+            return true
+        }
+        let capabilityResponse = #"{"api":"toWidget","action":"capabilities","response":{"capabilities":["org.matrix.msc2931.navigate"]}}"#
+        let notification = #"{"api":"toWidget","action":"notify_capabilities","data":{"requested":[],"approved":[]}}"#
+        var evaluatedScripts = [String]()
+        let javaScriptEvaluator: NitroRoomWidgetJavaScriptEvaluator = { script in
+            evaluatedScripts.append(script)
+            driver.onMessageEvaluated?()
+        }
+        viewModel.context.send(viewAction: .appeared)
+        try await destination.fulfill()
+        let firstDocumentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(firstDocumentID))
+        viewModel.context.send(viewAction: .webViewReady(firstDocumentID, javaScriptEvaluator))
+        await waitForConfirmation(timeout: .seconds(1)) { capabilitySent in
+            driver.onSendCompleted = { message in
+                guard message == capabilityResponse else { return }
+                capabilitySent()
+            }
+            viewModel.context.send(viewAction: .widgetMessage(capabilityResponse,
+                                                              documentID: firstDocumentID,
+                                                              javaScriptEvaluator: javaScriptEvaluator))
+        }
+        await waitForConfirmation(timeout: .seconds(1)) { notificationForwarded in
+            driver.onMessageEvaluated = {
+                driver.onMessageEvaluated = nil
+                notificationForwarded()
+            }
+            driver.emit(notification)
+        }
+        #expect(evaluatedScripts.last?.contains(NitroRoomWidgetNavigationBridge.capability) == true)
+
+        driver.messagesToEmitOnStart = [notification]
+        let secondDocumentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(secondDocumentID))
+        await waitForConfirmation(timeout: .seconds(1)) { notificationForwarded in
+            driver.onMessageEvaluated = {
+                driver.onMessageEvaluated = nil
+                notificationForwarded()
+            }
+            viewModel.context.send(viewAction: .webViewReady(secondDocumentID, javaScriptEvaluator))
+        }
+
+        #expect(evaluatedScripts.last?.contains(NitroRoomWidgetNavigationBridge.capability) == false)
     }
     
     @Test
@@ -206,7 +338,9 @@ struct NitroRoomWidgetsScreenViewModelTests {
         
         viewModel.context.send(viewAction: .appeared)
         try await destination.fulfill()
-        viewModel.context.send(viewAction: .webViewFailed)
+        let documentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(documentID))
+        viewModel.context.send(viewAction: .webViewFailed(documentID))
         
         #expect(viewModel.context.viewState.destination == .error(widget))
         #expect(driver.stopCallCount >= 1)
@@ -231,11 +365,13 @@ struct NitroRoomWidgetsScreenViewModelTests {
         
         viewModel.context.send(viewAction: .appeared)
         try await destination.fulfill()
-        viewModel.context.send(viewAction: .webViewReady { script in
+        let documentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(documentID))
+        viewModel.context.send(viewAction: .webViewReady(documentID) { script in
             evaluatedScripts.append(script)
         })
         let message = #"{"api":"fromWidget","widgetId":"cockpit","requestId":"request","action":"org.matrix.msc2931.navigate","data":{"uri":"https://matrix.to/#/!room:example.org/$event:example.org"}}"#
-        viewModel.context.send(viewAction: .widgetMessage(message) { script in
+        viewModel.context.send(viewAction: .widgetMessage(message, documentID: documentID) { script in
             evaluatedScripts.append(script)
         })
         try await navigation.fulfill()
@@ -428,9 +564,11 @@ private final class NitroRoomWidgetDriverMock: NitroRoomWidgetDriverProtocol {
     var startedMessages = [String]()
     var sentMessages = [String]()
     var stopCallCount = 0
+    var restartCallCount = 0
     var onSend: ((String) async -> Void)?
     var onSendStarted: ((String) -> Void)?
     var onSendCompleted: ((String) -> Void)?
+    var onMessageEvaluated: (() -> Void)?
     
     var messagePublisher: AnyPublisher<String, Never> {
         messageSubject.eraseToAnyPublisher()
@@ -453,6 +591,12 @@ private final class NitroRoomWidgetDriverMock: NitroRoomWidgetDriverProtocol {
         onSendCompleted?(message)
     }
     
+    func restart() -> Result<Void, NitroRoomWidgetDriverError> {
+        restartCallCount += 1
+        messagesToEmitOnStart.forEach(messageSubject.send)
+        return .success(())
+    }
+
     func stop() {
         stopCallCount += 1
     }

@@ -219,6 +219,24 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
     }
     
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        private struct ScriptMessage: Decodable {
+            enum Kind: String, Decodable {
+                case documentReady
+                case widget
+                case diagnostic
+            }
+
+            let documentID: NitroRoomWidgetDocumentID
+            let kind: Kind
+            let body: String?
+
+            enum CodingKeys: String, CodingKey {
+                case documentID = "document_id"
+                case kind
+                case body
+            }
+        }
+
         private static let handlerName = "widgetAction"
         private static let diagnosticsHandlerName = "widgetDiagnostics"
         private let context: NitroRoomWidgetsScreenViewModel.Context
@@ -230,6 +248,10 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         private var widgetMessagesReceived = 0
         private var driverScriptsStarted = 0
         private var driverScriptsCompleted = 0
+        private var documentID: NitroRoomWidgetDocumentID?
+        private var retiredDocumentIDs = Set<NitroRoomWidgetDocumentID>()
+        private var activeNavigation: WKNavigation?
+        private var documentIDsByNavigation = [ObjectIdentifier: NitroRoomWidgetDocumentID]()
         let webView: WKWebView
         
         init(context: NitroRoomWidgetsScreenViewModel.Context, widget: NitroRoomWidget, allowedURL: URL) {
@@ -239,19 +261,28 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
             
             let userContentController = WKUserContentController()
             let script = """
+            const nitroDocumentID = crypto.randomUUID();
+            const postNitroMessage = function(handler, kind, body) {
+                handler.postMessage(JSON.stringify({
+                    document_id: nitroDocumentID,
+                    kind: kind,
+                    body: body
+                }));
+            };
+            postNitroMessage(window.webkit.messageHandlers.\(Self.handlerName), 'documentReady');
             window.addEventListener('message', function(event) {
                 if (event.source !== window || event.origin !== window.location.origin) {
                     return;
                 }
                 const data = event.data;
                 if ((data.response && data.api === 'toWidget') || (!data.response && data.api === 'fromWidget')) {
-                    window.webkit.messageHandlers.\(Self.handlerName).postMessage(JSON.stringify(data));
+                    postNitroMessage(window.webkit.messageHandlers.\(Self.handlerName), 'widget', JSON.stringify(data));
                 }
             }, false);
             window.addEventListener('nitro-widget-diagnostic', function(event) {
                 const detail = event.detail;
                 if (detail && typeof detail === 'object') {
-                    window.webkit.messageHandlers.\(Self.diagnosticsHandlerName).postMessage(JSON.stringify(detail));
+                    postNitroMessage(window.webkit.messageHandlers.\(Self.diagnosticsHandlerName), 'diagnostic', JSON.stringify(detail));
                 }
             }, false);
             window.dispatchEvent(new CustomEvent('nitro-widget-diagnostic', {
@@ -279,7 +310,13 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         
         func stop() {
             stopWidgetAPIWatchdog()
-            context.send(viewAction: .webViewStopped)
+            if let documentID {
+                retiredDocumentIDs.insert(documentID)
+                context.send(viewAction: .webViewStopped(documentID))
+            }
+            documentID = nil
+            activeNavigation = nil
+            documentIDsByNavigation.removeAll()
             webView.stopLoading()
             webView.navigationDelegate = nil
             webView.configuration.userContentController.removeScriptMessageHandler(forName: Self.handlerName)
@@ -295,25 +332,35 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard message.frameInfo.isMainFrame,
                   isAllowed(message.frameInfo.securityOrigin),
-                  let body = message.body as? String else {
+                  let encodedMessage = message.body as? String,
+                  let data = encodedMessage.data(using: .utf8),
+                  let scriptMessage = try? JSONDecoder().decode(ScriptMessage.self, from: data) else {
                 return
             }
-            if message.name == Self.diagnosticsHandlerName {
+            if scriptMessage.kind == .documentReady, message.name == Self.handlerName {
+                startDocument(scriptMessage.documentID)
+                return
+            }
+            guard documentID == scriptMessage.documentID,
+                  let body = scriptMessage.body else { return }
+            if scriptMessage.kind == .diagnostic, message.name == Self.diagnosticsHandlerName {
                 let phase = diagnostics.handleJavaScriptMessage(body, bridgeState: bridgeState)
                 if phase == "widget_api_ready" || phase == "authorization_ready" {
                     stopWidgetAPIWatchdog()
                 }
                 return
             }
-            guard message.name == Self.handlerName else { return }
+            guard scriptMessage.kind == .widget, message.name == Self.handlerName else { return }
             widgetMessagesReceived += 1
-            context.send(viewAction: .widgetMessage(body, javaScriptEvaluator: evaluateJavaScript))
+            context.send(viewAction: .widgetMessage(body,
+                                                    documentID: scriptMessage.documentID,
+                                                    javaScriptEvaluator: javaScriptEvaluator(for: scriptMessage.documentID)))
         }
         
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
             guard let url = navigationAction.request.url else {
                 diagnostics.recordHTTPFailure(statusCode: nil)
-                context.send(viewAction: .webViewFailed)
+                context.send(viewAction: .webViewFailed(documentID))
                 return .cancel
             }
             if navigationAction.targetFrame?.isMainFrame == false {
@@ -328,7 +375,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
             if navigationAction.navigationType == .linkActivated {
                 await UIApplication.shared.open(url)
             } else {
-                context.send(viewAction: .webViewFailed)
+                context.send(viewAction: .webViewFailed(documentID))
             }
             return .cancel
         }
@@ -338,7 +385,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
             guard let response = navigationResponse.response as? HTTPURLResponse,
                   (200..<400).contains(response.statusCode) else {
                 diagnostics.recordHTTPFailure(statusCode: (navigationResponse.response as? HTTPURLResponse)?.statusCode)
-                context.send(viewAction: .webViewFailed)
+                context.send(viewAction: .webViewFailed(documentID))
                 return .cancel
             }
             return .allow
@@ -346,34 +393,44 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
             stopWidgetAPIWatchdog()
+            activeNavigation = navigation
+            if let documentID {
+                retiredDocumentIDs.insert(documentID)
+                context.send(viewAction: .webViewStopped(documentID))
+            }
+            documentID = nil
             documentSequence += 1
             widgetMessagesReceived = 0
             driverScriptsStarted = 0
             driverScriptsCompleted = 0
-            context.send(viewAction: .webViewStopped)
         }
         
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard let documentID = documentID(for: navigation), self.documentID == documentID else { return }
+            documentIDsByNavigation.removeValue(forKey: ObjectIdentifier(navigation))
+            activeNavigation = nil
             guard let url = webView.url, NitroRoomWidgetOrigin(url: allowedURL)?.matches(url) == true else {
                 diagnostics.recordHTTPFailure(statusCode: nil)
-                context.send(viewAction: .webViewFailed)
+                context.send(viewAction: .webViewFailed(documentID))
                 return
             }
-            context.send(viewAction: .webViewReady(evaluateJavaScript))
+            context.send(viewAction: .webViewReady(documentID, javaScriptEvaluator(for: documentID)))
             startWidgetAPIWatchdog()
         }
         
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
-            handleNavigationFailure(error)
+            handleNavigationFailure(error, documentID: documentID(for: navigation))
+            documentIDsByNavigation.removeValue(forKey: ObjectIdentifier(navigation))
         }
         
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
-            handleNavigationFailure(error)
+            handleNavigationFailure(error, documentID: documentID(for: navigation))
+            documentIDsByNavigation.removeValue(forKey: ObjectIdentifier(navigation))
         }
         
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             diagnostics.recordWebContentProcessTermination()
-            context.send(viewAction: .webViewFailed)
+            context.send(viewAction: .webViewFailed(documentID))
         }
         
         private func isAllowed(_ securityOrigin: WKSecurityOrigin) -> Bool {
@@ -383,12 +440,29 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                                          port: securityOrigin.port)
         }
         
-        private func handleNavigationFailure(_ error: any Error) {
+        private func handleNavigationFailure(_ error: any Error, documentID: NitroRoomWidgetDocumentID?) {
             stopWidgetAPIWatchdog()
             let error = error as NSError
             guard error.domain != NSURLErrorDomain || error.code != NSURLErrorCancelled else { return }
             diagnostics.recordNavigationFailure(phase: "navigation_failed", error: error)
-            context.send(viewAction: .webViewFailed)
+            context.send(viewAction: .webViewFailed(documentID))
+        }
+
+        private func startDocument(_ documentID: NitroRoomWidgetDocumentID) {
+            guard !retiredDocumentIDs.contains(documentID), self.documentID != documentID else { return }
+            if let currentDocumentID = self.documentID {
+                retiredDocumentIDs.insert(currentDocumentID)
+                context.send(viewAction: .webViewStopped(currentDocumentID))
+            }
+            self.documentID = documentID
+            if let activeNavigation {
+                documentIDsByNavigation[ObjectIdentifier(activeNavigation)] = documentID
+            }
+            context.send(viewAction: .webViewStarted(documentID))
+        }
+
+        private func documentID(for navigation: WKNavigation) -> NitroRoomWidgetDocumentID? {
+            documentIDsByNavigation[ObjectIdentifier(navigation)]
         }
         
         private func startWidgetAPIWatchdog() {
@@ -410,11 +484,19 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
             widgetAPIWatchdogTask = nil
         }
         
-        private func evaluateJavaScript(_ script: String) async throws {
+        private func javaScriptEvaluator(for documentID: NitroRoomWidgetDocumentID) -> NitroRoomWidgetJavaScriptEvaluator {
+            { [weak self] script in
+                guard let self else { return }
+                try await evaluateJavaScript(script, documentID: documentID)
+            }
+        }
+
+        private func evaluateJavaScript(_ script: String, documentID: NitroRoomWidgetDocumentID) async throws {
+            guard self.documentID == documentID else { throw CancellationError() }
             driverScriptsStarted += 1
-            try await withCheckedThrowingContinuation { [weak self] continuation in
+            try await withCheckedThrowingContinuation { [weak self] (continuation: CheckedContinuation<Void, any Error>) in
                 guard let self else {
-                    continuation.resume()
+                    continuation.resume(throwing: CancellationError())
                     return
                 }
                 webView.evaluateJavaScript(script) { _, error in
@@ -426,6 +508,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                     }
                 }
             }
+            guard self.documentID == documentID else { throw CancellationError() }
         }
         
         private var bridgeState: NitroRoomWidgetBridgeState {

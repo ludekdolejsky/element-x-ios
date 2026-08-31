@@ -10,6 +10,7 @@ import CoreGraphics
 import Foundation
 
 typealias NitroRoomWidgetJavaScriptEvaluator = (String) async throws -> Void
+typealias NitroRoomWidgetDocumentID = UUID
 
 enum NitroRoomWidgetsScreenViewModelAction {
     case dismiss
@@ -22,10 +23,11 @@ enum NitroRoomWidgetsScreenViewAction {
     case dismiss
     case select(NitroRoomWidget)
     case retry
-    case webViewReady(NitroRoomWidgetJavaScriptEvaluator)
-    case webViewStopped
-    case webViewFailed
-    case widgetMessage(String, javaScriptEvaluator: NitroRoomWidgetJavaScriptEvaluator)
+    case webViewStarted(NitroRoomWidgetDocumentID)
+    case webViewReady(NitroRoomWidgetDocumentID, NitroRoomWidgetJavaScriptEvaluator)
+    case webViewStopped(NitroRoomWidgetDocumentID)
+    case webViewFailed(NitroRoomWidgetDocumentID?)
+    case widgetMessage(String, documentID: NitroRoomWidgetDocumentID, javaScriptEvaluator: NitroRoomWidgetJavaScriptEvaluator)
 }
 
 enum NitroRoomWidgetsScreenDestination: Equatable, Sendable {

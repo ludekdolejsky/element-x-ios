@@ -16,6 +16,12 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
     private struct PendingDriverMessage {
         let body: String
         let navigationURL: URL?
+        let documentID: NitroRoomWidgetDocumentID?
+    }
+
+    private struct PendingWidgetMessage {
+        let body: String
+        let documentID: NitroRoomWidgetDocumentID
     }
     
     private let driverFactory: () -> NitroRoomWidgetDriverProtocol?
@@ -24,9 +30,11 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
     private var driver: NitroRoomWidgetDriverProtocol?
     private var driverMessageCancellable: AnyCancellable?
     private var pendingDriverMessages = [PendingDriverMessage]()
-    private var pendingWidgetMessages = [String]()
+    private var pendingWidgetMessages = [PendingWidgetMessage]()
     private var driverSessionID: UUID?
     private var driverMessagePumpID: UUID?
+    private var activeDocumentID: NitroRoomWidgetDocumentID?
+    private var hasStartedWebViewDocument = false
     private var navigationCapabilityRequested = false
     
     @CancellableTask private var startTask: Task<Void, Never>?
@@ -69,20 +77,29 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
         case .retry:
             guard case .error(let widget) = state.destination else { return }
             start(widget)
-        case .webViewReady(let javaScriptEvaluator):
+        case .webViewStarted(let documentID):
+            startWebViewDocument(documentID)
+        case .webViewReady(let documentID, let javaScriptEvaluator):
+            guard activeDocumentID == documentID else { return }
             state.bindings.javaScriptEvaluator = javaScriptEvaluator
             startDriverMessagePumpIfNeeded()
-        case .webViewStopped:
+        case .webViewStopped(let documentID):
+            guard activeDocumentID == documentID else { return }
+            activeDocumentID = nil
             state.bindings.javaScriptEvaluator = nil
             driverMessagePumpID = nil
             driverMessageTask = nil
-        case .webViewFailed:
+            widgetMessageTask = nil
+            pendingWidgetMessages.removeAll()
+        case .webViewFailed(let documentID):
+            guard activeDocumentID == documentID else { return }
             guard let driverSessionID else { return }
             failCurrentWidget(sessionID: driverSessionID)
-        case .widgetMessage(let message, let javaScriptEvaluator):
+        case .widgetMessage(let message, let documentID, let javaScriptEvaluator):
+            guard activeDocumentID == documentID else { return }
             state.bindings.javaScriptEvaluator = javaScriptEvaluator
             startDriverMessagePumpIfNeeded()
-            handleWidgetMessage(message)
+            handleWidgetMessage(message, documentID: documentID)
         }
     }
     
@@ -94,6 +111,8 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
         widgetMessageTask = nil
         pendingDriverMessages.removeAll()
         pendingWidgetMessages.removeAll()
+        activeDocumentID = nil
+        hasStartedWebViewDocument = false
         navigationCapabilityRequested = false
         driverSessionID = nil
         driver?.stop()
@@ -111,9 +130,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
         self.driver = driver
         let driverSessionID = UUID()
         self.driverSessionID = driverSessionID
-        driverMessageCancellable = driver.messagePublisher.sink { [weak self] message in
-            self?.enqueueDriverMessage(message, sessionID: driverSessionID)
-        }
+        subscribeToDriver(driver, sessionID: driverSessionID)
         
         startTask = Task { [weak self, driver, colorScheme] in
             let result = await driver.start(widget: widget, colorScheme: colorScheme)
@@ -147,11 +164,11 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
         
         let body = NitroRoomWidgetNavigationBridge.addingNavigationSupport(to: message,
                                                                            capabilityRequested: navigationCapabilityRequested)
-        pendingDriverMessages.append(.init(body: body, navigationURL: navigationURL))
+        pendingDriverMessages.append(.init(body: body, navigationURL: navigationURL, documentID: activeDocumentID))
         startDriverMessagePumpIfNeeded()
     }
     
-    private func handleWidgetMessage(_ message: String) {
+    private func handleWidgetMessage(_ message: String, documentID: NitroRoomWidgetDocumentID) {
         guard let driverSessionID else { return }
         if let request = NitroRoomWidgetNavigationBridge.navigationRequest(from: message) {
             enqueueDriverMessage(request.response, sessionID: driverSessionID, navigationURL: request.url)
@@ -161,7 +178,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
         if NitroRoomWidgetNavigationBridge.requestsNavigationCapability(message) {
             navigationCapabilityRequested = true
         }
-        enqueueWidgetMessage(message)
+        enqueueWidgetMessage(message, documentID: documentID)
     }
     
     private func startDriverMessagePumpIfNeeded() {
@@ -184,10 +201,17 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
               driverSessionID == sessionID,
               driverMessagePumpID == pumpID,
               let javaScriptEvaluator = state.bindings.javaScriptEvaluator,
+              let activeDocumentID,
               !pendingDriverMessages.isEmpty {
             let message = pendingDriverMessages[0]
+            guard message.documentID == activeDocumentID else {
+                pendingDriverMessages.removeFirst()
+                continue
+            }
             let wasPosted = await postToWidget(message.body, using: javaScriptEvaluator)
-            guard driverSessionID == sessionID, driverMessagePumpID == pumpID else { return }
+            guard driverSessionID == sessionID,
+                  driverMessagePumpID == pumpID,
+                  self.activeDocumentID == activeDocumentID else { return }
             guard wasPosted else {
                 failCurrentWidget(sessionID: sessionID)
                 return
@@ -203,7 +227,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
         driverMessageTask = nil
     }
     
-    private func enqueueWidgetMessage(_ message: String) {
+    private func enqueueWidgetMessage(_ message: String, documentID: NitroRoomWidgetDocumentID) {
         guard let driverSessionID else { return }
         guard pendingWidgetMessages.count < Self.maximumPendingMessageCount else {
             MXLog.error("Nitro room widget message queue exceeded its limit.")
@@ -211,7 +235,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
             return
         }
         
-        pendingWidgetMessages.append(message)
+        pendingWidgetMessages.append(.init(body: message, documentID: documentID))
         guard widgetMessageTask == nil, let driver else { return }
         widgetMessageTask = Task { [weak self, driver] in
             await self?.sendWidgetMessages(to: driver, sessionID: driverSessionID)
@@ -219,15 +243,65 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
     }
     
     private func sendWidgetMessages(to driver: NitroRoomWidgetDriverProtocol, sessionID: UUID) async {
-        while !Task.isCancelled, driverSessionID == sessionID, !pendingWidgetMessages.isEmpty {
-            let message = pendingWidgetMessages.removeFirst()
-            await driver.send(message)
+        while !Task.isCancelled,
+              driverSessionID == sessionID,
+              let activeDocumentID,
+              !pendingWidgetMessages.isEmpty {
+            let message = pendingWidgetMessages[0]
+            guard message.documentID == activeDocumentID else {
+                pendingWidgetMessages.removeFirst()
+                continue
+            }
+            await driver.send(message.body)
+            guard !Task.isCancelled,
+                  driverSessionID == sessionID,
+                  self.activeDocumentID == activeDocumentID else { return }
+            pendingWidgetMessages.removeFirst()
         }
         
         guard driverSessionID == sessionID else { return }
         widgetMessageTask = nil
     }
     
+    private func startWebViewDocument(_ documentID: NitroRoomWidgetDocumentID) {
+        let shouldRestartDriver = hasStartedWebViewDocument
+        hasStartedWebViewDocument = true
+        activeDocumentID = documentID
+        navigationCapabilityRequested = false
+        state.bindings.javaScriptEvaluator = nil
+        driverMessagePumpID = nil
+        driverMessageTask = nil
+        widgetMessageTask = nil
+        pendingWidgetMessages.removeAll()
+
+        if shouldRestartDriver {
+            pendingDriverMessages.removeAll()
+            restartDriver()
+        } else {
+            pendingDriverMessages = pendingDriverMessages.map {
+                .init(body: $0.body, navigationURL: $0.navigationURL, documentID: documentID)
+            }
+        }
+    }
+
+    private func restartDriver() {
+        guard let driver else { return }
+        driverMessageCancellable = nil
+        let sessionID = UUID()
+        driverSessionID = sessionID
+        subscribeToDriver(driver, sessionID: sessionID)
+        guard case .success = driver.restart() else {
+            failCurrentWidget(sessionID: sessionID)
+            return
+        }
+    }
+
+    private func subscribeToDriver(_ driver: NitroRoomWidgetDriverProtocol, sessionID: UUID) {
+        driverMessageCancellable = driver.messagePublisher.sink { [weak self] message in
+            self?.enqueueDriverMessage(message, sessionID: sessionID)
+        }
+    }
+
     private func failCurrentWidget(sessionID: UUID) {
         guard driverSessionID == sessionID else { return }
         let widget: NitroRoomWidget
@@ -255,6 +329,8 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
         do {
             try await javaScriptEvaluator("window.postMessage(\(message), \(originLiteral))")
             return true
+        } catch is CancellationError {
+            return false
         } catch {
             MXLog.error("Failed forwarding a message to a Nitro room widget: \(error)")
             return false
