@@ -226,6 +226,10 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         private let diagnostics: NitroRoomWidgetDiagnostics
         private var loadedURL: URL?
         private var widgetAPIWatchdogTask: Task<Void, Never>?
+        private var documentSequence = 0
+        private var widgetMessagesReceived = 0
+        private var driverScriptsStarted = 0
+        private var driverScriptsCompleted = 0
         let webView: WKWebView
         
         init(context: NitroRoomWidgetsScreenViewModel.Context, widget: NitroRoomWidget, allowedURL: URL) {
@@ -295,13 +299,14 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                 return
             }
             if message.name == Self.diagnosticsHandlerName {
-                let phase = diagnostics.handleJavaScriptMessage(body)
+                let phase = diagnostics.handleJavaScriptMessage(body, bridgeState: bridgeState)
                 if phase == "widget_api_ready" || phase == "authorization_ready" {
                     stopWidgetAPIWatchdog()
                 }
                 return
             }
             guard message.name == Self.handlerName else { return }
+            widgetMessagesReceived += 1
             context.send(viewAction: .widgetMessage(body, javaScriptEvaluator: evaluateJavaScript))
         }
         
@@ -341,6 +346,10 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
             stopWidgetAPIWatchdog()
+            documentSequence += 1
+            widgetMessagesReceived = 0
+            driverScriptsStarted = 0
+            driverScriptsCompleted = 0
             context.send(viewAction: .webViewStopped)
         }
         
@@ -391,7 +400,8 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                     return
                 }
                 guard !Task.isCancelled else { return }
-                self?.diagnostics.recordNativeWidgetAPITimeout()
+                guard let self else { return }
+                diagnostics.recordNativeWidgetAPITimeout(bridgeState: bridgeState)
             }
         }
         
@@ -401,6 +411,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
         }
         
         private func evaluateJavaScript(_ script: String) async throws {
+            driverScriptsStarted += 1
             try await withCheckedThrowingContinuation { [weak self] continuation in
                 guard let self else {
                     continuation.resume()
@@ -410,10 +421,18 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                     if let error {
                         continuation.resume(throwing: error)
                     } else {
+                        self.driverScriptsCompleted += 1
                         continuation.resume()
                     }
                 }
             }
+        }
+        
+        private var bridgeState: NitroRoomWidgetBridgeState {
+            .init(documentSequence: documentSequence,
+                  widgetMessagesReceived: widgetMessagesReceived,
+                  driverScriptsStarted: driverScriptsStarted,
+                  driverScriptsCompleted: driverScriptsCompleted)
         }
     }
 }

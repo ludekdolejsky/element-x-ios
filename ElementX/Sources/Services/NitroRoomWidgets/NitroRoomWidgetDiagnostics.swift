@@ -9,6 +9,26 @@ import Foundation
 import Sentry
 import UIKit
 
+struct NitroRoomWidgetBridgeState: Equatable {
+    let documentSequence: Int
+    let widgetMessagesReceived: Int
+    let driverScriptsStarted: Int
+    let driverScriptsCompleted: Int
+    
+    var stage: String {
+        if widgetMessagesReceived == 0 {
+            return "no_widget_message"
+        }
+        if driverScriptsStarted == 0 {
+            return "no_driver_reply"
+        }
+        if driverScriptsCompleted == 0 {
+            return "driver_reply_evaluation_failed"
+        }
+        return "driver_reply_posted_no_ready"
+    }
+}
+
 struct NitroRoomWidgetDiagnosticReport: Equatable {
     enum Kind: Equatable {
         case failure
@@ -28,6 +48,7 @@ struct NitroRoomWidgetDiagnosticReport: Equatable {
     let errorCode: Int?
     let statusCode: Int?
     let applicationState: String
+    let bridgeState: NitroRoomWidgetBridgeState?
 }
 
 final class NitroRoomWidgetDiagnostics {
@@ -75,10 +96,10 @@ final class NitroRoomWidgetDiagnostics {
     }
     
     @discardableResult
-    func handleJavaScriptMessage(_ body: String) -> String? {
+    func handleJavaScriptMessage(_ body: String, bridgeState: NitroRoomWidgetBridgeState? = nil) -> String? {
         guard let data = body.data(using: .utf8),
               let report = try? JSONDecoder().decode(JavaScriptReport.self, from: data) else {
-            recordFailure(phase: "diagnostic_payload_invalid")
+            recordFailure(phase: "diagnostic_payload_invalid", bridgeState: bridgeState)
             return nil
         }
         
@@ -86,14 +107,16 @@ final class NitroRoomWidgetDiagnostics {
         case "diagnostic_bridge_ready":
             reporter(makeReport(kind: .readiness,
                                 phase: report.phase,
-                                elapsedMilliseconds: report.elapsedMilliseconds))
+                                elapsedMilliseconds: report.elapsedMilliseconds,
+                                bridgeState: bridgeState))
         case "widget_api_ready", "authorization_ready":
             guard hasReportedJavaScriptFailure, !hasReportedJavaScriptRecovery else { return report.phase }
             hasReportedJavaScriptRecovery = true
             reporter(makeReport(kind: .recovery,
                                 phase: report.phase,
                                 attempt: report.attempt,
-                                elapsedMilliseconds: report.elapsedMilliseconds))
+                                elapsedMilliseconds: report.elapsedMilliseconds,
+                                bridgeState: bridgeState))
         case "widget_api_timeout", "widget_api_library_missing", "authorization_failed":
             let isFirstFailure = !hasReportedJavaScriptFailure
             hasReportedJavaScriptFailure = true
@@ -101,32 +124,36 @@ final class NitroRoomWidgetDiagnostics {
                                 phase: report.phase,
                                 attempt: report.attempt,
                                 elapsedMilliseconds: report.elapsedMilliseconds,
-                                statusCode: report.statusCode))
+                                statusCode: report.statusCode,
+                                bridgeState: bridgeState))
         default:
             reporter(makeReport(kind: .breadcrumb,
                                 phase: report.phase,
                                 attempt: report.attempt,
                                 elapsedMilliseconds: report.elapsedMilliseconds,
-                                statusCode: report.statusCode))
+                                statusCode: report.statusCode,
+                                bridgeState: bridgeState))
         }
         return report.phase
     }
     
-    func recordNativeWidgetAPITimeout() {
+    func recordNativeWidgetAPITimeout(bridgeState: NitroRoomWidgetBridgeState? = nil) {
         guard !hasReportedJavaScriptFailure else { return }
-        recordFailure(phase: "native_widget_api_timeout")
+        recordFailure(phase: "native_widget_api_timeout", bridgeState: bridgeState)
     }
     
     private func recordFailure(phase: String,
                                errorDomain: String? = nil,
                                errorCode: Int? = nil,
-                               statusCode: Int? = nil) {
+                               statusCode: Int? = nil,
+                               bridgeState: NitroRoomWidgetBridgeState? = nil) {
         guard reportedFailurePhases.insert(phase).inserted else { return }
         reporter(makeReport(kind: .failure,
                             phase: phase,
                             errorDomain: errorDomain,
                             errorCode: errorCode,
-                            statusCode: statusCode))
+                            statusCode: statusCode,
+                            bridgeState: bridgeState))
     }
     
     private func makeReport(kind: NitroRoomWidgetDiagnosticReport.Kind,
@@ -135,7 +162,8 @@ final class NitroRoomWidgetDiagnostics {
                             elapsedMilliseconds: Int? = nil,
                             errorDomain: String? = nil,
                             errorCode: Int? = nil,
-                            statusCode: Int? = nil) -> NitroRoomWidgetDiagnosticReport {
+                            statusCode: Int? = nil,
+                            bridgeState: NitroRoomWidgetBridgeState? = nil) -> NitroRoomWidgetDiagnosticReport {
         let applicationState = switch UIApplication.shared.applicationState {
         case .active: "active"
         case .inactive: "inactive"
@@ -152,7 +180,8 @@ final class NitroRoomWidgetDiagnostics {
                      errorDomain: errorDomain,
                      errorCode: errorCode,
                      statusCode: statusCode,
-                     applicationState: applicationState)
+                     applicationState: applicationState,
+                     bridgeState: bridgeState)
     }
     
     private static func reportToSentry(_ report: NitroRoomWidgetDiagnosticReport) {
@@ -176,8 +205,11 @@ final class NitroRoomWidgetDiagnostics {
             "nitro.widget.phase": report.phase,
             "nitro.widget.id": report.widgetID,
             "nitro.widget.origin": report.origin,
-            "nitro.widget.app_state": report.applicationState
+            "nitro.widget.app_state": report.applicationState,
+            "nitro.widget.session": report.sessionID
         ]
+        event.tags?["nitro.widget.bridge_stage"] = report.bridgeState?.stage
+        event.tags?["nitro.widget.document"] = report.bridgeState.map { String($0.documentSequence) }
         event.extra = sentryData(for: report)
         SentrySDK.capture(event: event)
     }
@@ -192,6 +224,11 @@ final class NitroRoomWidgetDiagnostics {
         data["error_domain"] = report.errorDomain
         data["error_code"] = report.errorCode
         data["status_code"] = report.statusCode
+        data["bridge_stage"] = report.bridgeState?.stage
+        data["document_sequence"] = report.bridgeState?.documentSequence
+        data["widget_messages_received"] = report.bridgeState?.widgetMessagesReceived
+        data["driver_scripts_started"] = report.bridgeState?.driverScriptsStarted
+        data["driver_scripts_completed"] = report.bridgeState?.driverScriptsCompleted
         return data
     }
 }

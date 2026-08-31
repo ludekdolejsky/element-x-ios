@@ -16,8 +16,13 @@ struct NitroRoomWidgetDiagnosticsTests {
         let diagnostics = try NitroRoomWidgetDiagnostics(widgetID: "cockpit",
                                                          url: #require(URL(string: "https://widgets.example.org/open?token=secret")),
                                                          reporter: { reports.append($0) })
+        let bridgeState = NitroRoomWidgetBridgeState(documentSequence: 2,
+                                                     widgetMessagesReceived: 1,
+                                                     driverScriptsStarted: 0,
+                                                     driverScriptsCompleted: 0)
         
-        diagnostics.handleJavaScriptMessage(#"{"phase":"widget_api_timeout","attempt":1,"elapsed_ms":20001}"#)
+        diagnostics.handleJavaScriptMessage(#"{"phase":"widget_api_timeout","attempt":1,"elapsed_ms":20001}"#,
+                                            bridgeState: bridgeState)
         diagnostics.handleJavaScriptMessage(#"{"phase":"widget_api_timeout","attempt":2,"elapsed_ms":45002}"#)
         diagnostics.handleJavaScriptMessage(#"{"phase":"widget_api_ready","attempt":3,"elapsed_ms":50123}"#)
         
@@ -25,6 +30,8 @@ struct NitroRoomWidgetDiagnosticsTests {
         #expect(reports.map(\.attempt) == [1, 2, 3])
         #expect(reports[0].origin == "https://widgets.example.org")
         #expect(!reports[0].origin.contains("secret"))
+        #expect(reports[0].bridgeState == bridgeState)
+        #expect(reports[0].bridgeState?.stage == "no_driver_reply")
         #expect(reports[2].elapsedMilliseconds == 50123)
     }
     
@@ -50,12 +57,18 @@ struct NitroRoomWidgetDiagnosticsTests {
         let diagnostics = try NitroRoomWidgetDiagnostics(widgetID: "cockpit",
                                                          url: #require(URL(string: "https://widgets.example.org/open")),
                                                          reporter: { reports.append($0) })
+        let bridgeState = NitroRoomWidgetBridgeState(documentSequence: 3,
+                                                     widgetMessagesReceived: 0,
+                                                     driverScriptsStarted: 0,
+                                                     driverScriptsCompleted: 0)
         
-        let phase = diagnostics.handleJavaScriptMessage(#"{"phase":"diagnostic_bridge_ready","elapsed_ms":0}"#)
+        let phase = diagnostics.handleJavaScriptMessage(#"{"phase":"diagnostic_bridge_ready","elapsed_ms":0}"#,
+                                                        bridgeState: bridgeState)
         
         #expect(phase == "diagnostic_bridge_ready")
         #expect(reports.map(\.kind) == [.readiness])
         #expect(reports.map(\.phase) == ["diagnostic_bridge_ready"])
+        #expect(reports[0].bridgeState == bridgeState)
     }
     
     @Test
@@ -65,10 +78,15 @@ struct NitroRoomWidgetDiagnosticsTests {
                                                          url: #require(URL(string: "https://widgets.example.org/open")),
                                                          reporter: { reports.append($0) })
         
-        diagnostics.recordNativeWidgetAPITimeout()
+        let bridgeState = NitroRoomWidgetBridgeState(documentSequence: 1,
+                                                     widgetMessagesReceived: 1,
+                                                     driverScriptsStarted: 1,
+                                                     driverScriptsCompleted: 1)
+        diagnostics.recordNativeWidgetAPITimeout(bridgeState: bridgeState)
         diagnostics.recordNativeWidgetAPITimeout()
         
         #expect(reports.map(\.phase) == ["native_widget_api_timeout"])
+        #expect(reports[0].bridgeState?.stage == "driver_reply_posted_no_ready")
         
         reports.removeAll()
         let javaScriptDiagnostics = try NitroRoomWidgetDiagnostics(widgetID: "cockpit",
