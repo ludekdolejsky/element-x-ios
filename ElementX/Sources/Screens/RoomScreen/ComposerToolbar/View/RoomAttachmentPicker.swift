@@ -7,16 +7,30 @@
 //
 
 import Compound
+import Foundation
 import SwiftUI
 import WysiwygComposer
+
+struct NitroGIFPickerPresentationConfiguration {
+    let userID: String
+    let serviceConfiguration: NitroGIFConfiguration
+    let onSelected: (URL) -> Void
+}
 
 struct RoomAttachmentPicker: View {
     @ObservedObject var context: ComposerToolbarViewModel.Context
     let onCreateNitroTask: (() -> Void)?
+    let nitroGIFPickerConfiguration: NitroGIFPickerPresentationConfiguration?
 
-    init(context: ComposerToolbarViewModel.Context, onCreateNitroTask: (() -> Void)? = nil) {
+    @State private var isNitroGIFPickerPresented = false
+    @State private var pendingNitroGIFURL: URL?
+
+    init(context: ComposerToolbarViewModel.Context,
+         onCreateNitroTask: (() -> Void)? = nil,
+         nitroGIFPickerConfiguration: NitroGIFPickerPresentationConfiguration? = nil) {
         self.context = context
         self.onCreateNitroTask = onCreateNitroTask
+        self.nitroGIFPickerConfiguration = nitroGIFPickerConfiguration
     }
     
     var body: some View {
@@ -32,6 +46,21 @@ struct RoomAttachmentPicker: View {
         .buttonStyle(ComposerToolbarButtonStyle())
         .accessibilityLabel(L10n.actionAddToTimeline)
         .accessibilityIdentifier(A11yIdentifiers.roomScreen.composerToolbar.openComposeOptions)
+        .sheet(isPresented: $isNitroGIFPickerPresented, onDismiss: completeNitroGIFSelection) {
+            if let nitroGIFPickerConfiguration {
+                NitroGIFPickerPresentation(configuration: nitroGIFPickerConfiguration.serviceConfiguration,
+                                           userID: nitroGIFPickerConfiguration.userID) { action in
+                    switch action {
+                    case .dismiss:
+                        isNitroGIFPickerPresented = false
+                    case .selected(let url):
+                        pendingNitroGIFURL = url
+                        isNitroGIFPickerPresented = false
+                    }
+                }
+                .presentationDetents([.large])
+            }
+        }
     }
     
     var menuContent: some View {
@@ -42,7 +71,7 @@ struct RoomAttachmentPicker: View {
                 Label(L10n.screenRoomAttachmentTextFormatting, icon: \.textFormatting)
             }
             .accessibilityIdentifier(A11yIdentifiers.roomScreen.attachmentPickerTextFormatting)
-            
+
             if context.viewState.canCreateNitroTask, let onCreateNitroTask {
                 Button {
                     onCreateNitroTask()
@@ -66,6 +95,15 @@ struct RoomAttachmentPicker: View {
                 }
             }
             
+            if nitroGIFPickerConfiguration != nil {
+                Button {
+                    isNitroGIFPickerPresented = true
+                } label: {
+                    Label(UntranslatedL10n.actionNitroGifIos, icon: \.image)
+                }
+                .accessibilityIdentifier(A11yIdentifiers.roomScreen.attachmentPickerNitroGIF)
+            }
+
             if context.viewState.isLocationSharingEnabled {
                 Button {
                     context.send(viewAction: .attach(.location))
@@ -96,6 +134,12 @@ struct RoomAttachmentPicker: View {
             }
             .accessibilityIdentifier(A11yIdentifiers.roomScreen.attachmentPickerCamera)
         }
+    }
+
+    private func completeNitroGIFSelection() {
+        guard let pendingNitroGIFURL else { return }
+        self.pendingNitroGIFURL = nil
+        nitroGIFPickerConfiguration?.onSelected(pendingNitroGIFURL)
     }
 }
 

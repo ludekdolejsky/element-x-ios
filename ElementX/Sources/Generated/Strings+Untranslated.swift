@@ -30,6 +30,12 @@ internal nonisolated enum UntranslatedL10n {
   internal static var actionEditTimeIos: String { return UntranslatedL10n.tr("Untranslated", "action_edit_time_ios") }
   /// Catch me up
   internal static var actionNitroCatchUpIos: String { return UntranslatedL10n.tr("Untranslated", "action_nitro_catch_up_ios") }
+  /// GIF
+  internal static var actionNitroGifIos: String { return UntranslatedL10n.tr("Untranslated", "action_nitro_gif_ios") }
+  /// Surprise me
+  internal static var actionNitroGifSurpriseMeIos: String { return UntranslatedL10n.tr("Untranslated", "action_nitro_gif_surprise_me_ios") }
+  /// Use GIF
+  internal static var actionNitroGifUseIos: String { return UntranslatedL10n.tr("Untranslated", "action_nitro_gif_use_ios") }
   /// Open
   internal static var actionOpenIos: String { return UntranslatedL10n.tr("Untranslated", "action_open_ios") }
   /// Open in room
@@ -84,6 +90,16 @@ internal nonisolated enum UntranslatedL10n {
   internal static var errorNitroCatchUpRequestFailedIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_catch_up_request_failed_ios") }
   /// This room is no longer available.
   internal static var errorNitroCatchUpRoomUnavailableIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_catch_up_room_unavailable_ios") }
+  /// The GIF couldn’t be downloaded. Try another one.
+  internal static var errorNitroGifDownloadFailedIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_gif_download_failed_ios") }
+  /// GIPHY returned an invalid response.
+  internal static var errorNitroGifInvalidResponseIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_gif_invalid_response_ios") }
+  /// The selected result isn’t a GIF.
+  internal static var errorNitroGifNotGifIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_gif_not_gif_ios") }
+  /// GIF search failed. Try again.
+  internal static var errorNitroGifSearchFailedIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_gif_search_failed_ios") }
+  /// The selected GIF is too large.
+  internal static var errorNitroGifTooLargeIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_gif_too_large_ios") }
   /// The task request failed. Refresh Tasks and try again.
   internal static var errorNitroTaskRequestFailedIos: String { return UntranslatedL10n.tr("Untranslated", "error_nitro_task_request_failed_ios") }
   /// The reminder request failed. Try again.
@@ -182,6 +198,22 @@ internal nonisolated enum UntranslatedL10n {
   internal static var screenNitroCatchUpSummarizingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_summarizing_ios") }
   /// Catch me up
   internal static var screenNitroCatchUpTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_catch_up_title_ios") }
+  /// Loading GIFs…
+  internal static var screenNitroGifLoadingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_gif_loading_ios") }
+  /// No GIFs found.
+  internal static var screenNitroGifNoResultsIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_gif_no_results_ios") }
+  /// Powered by GIPHY
+  internal static var screenNitroGifPoweredByGiphyIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_gif_powered_by_giphy_ios") }
+  /// Recent and trending
+  internal static var screenNitroGifRecentAndTrendingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_gif_recent_and_trending_ios") }
+  /// Results
+  internal static var screenNitroGifResultsIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_gif_results_ios") }
+  /// Search GIPHY
+  internal static var screenNitroGifSearchIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_gif_search_ios") }
+  /// GIFs
+  internal static var screenNitroGifTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_gif_title_ios") }
+  /// Trending
+  internal static var screenNitroGifTrendingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_gif_trending_ios") }
   /// Choose a quick reminder or set an exact local date and time.
   internal static var screenNitroReminderCreateHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_create_hint_ios") }
   /// Reminder time

@@ -136,6 +136,8 @@
 	<string>$(NITRO_REMINDER_BASE_URL)</string>
 	<key>nitroTranscriptionBaseURL</key>
 	<string>$(NITRO_TRANSCRIPTION_BASE_URL)</string>
+	<key>nitroGiphyAPIKey</key>
+	<string>$(NITRO_GIPHY_API_KEY)</string>
 	<key>productionAppName</key>
 	<string>$(PRODUCTION_APP_NAME)</string>
 </dict>

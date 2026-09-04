@@ -12,6 +12,7 @@ settings:
   NITRO_CATCH_UP_BASE_URL: ""
   NITRO_REMINDER_BASE_URL: ""
   NITRO_TRANSCRIPTION_BASE_URL: ""
+  NITRO_GIPHY_API_KEY: ""
 
   # Optional configuration to load accounts from Element Classic.
   CLASSIC_APP_GROUP_IDENTIFIER: group.im.vector

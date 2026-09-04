@@ -49,6 +49,7 @@ final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
     private var composerViewModel: ComposerToolbarViewModelProtocol
     private let appSettings: AppSettings
     private let roomID: String
+    private let userID: String
     
     private var cancellables = Set<AnyCancellable>()
     private var customEmojiPickerCancellable: AnyCancellable?
@@ -61,6 +62,7 @@ final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
     init(parameters: ThreadTimelineScreenCoordinatorParameters) {
         appSettings = parameters.appSettings
         roomID = parameters.roomProxy.id
+        userID = parameters.userSession.clientProxy.userID
         
         viewModel = ThreadTimelineScreenViewModel(roomProxy: parameters.roomProxy, userSession: parameters.userSession)
         
@@ -192,10 +194,20 @@ final class ThreadTimelineScreenCoordinator: CoordinatorProtocol {
     }
     
     func toPresentable() -> AnyView {
-        let composerToolbar = ComposerToolbar(context: composerViewModel.context) { [weak self] in
-            guard let self else { return }
-            actionsSubject.send(.presentNitroTaskCreate(roomID: roomID))
+        let nitroGIFPickerConfiguration = NitroConfiguration.giphyAPIKey.map { apiKey in
+            NitroGIFPickerPresentationConfiguration(userID: userID,
+                                                    serviceConfiguration: .init(apiKey: apiKey, rating: .pg13, resultLimit: 24)) { [weak self] url in
+                guard let self else { return }
+                actionsSubject.send(.presentMediaUploadPreviewScreen(mediaURLs: [url],
+                                                                     caption: composerViewModel.context.plainComposerText))
+            }
         }
+        let composerToolbar = ComposerToolbar(context: composerViewModel.context,
+                                              onCreateNitroTask: { [weak self] in
+                                                  guard let self else { return }
+                                                  actionsSubject.send(.presentNitroTaskCreate(roomID: roomID))
+                                              },
+                                              nitroGIFPickerConfiguration: nitroGIFPickerConfiguration)
         
         return AnyView(ThreadTimelineScreen(context: viewModel.context,
                                             timelineContext: timelineViewModel.context,

@@ -17,10 +17,14 @@ struct ComposerToolbar: View {
     
     @ObservedObject var context: ComposerToolbarViewModel.Context
     let onCreateNitroTask: (() -> Void)?
+    let nitroGIFPickerConfiguration: NitroGIFPickerPresentationConfiguration?
     
-    init(context: ComposerToolbarViewModel.Context, onCreateNitroTask: (() -> Void)? = nil) {
+    init(context: ComposerToolbarViewModel.Context,
+         onCreateNitroTask: (() -> Void)? = nil,
+         nitroGIFPickerConfiguration: NitroGIFPickerPresentationConfiguration? = nil) {
         self.context = context
         self.onCreateNitroTask = onCreateNitroTask
+        self.nitroGIFPickerConfiguration = nitroGIFPickerConfiguration
     }
     
     @FocusState private var composerFocused: Bool
@@ -141,7 +145,9 @@ struct ComposerToolbar: View {
         ZStack(alignment: .bottom) {
             topBarLayout {
                 if !context.composerFormattingEnabled {
-                    RoomAttachmentPicker(context: context, onCreateNitroTask: onCreateNitroTask)
+                    RoomAttachmentPicker(context: context,
+                                         onCreateNitroTask: onCreateNitroTask,
+                                         nitroGIFPickerConfiguration: nitroGIFPickerConfiguration)
                         .scaledPadding(.vertical, buttonVerticalPadding, relativeTo: .compound.headingLG)
                 }
                 messageComposer

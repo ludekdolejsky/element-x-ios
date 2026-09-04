@@ -14,11 +14,11 @@ nonisolated enum NitroConfiguration {
     private static let defaultReminderBaseURL: URL = "https://matrix-bot.nitrovery.com"
     private static let defaultTranscriptionBaseURL: URL = "https://matrix-bot.nitrovery.com"
     private static let defaultSentryURL: URL = "https://d875c82c8d742fe7292ad47e7d6b9a4d@o4511974887784448.ingest.de.sentry.io/4511975003848784"
-    
+
     static var isEnabled: Bool {
         InfoPlistReader.main.isNitroBuild
     }
-    
+
     static var pushGatewayBaseURL: URL {
         resolvedPushGatewayBaseURL(isNitroBuild: isEnabled,
                                    configuredURL: InfoPlistReader.main.nitroPushGatewayBaseURL)
@@ -46,6 +46,11 @@ nonisolated enum NitroConfiguration {
         resolvedNitroServiceBaseURL(isNitroBuild: isEnabled,
                                     configuredURL: nil,
                                     defaultURL: defaultSentryURL)
+    }
+
+    static var giphyAPIKey: String? {
+        guard isEnabled, let apiKey = InfoPlistReader.main.nitroGiphyAPIKey else { return nil }
+        return apiKey
     }
 
     static func resolvedPushGatewayBaseURL(isNitroBuild: Bool, configuredURL: URL?) -> URL {

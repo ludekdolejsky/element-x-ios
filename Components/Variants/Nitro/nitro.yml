@@ -9,6 +9,7 @@ settings:
   NITRO_CATCH_UP_BASE_URL: https://matrix-bot.nitrovery.com
   NITRO_REMINDER_BASE_URL: https://matrix-bot.nitrovery.com
   NITRO_TRANSCRIPTION_BASE_URL: https://matrix-bot.nitrovery.com
+  NITRO_GIPHY_API_KEY: "YFOiKMrjCHDnSMNqZtPHrCvtlp1v7V4h"
 
   # Nitro doesn't share data or credentials with Element Classic.
   CLASSIC_APP_GROUP_IDENTIFIER: ""
