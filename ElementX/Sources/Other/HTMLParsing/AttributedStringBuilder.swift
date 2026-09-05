@@ -34,6 +34,7 @@ nonisolated extension NSAttributedString.Key {
     static let MatrixAllUsersMention: NSAttributedString.Key = .init(rawValue: AllUsersMentionAttribute.name)
     static let CodeBlock: NSAttributedString.Key = .init(rawValue: CodeBlockAttribute.name)
     static let InlineCode: NSAttributedString.Key = .init(rawValue: InlineCodeAttribute.name)
+    static let MatrixTable: NSAttributedString.Key = .init(rawValue: TableAttribute.name)
 }
 
 nonisolated struct AttributedStringBuilder: AttributedStringBuilderProtocol {
@@ -44,7 +45,7 @@ nonisolated struct AttributedStringBuilder: AttributedStringBuilderProtocol {
     
     private static let attributeMSC4286 = "msc4286-external-payment-details"
     /// Tags whose content already ends in a newline.
-    private static let lineTerminatingTags: Set = ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "ul", "ol", "li"]
+    private static let lineTerminatingTags: Set = ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "ul", "ol", "li", "table"]
     private static let caches = Mutex<[String: LRUCache<String, AttributedString>]>([:])
     
     static func invalidateCaches() {
@@ -106,10 +107,7 @@ nonisolated struct AttributedStringBuilder: AttributedStringBuilderProtocol {
         
         var listIndex = 1
         let mutableAttributedString = attributedString(element: body, documentBody: body, preserveFormatting: false, listTag: nil, listIndex: &listIndex, indentLevel: 0)
-        detectPhishingAttempts(mutableAttributedString)
-        addLinksAndMentions(mutableAttributedString)
-        addMatrixEntityPermalinkAttributesTo(mutableAttributedString)
-        removeParsingArtefacts(mutableAttributedString)
+        postProcessHTMLAttributedString(mutableAttributedString)
         
         let result = try? AttributedString(mutableAttributedString, including: \.elementX)
         Self.cacheValue(result, forKey: valueCacheKey, cacheKey: cacheKey)
@@ -349,6 +347,16 @@ nonisolated struct AttributedStringBuilder: AttributedStringBuilderProtocol {
                 }
                 #endif
                 
+            case "table":
+                if let table = parseTable(from: childElement, documentBody: documentBody, preserveFormatting: preserveFormatting) {
+                    let placeholder = NSMutableAttributedString(string: table.accessibilityLabel)
+                    placeholder.addAttribute(.MatrixTable, value: table, range: NSRange(location: 0, length: placeholder.length))
+                    content = placeholder
+                }
+                
+            case "thead", "tbody", "tfoot", "caption":
+                break
+                
             default:
                 content = attributedString(element: childElement, documentBody: documentBody, preserveFormatting: preserveFormatting, listTag: listTag, listIndex: &childIndex, indentLevel: indentLevel)
             }
@@ -357,6 +365,104 @@ nonisolated struct AttributedStringBuilder: AttributedStringBuilderProtocol {
         }
         
         return result
+    }
+    
+    // MARK: - Table Parsing
+    
+    private func parseTable(from tableElement: Element,
+                            documentBody: Element,
+                            preserveFormatting: Bool) -> TableAttribute.Value? {
+        var headerRows = [TableAttribute.Row]()
+        var bodyRows = [TableAttribute.Row]()
+        var caption: AttributedString?
+        
+        for child in tableElement.children() {
+            switch child.tagName().lowercased() {
+            case "thead":
+                headerRows.append(contentsOf: parseTableRows(from: child,
+                                                             documentBody: documentBody,
+                                                             preserveFormatting: preserveFormatting))
+            case "tbody", "tfoot":
+                bodyRows.append(contentsOf: parseTableRows(from: child,
+                                                           documentBody: documentBody,
+                                                           preserveFormatting: preserveFormatting))
+            case "tr":
+                bodyRows.append(parseTableRow(from: child,
+                                              documentBody: documentBody,
+                                              preserveFormatting: preserveFormatting))
+            case "caption":
+                caption = parseTableContent(from: child,
+                                            documentBody: documentBody,
+                                            preserveFormatting: preserveFormatting)
+            default:
+                break
+            }
+        }
+        
+        guard caption != nil || !headerRows.isEmpty || !bodyRows.isEmpty else { return nil }
+        
+        return .init(caption: caption, headerRows: headerRows, bodyRows: bodyRows)
+    }
+    
+    private func parseTableRows(from element: Element,
+                                documentBody: Element,
+                                preserveFormatting: Bool) -> [TableAttribute.Row] {
+        element.children().compactMap { child in
+            guard child.tagName().lowercased() == "tr" else { return nil }
+            return parseTableRow(from: child,
+                                 documentBody: documentBody,
+                                 preserveFormatting: preserveFormatting)
+        }
+    }
+    
+    private func parseTableRow(from rowElement: Element,
+                               documentBody: Element,
+                               preserveFormatting: Bool) -> TableAttribute.Row {
+        let cells = rowElement.children().compactMap { child -> TableAttribute.Cell? in
+            let tag = child.tagName().lowercased()
+            guard tag == "td" || tag == "th" else { return nil }
+            
+            let alignment: TableAttribute.CellAlignment = switch (try? child.attr("align"))?.lowercased() {
+            case "center": .center
+            case "right": .right
+            default: .left
+            }
+            
+            let content = parseTableContent(from: child,
+                                            documentBody: documentBody,
+                                            preserveFormatting: preserveFormatting,
+                                            makeBold: tag == "th")
+            return .init(content: content, alignment: alignment, isHeader: tag == "th")
+        }
+        
+        return .init(cells: cells)
+    }
+    
+    private func parseTableContent(from element: Element,
+                                   documentBody: Element,
+                                   preserveFormatting: Bool,
+                                   makeBold: Bool = false) -> AttributedString {
+        var childIndex = 1
+        let mutableContent = attributedString(element: element,
+                                              documentBody: documentBody,
+                                              preserveFormatting: preserveFormatting,
+                                              listTag: nil,
+                                              listIndex: &childIndex,
+                                              indentLevel: 0)
+        if makeBold {
+            let fontPointSize = UIFont.preferredFont(forTextStyle: .body).pointSize
+            mutableContent.setFontPreservingSymbolicTraits(UIFont.boldSystemFont(ofSize: fontPointSize))
+        }
+        postProcessHTMLAttributedString(mutableContent)
+        
+        return (try? AttributedString(mutableContent, including: \.elementX)) ?? AttributedString(mutableContent.string)
+    }
+    
+    private func postProcessHTMLAttributedString(_ attributedString: NSMutableAttributedString) {
+        detectPhishingAttempts(attributedString)
+        addLinksAndMentions(attributedString)
+        addMatrixEntityPermalinkAttributesTo(attributedString)
+        removeParsingArtefacts(attributedString)
     }
     
     #if IS_MAIN_APP

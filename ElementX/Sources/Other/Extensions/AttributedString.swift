@@ -16,11 +16,18 @@ nonisolated extension AttributedString {
     
     var formattedComponents: [AttributedStringBuilderComponent] {
         var components = [AttributedStringBuilderComponent]()
-        
-        for run in runs[\.blockquote, \.codeBlock] {
+        for run in runs[\.blockquote, \.codeBlock, \.table] {
             let isBlockquote = run.0 != nil
             let isCodeBlock = run.1 != nil
-            var attributedString = AttributedString(self[run.2])
+            let table = run.2
+            var attributedString = AttributedString(self[run.3])
+            
+            if let table {
+                components.append(AttributedStringBuilderComponent(id: table.id.uuidString,
+                                                                   attributedString: attributedString,
+                                                                   type: .table))
+                continue
+            }
             
             // Remove trailing new lines if any
             if attributedString.characters.last?.isNewline ?? false,
@@ -37,7 +44,7 @@ nonisolated extension AttributedString {
                 .plainText
             }
             
-            components.append(AttributedStringBuilderComponent(id: String(attributedString.characters),
+            components.append(AttributedStringBuilderComponent(id: "\(components.count)-\(String(attributedString.characters))",
                                                                attributedString: attributedString,
                                                                type: componentType))
         }

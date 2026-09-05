@@ -23,6 +23,7 @@ enum TimelineInteractionHandlerAction {
     
     case displayAudioRecorderPermissionError
     case displayErrorToast(String)
+    case displayTableEditingUnsupported
     
     case viewInRoomTimeline(eventID: String)
     case displayThread(itemID: TimelineItemIdentifier)
@@ -278,6 +279,10 @@ class TimelineInteractionHandler {
         var editType = ComposerMode.EditType.default
         switch messageTimelineItem.contentType {
         case .text(let content):
+            guard !Self.containsHTMLTable(content.formattedBodyHTMLString) else {
+                actionsSubject.send(.displayTableEditingUnsupported)
+                return
+            }
             text = content.body
             htmlText = content.formattedBodyHTMLString
         case .emote(let content):
@@ -309,6 +314,10 @@ class TimelineInteractionHandler {
         // Always update the mode first and then the text so that the composer has time to save the text draft
         actionsSubject.send(.composer(action: .setMode(mode: .edit(originalEventOrTransactionID: eventOrTransactionID, type: editType))))
         actionsSubject.send(.composer(action: .setText(plainText: text, htmlText: htmlText)))
+    }
+    
+    static func containsHTMLTable(_ html: String?) -> Bool {
+        html?.range(of: #"<table(?:\s|>)"#, options: [.caseInsensitive, .regularExpression]) != nil
     }
     
     // MARK: Polls

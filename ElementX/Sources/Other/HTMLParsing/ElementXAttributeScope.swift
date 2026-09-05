@@ -75,6 +75,53 @@ enum InlineCodeAttribute: AttributedStringKey {
     static let name = "MXInlineCodeAttribute"
 }
 
+enum TableAttribute: AttributedStringKey {
+    enum CellAlignment: Hashable {
+        case left
+        case center
+        case right
+    }
+    
+    struct Row: Hashable {
+        let cells: [Cell]
+    }
+    
+    struct Cell: Hashable {
+        let content: AttributedString
+        let alignment: CellAlignment
+        let isHeader: Bool
+    }
+    
+    struct Value: Hashable {
+        let id = UUID()
+        let caption: AttributedString?
+        let headerRows: [Row]
+        let bodyRows: [Row]
+    }
+    
+    static let name = "MXTableAttribute"
+}
+
+extension TableAttribute.Value {
+    nonisolated var accessibilityLabel: String {
+        var parts = (headerRows + bodyRows).map(\.accessibilityLabel)
+        if let caption {
+            parts.insert(caption.string, at: 0)
+        }
+        return parts
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+}
+
+private extension TableAttribute.Row {
+    nonisolated var accessibilityLabel: String {
+        cells.map { $0.content.string.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .joined(separator: ", ")
+    }
+}
+
 nonisolated extension AttributeScopes {
     struct ElementXAttributes: AttributeScope {
         let blockquote: BlockquoteAttribute
@@ -96,6 +143,7 @@ nonisolated extension AttributeScopes {
         let codeBlock: CodeBlockAttribute
         // periphery:ignore - required to make NSAttributedString to AttributedString conversion even if not used directly
         let inlineCode: InlineCodeAttribute
+        let table: TableAttribute
         
         // periphery:ignore - required to make NSAttributedString to AttributedString conversion even if not used directly
         

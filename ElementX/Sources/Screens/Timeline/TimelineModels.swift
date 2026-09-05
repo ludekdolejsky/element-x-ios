@@ -234,6 +234,7 @@ struct ReadReceiptSummaryInfo: Identifiable {
 enum TimelineAlertInfoType: Hashable {
     case audioRecodingPermissionError
     case audioTranscriptionConsent(NitroAudioTranscriptionRequest)
+    case tableEditingUnsupported
     case pollEndConfirmation(String)
     case sendingFailed(reason: String?, sendHandle: SendHandleProxy?)
     case encryptionAuthenticity(String)

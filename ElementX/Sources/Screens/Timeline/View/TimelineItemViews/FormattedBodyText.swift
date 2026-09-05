@@ -64,7 +64,7 @@ struct FormattedBodyText: View {
         // timestamp, and TextKit decides whether to keep the timestamp on the last
         // line or push it to a new one.
         var components = attributedComponents
-        // When the body ends in a block component (blockquote/codeBlock) the overlaid
+        // When the body ends in a block component the overlaid
         // timestamp would land on top of it, so append an empty trailing plain-text
         // component that exists solely to reserve space for the timestamp underneath.
         if trailingReservedSize != .zero, let last = components.last, last.type != .plainText {
@@ -90,6 +90,13 @@ struct FormattedBodyText: View {
                                 UIPasteboard.general.string = component.attributedString.string
                             }
                         }
+                case .table:
+                    if let table = component.attributedString.runs.first(where: { $0.table != nil })?.table {
+                        TableView(table: table)
+                            .padding(.horizontal, 4)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .timelineBubbleLayoutSize(.natural)
+                    }
                 case .plainText:
                     MessageText(attributedString: component.attributedString,
                                 trailingReservedSize: index == lastPlainTextIndex ? trailingReservedSize : .zero)
@@ -111,6 +118,8 @@ struct FormattedBodyText: View {
                     CodeBlockView(attributedString: component.attributedString, mode: .layout)
                         .timelineBubbleLayoutSize(.bubbleWidth(mode: .layout))
                         .hidden()
+                case .table:
+                    EmptyView()
                 case .plainText:
                     EmptyView()
                 }
@@ -179,6 +188,69 @@ struct FormattedBodyText: View {
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .scrollIndicatorsFlash(onAppear: true)
             .padding(.horizontal, 4)
+        }
+    }
+    
+    private struct TableView: View {
+        let table: TableAttribute.Value
+        
+        var body: some View {
+            ScrollView(.horizontal) {
+                VStack(alignment: .leading, spacing: 0) {
+                    if let caption = table.caption {
+                        FormattedBodyText(attributedString: caption)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                        
+                        if !table.headerRows.isEmpty || !table.bodyRows.isEmpty {
+                            Divider()
+                        }
+                    }
+                    
+                    Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                        ForEach(Array(table.headerRows.enumerated()), id: \.offset) { _, row in
+                            tableRow(row)
+                        }
+                        
+                        if !table.headerRows.isEmpty, !table.bodyRows.isEmpty {
+                            Divider()
+                        }
+                        
+                        ForEach(Array(table.bodyRows.enumerated()), id: \.offset) { index, row in
+                            tableRow(row)
+                            if index < table.bodyRows.count - 1 {
+                                Divider()
+                            }
+                        }
+                    }
+                    .fixedSize(horizontal: true, vertical: true)
+                    .padding(8)
+                }
+                .fixedSize(horizontal: true, vertical: true)
+            }
+            .background(.compound.bgSubtleSecondary)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .scrollIndicatorsFlash(onAppear: true)
+        }
+        
+        private func tableRow(_ row: TableAttribute.Row) -> some View {
+            GridRow {
+                ForEach(Array(row.cells.enumerated()), id: \.offset) { _, cell in
+                    FormattedBodyText(attributedString: cell.content)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: alignment(for: cell.alignment))
+                }
+            }
+        }
+        
+        private func alignment(for alignment: TableAttribute.CellAlignment) -> Alignment {
+            switch alignment {
+            case .left: .leading
+            case .center: .center
+            case .right: .trailing
+            }
         }
     }
 }

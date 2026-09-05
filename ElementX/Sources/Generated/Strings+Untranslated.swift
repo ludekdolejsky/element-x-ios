@@ -332,6 +332,10 @@ internal nonisolated enum UntranslatedL10n {
   internal static var screenRoomAudioTranscriptionWarningMessageIos: String { return UntranslatedL10n.tr("Untranslated", "screen_room_audio_transcription_warning_message_ios") }
   /// Send encrypted audio for transcription?
   internal static var screenRoomAudioTranscriptionWarningTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_room_audio_transcription_warning_title_ios") }
+  /// Tables can’t be edited on iOS yet. Use Element Desktop to edit this message.
+  internal static var screenRoomTableEditingUnsupportedMessageIos: String { return UntranslatedL10n.tr("Untranslated", "screen_room_table_editing_unsupported_message_ios") }
+  /// Edit on Desktop
+  internal static var screenRoomTableEditingUnsupportedTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_room_table_editing_unsupported_title_ios") }
   /// Search for chats and messages
   internal static var screenSearchEmptyStateMessage: String { return UntranslatedL10n.tr("Untranslated", "screen_search_empty_state_message") }
   /// Start searching...

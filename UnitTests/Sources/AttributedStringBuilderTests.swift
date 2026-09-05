@@ -1087,7 +1087,174 @@ struct AttributedStringBuilderTests {
         _ = try #require(attributedString2.runs.first { $0.link != nil }?.link, "Couldn't find the link")
     }
     
+    // MARK: - Tables
+    
+    @Test
+    func simpleTable() throws {
+        let htmlString = """
+        <table>
+        <caption><strong>Team</strong> members</caption>
+        <thead><tr><th>Name</th><th>Role</th></tr></thead>
+        <tbody>
+        <tr><td>Alice</td><td>Admin</td></tr>
+        <tr><td>Bob</td><td>Editor</td></tr>
+        </tbody>
+        </table>
+        """
+        
+        let table = try tableData(from: htmlString)
+        
+        #expect(table.caption?.string == "Team members")
+        #expect(table.caption?.runs.first?.uiKit.font?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
+        #expect(table.headerRows.count == 1)
+        #expect(table.bodyRows.count == 2)
+        #expect(table.headerRows[0].cells.count == 2)
+        #expect(table.bodyRows[0].cells.count == 2)
+        #expect(table.headerRows[0].cells[0].content.string == "Name")
+        #expect(table.headerRows[0].cells[0].isHeader)
+        #expect(table.headerRows[0].cells[0].content.runs.first?.uiKit.font?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
+        #expect(table.bodyRows[0].cells[0].content.string == "Alice")
+        #expect(table.bodyRows[1].cells[1].content.string == "Editor")
+    }
+    
+    @Test
+    func tableWithAlignment() throws {
+        let htmlString = """
+        <table><tbody>
+        <tr><td align="right">500</td><td>Left</td></tr>
+        <tr><td align="center">Mid</td><td>Left</td></tr>
+        </tbody></table>
+        """
+        
+        let table = try tableData(from: htmlString)
+        
+        #expect(table.bodyRows[0].cells[0].alignment == .right)
+        #expect(table.bodyRows[0].cells[1].alignment == .left)
+        #expect(table.bodyRows[1].cells[0].alignment == .center)
+    }
+    
+    @Test
+    func tableWithInlineFormatting() throws {
+        let htmlString = """
+        <table><tbody><tr>
+        <td><b>Bold</b> text</td><td><a href="https://matrix.org">Link</a></td>
+        </tr></tbody></table>
+        """
+        
+        let table = try tableData(from: htmlString)
+        
+        #expect(table.bodyRows[0].cells[0].content.string == "Bold text")
+        #expect(table.bodyRows[0].cells[0].content.runs.first?.uiKit.font?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
+        #expect(table.bodyRows[0].cells[1].content.runs.first { $0.link != nil }?.link?.absoluteString == "https://matrix.org")
+    }
+    
+    @Test
+    func tableCellsUseHTMLPostProcessing() throws {
+        let htmlString = """
+        <table><tbody><tr>
+        <td>#room:matrix.org</td><td><a href="https://evil.org">matrix.org</a></td>
+        </tr></tbody></table>
+        """
+        
+        let table = try tableData(from: htmlString)
+        let roomAliasLink = table.bodyRows[0].cells[0].content.runs.first { $0.link != nil }?.link
+        let phishingLink = table.bodyRows[0].cells[1].content.runs.first { $0.link != nil }?.link
+        
+        #expect(roomAliasLink?.absoluteString == "https://matrix.to/#/%23room:matrix.org")
+        #expect(phishingLink?.scheme == URL.confirmationScheme)
+    }
+    
+    @Test
+    func repeatedTablesHaveUniqueComponentIDs() throws {
+        let htmlString = """
+        <table><tr><td>A</td></tr></table>
+        <table><tr><td>A</td></tr></table>
+        """
+        
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString))
+        let tableComponents = attributedString.formattedComponents.filter { $0.type == .table }
+        
+        #expect(tableComponents.count == 2)
+        #expect(Set(tableComponents.map(\.id)).count == 2)
+    }
+    
+    @Test
+    func repeatedPlainTextAroundTableHasUniqueComponentIDs() throws {
+        let htmlString = """
+        <p>Same</p>
+        <table><tr><td>Cell</td></tr></table>
+        <p>Same</p>
+        """
+        
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString))
+        let components = attributedString.formattedComponents
+        
+        #expect(components.count == 3)
+        #expect(Set(components.map(\.id)).count == 3)
+    }
+    
+    @Test
+    func tableBetweenParagraphsDropsSourceFormattingWhitespace() throws {
+        let htmlString = """
+        <p>Before the table</p>
+        <table><tbody><tr><td>Cell</td></tr></tbody></table>
+        <p>After the table</p>
+        """
+        
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString))
+        let components = attributedString.formattedComponents
+        
+        #expect(components.count == 3)
+        #expect(components.map(\.type) == [.plainText, .table, .plainText])
+        #expect(components[0].attributedString.string == "Before the table")
+        #expect(components[2].attributedString.string == "After the table")
+    }
+    
+    @Test
+    func tableWithoutExplicitSections() throws {
+        let table = try tableData(from: "<table><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></table>")
+        
+        #expect(table.headerRows.isEmpty)
+        #expect(table.bodyRows.count == 2)
+        #expect(table.bodyRows[1].cells[1].content.string == "D")
+        #expect(table.accessibilityLabel == "A, B\nC, D")
+    }
+    
+    @Test
+    func tableCaptionIsIncludedInAccessibilityLabel() throws {
+        let table = try tableData(from: "<table><caption>Results</caption><tr><td>A</td></tr></table>")
+        
+        #expect(table.caption?.string == "Results")
+        #expect(table.accessibilityLabel == "Results\nA")
+    }
+    
+    @Test(arguments: [
+        "<table><tr><td>A</td></tr></table>",
+        "<TABLE class=\"data\"><TR><TD>A</TD></TR></TABLE>",
+        "Before<table data-mx-table><tr><td>A</td></tr></table>After"
+    ])
+    func detectsHTMLTablesForEditingGuard(_ html: String) {
+        #expect(TimelineInteractionHandler.containsHTMLTable(html))
+    }
+    
+    @Test(arguments: [
+        nil,
+        "",
+        "<p>No table</p>",
+        "&lt;table&gt;shown as code&lt;/table&gt;",
+        "<tablecloth>not a table</tablecloth>"
+    ])
+    func ignoresContentWithoutHTMLTablesForEditingGuard(_ html: String?) {
+        #expect(!TimelineInteractionHandler.containsHTMLTable(html))
+    }
+    
     // MARK: - Private
+    
+    private func tableData(from htmlString: String) throws -> TableAttribute.Value {
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString))
+        let tableComponent = try #require(attributedString.formattedComponents.first { $0.type == .table })
+        return try #require(tableComponent.attributedString.runs.first { $0.table != nil }?.table)
+    }
     
     private func checkLinkIn(attributedString: AttributedString?, expectedLink: String, expectedRuns: Int) throws {
         let attributedString = try #require(attributedString, "Could not build the attributed string")

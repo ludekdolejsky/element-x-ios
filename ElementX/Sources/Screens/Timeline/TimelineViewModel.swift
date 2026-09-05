@@ -546,6 +546,8 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
             displayAlert(.audioRecodingPermissionError)
         case .displayErrorToast(let title):
             displayErrorToast(title)
+        case .displayTableEditingUnsupported:
+            displayAlert(.tableEditingUnsupported)
         case .displayEmojiPicker(let selectedEmojis, let continuation):
             actionsSubject.send(.displayEmojiPicker(selectedEmojis: selectedEmojis, continuation: continuation))
         case .displayMessageForwarding(let itemID):
@@ -1191,6 +1193,11 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
                                                  state.bindings.alertInfo = nil
                                                  timelineInteractionHandler.confirmAudioTranscription(request)
                                              })
+        case .tableEditingUnsupported:
+            state.bindings.alertInfo = .init(id: type,
+                                             title: UntranslatedL10n.screenRoomTableEditingUnsupportedTitleIos,
+                                             message: UntranslatedL10n.screenRoomTableEditingUnsupportedMessageIos,
+                                             primaryButton: .init(title: L10n.actionOk, action: nil))
         case .pollEndConfirmation(let pollStartID):
             state.bindings.alertInfo = .init(id: type,
                                              title: L10n.actionEndPoll,

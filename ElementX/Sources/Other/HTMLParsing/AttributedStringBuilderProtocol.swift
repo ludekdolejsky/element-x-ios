@@ -13,6 +13,7 @@ nonisolated struct AttributedStringBuilderComponent: Hashable, Identifiable {
         case plainText
         case blockquote
         case codeBlock
+        case table
     }
     
     /// Identifier for the `Identifiable` conformance, allows edits to the `FormattedBodyText` to animate seamlessly
