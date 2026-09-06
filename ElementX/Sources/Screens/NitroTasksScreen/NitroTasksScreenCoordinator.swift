@@ -54,6 +54,10 @@ final class NitroTasksScreenCoordinator: CoordinatorProtocol {
         viewModel.refresh()
     }
     
+    func refresh(roomIDs: Set<String>) {
+        viewModel.refresh(roomIDs: roomIDs)
+    }
+    
     func show(room: NitroTaskRoom) {
         viewModel.show(room: room)
     }

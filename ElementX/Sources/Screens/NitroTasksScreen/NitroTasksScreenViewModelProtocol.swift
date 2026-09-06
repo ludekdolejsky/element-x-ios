@@ -11,5 +11,6 @@ protocol NitroTasksScreenViewModelProtocol {
     var actionsPublisher: AnyPublisher<NitroTasksScreenViewModelAction, Never> { get }
     var context: NitroTasksScreenViewModel.Context { get }
     func refresh()
+    func refresh(roomIDs: Set<String>)
     func show(room: NitroTaskRoom)
 }

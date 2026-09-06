@@ -47,7 +47,7 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
     
     let tabDetails: NavigationTabCoordinator<UserSessionFlowCoordinator.HomeTab>.TabDetails
     let remindersTabDetails: NavigationTabCoordinator<UserSessionFlowCoordinator.HomeTab>.TabDetails?
-
+    
     var remindersTab: NavigationTabCoordinator<UserSessionFlowCoordinator.HomeTab>.Tab? {
         guard let remindersNavigationStackCoordinator, let remindersTabDetails else { return nil }
         return .init(coordinator: remindersNavigationStackCoordinator, details: remindersTabDetails)
@@ -70,7 +70,7 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
                            icon: \.checkCircle,
                            selectedIcon: \.checkCircleSolid)
         navigationStackCoordinator.setRootCoordinator(tasksScreenCoordinator)
-
+        
         if let reminderBaseURL = parameters.reminderBaseURL {
             let remindersScreenCoordinator = NitroRemindersScreenCoordinator(parameters: .init(clientProxy: clientProxy,
                                                                                                reminderService: NitroReminderService(baseURL: reminderBaseURL),
@@ -230,8 +230,15 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
             guard !Task.isCancelled, let self else { return }
             let previousSnapshot = externalChangeSnapshot
             externalChangeSnapshot = snapshot
-            guard previousSnapshot == nil || previousSnapshot != snapshot else { return }
-            tasksScreenCoordinator.refresh()
+            guard let previousSnapshot, previousSnapshot != snapshot else { return }
+            guard previousSnapshot.indexRevision == snapshot.indexRevision else {
+                tasksScreenCoordinator.refresh()
+                return
+            }
+            let roomIDs = Set(previousSnapshot.taskRoomActivity.keys)
+                .union(snapshot.taskRoomActivity.keys)
+                .filter { previousSnapshot.taskRoomActivity[$0] != snapshot.taskRoomActivity[$0] }
+            tasksScreenCoordinator.refresh(roomIDs: Set(roomIDs))
         }
     }
     
@@ -252,7 +259,7 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
                 }
             }
             .store(in: &cancellables)
-
+        
         guard let remindersScreenCoordinator else { return }
         let selectedTabs = parameters.navigationTabCoordinator.observe(\.selectedTab)
         remindersTabObservationTask = Task(name: "Observe Nitro reminders tab") { [weak remindersScreenCoordinator] in
@@ -263,7 +270,7 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
             }
         }
     }
-
+    
     private func presentTaskCreate(initialRoomID: String?) {
         let coordinator = NitroTaskCreateScreenCoordinator(parameters: .init(taskService: clientProxy.nitroTaskService,
                                                                              draft: .init(title: "",

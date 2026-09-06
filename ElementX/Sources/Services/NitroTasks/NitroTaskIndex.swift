@@ -176,6 +176,18 @@ nonisolated struct NitroTaskIndex: Equatable, Sendable {
                               roomPinRevisions: revisions)
     }
     
+    func reconciledSubset(with latest: NitroTaskIndex?, rooms: [RoomReconciliation]) -> NitroTaskIndex {
+        let roomIDs = Set(rooms.map(\.roomID))
+        let base = latest ?? self
+        let reconciledRooms = reconciled(with: latest, rooms: rooms)
+        let tasks = base.tasks.filter { !roomIDs.contains($0.roomID) } + reconciledRooms.tasks
+        var revisions = base.roomPinRevisions.filter { !roomIDs.contains($0.key) }
+        revisions.merge(reconciledRooms.roomPinRevisions) { _, reconciled in reconciled }
+        return NitroTaskIndex(migrationComplete: base.migrationComplete,
+                              tasks: tasks,
+                              roomPinRevisions: revisions)
+    }
+    
     static func pinRevision(_ eventIDs: [String]) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: eventIDs),
               let revision = String(data: data, encoding: .utf8) else {

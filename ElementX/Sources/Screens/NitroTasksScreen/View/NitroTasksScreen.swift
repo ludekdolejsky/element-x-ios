@@ -67,6 +67,7 @@ struct NitroTasksScreen: View {
             } label: {
                 CompoundIcon(\.plus)
             }
+            .disabled(!context.viewState.canMutateTasks)
             .accessibilityLabel(UntranslatedL10n.actionCreateNitroTaskIos)
         }
         
@@ -221,6 +222,7 @@ struct NitroTasksScreen: View {
                 } label: {
                     Label(UntranslatedL10n.actionArchiveNitroTaskIos, icon: \.delete)
                 }
+                .disabled(!context.viewState.canMutateTasks)
             }
         }
         .disabled(context.viewState.isMutating)
@@ -239,12 +241,12 @@ struct NitroTasksScreen: View {
                 }
             }
         }
-        .disabled(!task.canUpdate)
+        .disabled(!task.canUpdate || !context.viewState.canMutateTasks)
     }
     
     @ViewBuilder
     private func leadingSwipeAction(_ task: NitroTask) -> some View {
-        if task.canUpdate {
+        if task.canUpdate, context.viewState.canMutateTasks {
             switch task.status {
             case .todo:
                 Button(UntranslatedL10n.actionStartNitroTaskIos) {
@@ -267,7 +269,7 @@ struct NitroTasksScreen: View {
     
     @ViewBuilder
     private func archiveSwipeAction(_ task: NitroTask) -> some View {
-        if task.canArchive {
+        if task.canArchive, context.viewState.canMutateTasks {
             Button(role: .destructive) {
                 context.send(viewAction: .archive(task))
             } label: {

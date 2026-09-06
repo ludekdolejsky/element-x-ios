@@ -64,7 +64,7 @@ struct NitroTaskIndexTests {
         #expect(removed.roomPinRevisions[roomID] == nil)
         #expect(removed.removing(roomID: roomID, eventID: "$missing") == nil)
     }
-
+    
     @Test
     func replaysLocalMutationsOverChangesFromAnotherSession() throws {
         let roomID = "!room:example.org"
@@ -75,12 +75,12 @@ struct NitroTaskIndexTests {
                                         .init(roomID: otherRoomID, eventID: "$desktop")
                                     ],
                                     roomPinRevisions: [roomID: "old", otherRoomID: "desktop"])
-
+        
         let replayed = try #require(NitroTaskIndex.replaying([
             .add(roomID: roomID, eventID: "$ios"),
             .remove(roomID: roomID, eventID: "$remove")
         ], on: remote))
-
+        
         #expect(replayed.tasks == [
             .init(roomID: otherRoomID, eventID: "$desktop"),
             .init(roomID: roomID, eventID: "$ios")
@@ -135,6 +135,41 @@ struct NitroTaskIndexTests {
         
         #expect(reconciled.tasks == initial.tasks)
         #expect(reconciled.roomPinRevisions[roomID] == "old")
+        #expect(!reconciled.migrationComplete)
+    }
+    
+    @Test
+    func subsetReconciliationPreservesOtherRoomsAndMigrationState() {
+        let refreshedRoomID = "!refreshed:example.org"
+        let untouchedRoomID = "!untouched:example.org"
+        let initial = NitroTaskIndex(migrationComplete: true,
+                                     tasks: [
+                                         .init(roomID: refreshedRoomID, eventID: "$removed"),
+                                         .init(roomID: refreshedRoomID, eventID: "$kept"),
+                                         .init(roomID: untouchedRoomID, eventID: "$old")
+                                     ],
+                                     roomPinRevisions: [refreshedRoomID: "old", untouchedRoomID: "old"])
+        let latest = NitroTaskIndex(migrationComplete: false,
+                                    tasks: [
+                                        .init(roomID: refreshedRoomID, eventID: "$kept"),
+                                        .init(roomID: refreshedRoomID, eventID: "$desktop"),
+                                        .init(roomID: untouchedRoomID, eventID: "$new")
+                                    ],
+                                    roomPinRevisions: [refreshedRoomID: "old", untouchedRoomID: "new"])
+        
+        let reconciled = initial.reconciledSubset(with: latest,
+                                                  rooms: [.init(roomID: refreshedRoomID,
+                                                                retainedEventIDs: ["$removed", "$kept", "$scanned"],
+                                                                proposedPinRevision: "new",
+                                                                isComplete: true)])
+        
+        #expect(reconciled.tasks == [
+            .init(roomID: untouchedRoomID, eventID: "$new"),
+            .init(roomID: refreshedRoomID, eventID: "$kept"),
+            .init(roomID: refreshedRoomID, eventID: "$scanned"),
+            .init(roomID: refreshedRoomID, eventID: "$desktop")
+        ])
+        #expect(reconciled.roomPinRevisions == [refreshedRoomID: "new", untouchedRoomID: "new"])
         #expect(!reconciled.migrationComplete)
     }
 }

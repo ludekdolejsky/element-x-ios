@@ -33,6 +33,7 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
     private var pendingMutations = [PendingMutation]()
     private var pendingCreatedTasks = [String: NitroTask]()
     private var isRefreshPending = false
+    private var pendingRefreshRoomIDs = Set<String>()
     private var shouldRefreshCachedSnapshot = false
     private var dataRevision = 0
     private var pendingReminderTask: NitroTask?
@@ -92,6 +93,7 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
                 actionsSubject.send(.presentReminder(task))
             }
         case .showCreate:
+            guard state.canMutateTasks else { return }
             actionsSubject.send(.presentCreate(initialRoomID: state.bindings.selectedRoomID))
         case .remind(let task):
             if state.bindings.selectedTask == nil {
@@ -124,6 +126,13 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
         requestRefresh()
     }
     
+    func refresh(roomIDs: Set<String>) {
+        guard !roomIDs.isEmpty, state.hasLoaded || loadTask != nil else { return }
+        guard !isRefreshPending else { return }
+        pendingRefreshRoomIDs.formUnion(roomIDs)
+        startPendingRefreshIfPossible()
+    }
+    
     func show(room: NitroTaskRoom) {
         state.filterRoomContext = room
         state.bindings.selectedRoomID = room.id
@@ -134,27 +143,34 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
     
     private func requestRefresh() {
         isRefreshPending = true
+        pendingRefreshRoomIDs.removeAll()
         startPendingRefreshIfPossible()
     }
     
     private func startPendingRefreshIfPossible() {
-        guard isRefreshPending, loadTask == nil, mutationTask == nil else { return }
-        isRefreshPending = false
-        startLoad()
+        guard loadTask == nil, mutationTask == nil else { return }
+        if isRefreshPending {
+            startLoad()
+        } else if !pendingRefreshRoomIDs.isEmpty {
+            startLoad(roomIDs: pendingRefreshRoomIDs)
+        }
     }
     
-    private func startLoad() {
+    private func startLoad(roomIDs: Set<String>? = nil) {
         isRefreshPending = false
+        pendingRefreshRoomIDs.removeAll()
         loadTask?.cancel()
         state.pendingEventCount = 0
         state.failedEventCount = 0
         let taskID = UUID()
         let revision = dataRevision
         loadTaskID = taskID
-        loadTask = Task { [weak self] in await self?.load(taskID: taskID, revision: revision) }
+        loadTask = Task { [weak self] in
+            await self?.load(taskID: taskID, revision: revision, roomIDs: roomIDs)
+        }
     }
     
-    private func load(taskID: UUID, revision: Int) async {
+    private func load(taskID: UUID, revision: Int, roomIDs: Set<String>?) async {
         state.isLoading = true
         defer {
             if loadTaskID == taskID {
@@ -166,19 +182,21 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
             }
         }
         
-        switch await taskService.loadTasks() {
+        if roomIDs == nil, !state.hasLoaded, let cachedTaskList = await taskService.loadCachedTasks() {
+            guard !Task.isCancelled, loadTaskID == taskID, dataRevision == revision else { return }
+            apply(cachedTaskList, isAuthoritative: false)
+            state.hasLoaded = true
+        }
+        
+        let result = if let roomIDs {
+            await taskService.refreshTasks(in: roomIDs)
+        } else {
+            await taskService.loadTasks()
+        }
+        switch result {
         case .success(let result):
             guard !Task.isCancelled, loadTaskID == taskID, dataRevision == revision else { return }
-            let loadedTaskIDs = Set(result.tasks.map(\.id))
-            pendingCreatedTasks = pendingCreatedTasks.filter { !loadedTaskIDs.contains($0.key) }
-            state.tasks = sortedTasks(result.tasks + pendingCreatedTasks.values)
-            state.unavailableRoomCount = result.unavailableRoomCount
-            state.pendingEventCount = result.pendingEventCount
-            state.failedEventCount = 0
-            clearSelectedRoomIfNeeded()
-            if let selectedTaskID = state.bindings.selectedTask?.id {
-                state.bindings.selectedTask = state.tasks.first { $0.id == selectedTaskID }
-            }
+            apply(result)
             if result.pendingEventCount > 0 {
                 taskService.startPendingTaskRecovery()
             }
@@ -186,7 +204,22 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
             break
         case .failure:
             guard !Task.isCancelled, loadTaskID == taskID, dataRevision == revision else { return }
+            taskService.startPendingTaskRecovery()
             showFailure()
+        }
+    }
+    
+    private func apply(_ taskList: NitroTaskList, isAuthoritative: Bool = true) {
+        let loadedTaskIDs = Set(taskList.tasks.map(\.id))
+        pendingCreatedTasks = pendingCreatedTasks.filter { !loadedTaskIDs.contains($0.key) }
+        state.tasks = sortedTasks(taskList.tasks + pendingCreatedTasks.values)
+        state.unavailableRoomCount = taskList.unavailableRoomCount
+        state.pendingEventCount = taskList.pendingEventCount
+        state.failedEventCount = 0
+        state.isUsingPersistentSnapshot = !isAuthoritative
+        clearSelectedRoomIfNeeded()
+        if let selectedTaskID = state.bindings.selectedTask?.id {
+            state.bindings.selectedTask = state.tasks.first { $0.id == selectedTaskID }
         }
     }
     
@@ -213,6 +246,7 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
     }
     
     private func startMutation(_ mutation: Mutation, task: NitroTask) {
+        guard state.canMutateTasks else { return }
         guard mutationTask == nil else {
             pendingMutations.append(.init(mutation: mutation, task: task))
             return
@@ -333,6 +367,7 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
     private func invalidateLoad() {
         if loadTask != nil {
             isRefreshPending = true
+            pendingRefreshRoomIDs.removeAll()
         }
         dataRevision &+= 1
         loadTask?.cancel()

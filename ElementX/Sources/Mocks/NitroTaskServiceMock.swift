@@ -14,10 +14,15 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
     }
     
     var cachedTaskList: NitroTaskList?
+    var loadCachedTasksReturnValue: NitroTaskList?
+    private(set) var loadCachedTasksCallsCount = 0
     
     var loadTasksReturnValue: Result<NitroTaskList, NitroTaskServiceError> = .success(.init(tasks: [], unavailableRoomCount: 0))
     var loadTasksClosure: (() async -> Result<NitroTaskList, NitroTaskServiceError>)?
     private(set) var loadTasksCallsCount = 0
+    var refreshTasksReturnValue: Result<NitroTaskList, NitroTaskServiceError> = .success(.init(tasks: [], unavailableRoomCount: 0))
+    var refreshTasksClosure: ((Set<String>) async -> Result<NitroTaskList, NitroTaskServiceError>)?
+    private(set) var refreshTasksReceivedRoomIDs = [Set<String>]()
     private(set) var startPendingTaskRecoveryCallsCount = 0
     
     var currentTaskIndexRevisionReturnValue: String?
@@ -48,6 +53,11 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
     var archiveTaskClosure: ((NitroTask) async -> Result<Void, NitroTaskServiceError>)?
     private(set) var archiveTaskReceivedTasks = [NitroTask]()
     
+    func loadCachedTasks() async -> NitroTaskList? {
+        loadCachedTasksCallsCount += 1
+        return loadCachedTasksReturnValue ?? cachedTaskList
+    }
+    
     func currentTaskIndexRevision() async -> String? {
         currentTaskIndexRevisionCallsCount += 1
         return await currentTaskIndexRevisionClosure?() ?? currentTaskIndexRevisionReturnValue
@@ -56,6 +66,11 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
     func loadTasks() async -> Result<NitroTaskList, NitroTaskServiceError> {
         loadTasksCallsCount += 1
         return await loadTasksClosure?() ?? loadTasksReturnValue
+    }
+    
+    func refreshTasks(in roomIDs: Set<String>) async -> Result<NitroTaskList, NitroTaskServiceError> {
+        refreshTasksReceivedRoomIDs.append(roomIDs)
+        return await refreshTasksClosure?(roomIDs) ?? refreshTasksReturnValue
     }
     
     func startPendingTaskRecovery() {

@@ -9,6 +9,7 @@ import Combine
 import Foundation
 import MatrixRustSDK
 
+// swiftlint:disable:next type_body_length
 final class NitroTaskService: NitroTaskServiceProtocol {
     private nonisolated enum InternalError: Error {
         case invalidResponse
@@ -29,6 +30,35 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         let list: NitroTaskList
         let recoveryCandidates: [RecoveryCandidate]
         let reconciliations: [NitroTaskIndex.RoomReconciliation]
+        let unavailableRoomIDs: Set<String>
+    }
+    
+    private nonisolated struct PreparedRoomTasks: Sendable {
+        let room: MatrixRustSDK.Room
+        let roomID: String
+        let roomName: String
+        let canSend: Bool
+        let canPin: Bool
+        let indexedEventIDs: Set<String>
+        let observedRevision: String
+        let scansAllPins: Bool
+        let taskEvents: [NitroTaskEventParser.TaskEvent]
+        let recoveryCandidates: [RecoveryCandidate]
+    }
+    
+    private nonisolated enum RoomPreparationResult: Sendable {
+        case prepared(PreparedRoomTasks)
+        case loaded(LoadedRoomTasks)
+    }
+    
+    private nonisolated struct TaskLoadJob: Sendable {
+        let roomIndex: Int
+        let taskEvent: NitroTaskEventParser.TaskEvent
+    }
+    
+    private nonisolated struct LoadedPreparedTask: Sendable {
+        let roomIndex: Int
+        let task: NitroTask
     }
     
     private nonisolated struct LoadedPinnedEvents: Sendable {
@@ -73,6 +103,7 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         case add(roomID: String, eventID: String)
         case remove(roomID: String, eventID: String)
         case reconcile(initial: NitroTaskIndex, rooms: [NitroTaskIndex.RoomReconciliation])
+        case reconcileSubset(initial: NitroTaskIndex, rooms: [NitroTaskIndex.RoomReconciliation])
         
         var mutation: NitroTaskIndex.Mutation? {
             switch self {
@@ -80,7 +111,7 @@ final class NitroTaskService: NitroTaskServiceProtocol {
                 .add(roomID: roomID, eventID: eventID)
             case .remove(let roomID, let eventID):
                 .remove(roomID: roomID, eventID: eventID)
-            case .reconcile:
+            case .reconcile, .reconcileSubset:
                 nil
             }
         }
@@ -91,6 +122,8 @@ final class NitroTaskService: NitroTaskServiceProtocol {
                 return current
             case .reconcile(let initial, let rooms):
                 return initial.reconciled(with: current, rooms: rooms)
+            case .reconcileSubset(let initial, let rooms):
+                return initial.reconciledSubset(with: current, rooms: rooms)
             }
         }
     }
@@ -101,13 +134,19 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     }
     
     private nonisolated static let maximumConcurrentRoomLoads = 4
+    private nonisolated static let maximumConcurrentTaskLoads = 12
+    private nonisolated static let snapshotWriteDelay: Duration = .milliseconds(200)
     private nonisolated static let timelineTimeout: Duration = .seconds(15)
     private nonisolated static let relationsPageSize = 20
     
     private let client: ClientProtocol
     private let urlSession: URLSession
+    private let snapshotStore: (any NitroTaskSnapshotStoreProtocol)?
     private let updatesSubject = PassthroughSubject<NitroTaskServiceUpdate, Never>()
     private(set) var cachedTaskList: NitroTaskList?
+    private var hasLoadedSnapshot = false
+    private var hasCompletedFullLoad = false
+    private var unavailableRoomIDs = Set<String>()
     private var loadRequestID: UUID?
     private var recoveryCandidates = [RecoveryCandidate]()
     private var recoveryTask: Task<Void, Never>?
@@ -115,13 +154,35 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     private var taskIndexUpdateTask: Task<TaskIndexWriteState?, Never>?
     private var taskIndexUpdateTaskID: UUID?
     private var taskIndexWriteState: TaskIndexWriteState?
+    private var snapshotWriteTask: Task<Void, Never>?
     var updatesPublisher: AnyPublisher<NitroTaskServiceUpdate, Never> {
         updatesSubject.eraseToAnyPublisher()
     }
     
-    init(client: ClientProtocol, urlSession: URLSession = .shared) {
+    init(client: ClientProtocol,
+         urlSession: URLSession = .shared,
+         snapshotStore: (any NitroTaskSnapshotStoreProtocol)? = nil) {
         self.client = client
         self.urlSession = urlSession
+        self.snapshotStore = snapshotStore
+    }
+    
+    isolated deinit {
+        snapshotWriteTask?.cancel()
+    }
+    
+    func loadCachedTasks() async -> NitroTaskList? {
+        if let cachedTaskList {
+            return cachedTaskList
+        }
+        guard !hasLoadedSnapshot else { return nil }
+        hasLoadedSnapshot = true
+        guard let taskList = await snapshotStore?.load() else { return nil }
+        if let cachedTaskList {
+            return cachedTaskList
+        }
+        cachedTaskList = taskList
+        return taskList
     }
     
     func currentTaskIndexRevision() async -> String? {
@@ -129,7 +190,21 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     }
     
     func loadTasks() async -> Result<NitroTaskList, NitroTaskServiceError> {
-        cancelRecovery()
+        await loadTasks(in: nil)
+    }
+    
+    func refreshTasks(in roomIDs: Set<String>) async -> Result<NitroTaskList, NitroTaskServiceError> {
+        guard !roomIDs.isEmpty else {
+            return .success(cachedTaskList ?? .init(tasks: [], unavailableRoomCount: 0))
+        }
+        guard hasCompletedFullLoad else {
+            return await loadTasks()
+        }
+        return await loadTasks(in: roomIDs)
+    }
+    
+    private func loadTasks(in roomIDs: Set<String>?) async -> Result<NitroTaskList, NitroTaskServiceError> {
+        stopRecovery()
         let requestID = UUID()
         loadRequestID = requestID
         defer {
@@ -144,17 +219,45 @@ final class NitroTaskService: NitroTaskServiceProtocol {
             let initialIndex = await loadTaskIndex() ?? .init(migrationComplete: false,
                                                               tasks: [],
                                                               roomPinRevisions: [:])
-            let loadedTasks = try await Self.loadTasks(in: client.rooms(),
+            let rooms = if let roomIDs {
+                client.rooms().filter { roomIDs.contains($0.id()) }
+            } else {
+                client.rooms()
+            }
+            let loadedTasks = try await Self.loadTasks(in: rooms,
                                                        ownUserID: ownUserID,
                                                        session: session,
                                                        urlSession: urlSession,
                                                        index: initialIndex)
             guard !Task.isCancelled, loadRequestID == requestID else { return .failure(.cancelled) }
-            await updateTaskIndex(.reconcile(initial: initialIndex, rooms: loadedTasks.reconciliations))
-            guard !Task.isCancelled, loadRequestID == requestID else { return .failure(.cancelled) }
-            recoveryCandidates = loadedTasks.recoveryCandidates
-            cachedTaskList = loadedTasks.list
-            return .success(loadedTasks.list)
+            let taskList: NitroTaskList
+            if let roomIDs {
+                await updateTaskIndex(.reconcileSubset(initial: initialIndex, rooms: loadedTasks.reconciliations))
+                guard !Task.isCancelled, loadRequestID == requestID else { return .failure(.cancelled) }
+                recoveryCandidates.removeAll { roomIDs.contains($0.roomID) }
+                recoveryCandidates.append(contentsOf: loadedTasks.recoveryCandidates)
+                unavailableRoomIDs.subtract(roomIDs)
+                unavailableRoomIDs.formUnion(loadedTasks.unavailableRoomIDs)
+                taskList = NitroTaskCacheMerger.merge(cachedTaskList: cachedTaskList,
+                                                      loadedTaskList: loadedTasks.list,
+                                                      refreshedRoomIDs: roomIDs,
+                                                      unavailableRoomIDs: unavailableRoomIDs,
+                                                      pendingEventCount: recoveryCandidates.count)
+            } else {
+                await updateTaskIndex(.reconcile(initial: initialIndex, rooms: loadedTasks.reconciliations))
+                guard !Task.isCancelled, loadRequestID == requestID else { return .failure(.cancelled) }
+                recoveryCandidates = loadedTasks.recoveryCandidates
+                unavailableRoomIDs = loadedTasks.unavailableRoomIDs
+                hasCompletedFullLoad = true
+                taskList = NitroTaskCacheMerger.merge(cachedTaskList: cachedTaskList,
+                                                      loadedTaskList: loadedTasks.list,
+                                                      refreshedRoomIDs: nil,
+                                                      unavailableRoomIDs: unavailableRoomIDs,
+                                                      pendingEventCount: recoveryCandidates.count)
+            }
+            cachedTaskList = taskList
+            persistCachedTasks()
+            return .success(taskList)
         } catch is CancellationError {
             return .failure(.cancelled)
         } catch {
@@ -164,7 +267,7 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     }
     
     func startPendingTaskRecovery() {
-        guard recoveryTask == nil, !recoveryCandidates.isEmpty else { return }
+        guard loadRequestID == nil, recoveryTask == nil, !recoveryCandidates.isEmpty else { return }
         let taskID = UUID()
         let candidates = recoveryCandidates
         recoveryTaskID = taskID
@@ -1105,33 +1208,41 @@ private extension NitroTaskService {
         let joinedRooms = rooms.filter { $0.membership() == .joined && !$0.isSpace() }
         var iterator = joinedRooms.makeIterator()
         var loadedRooms = [LoadedRoomTasks]()
+        var preparedRooms = [PreparedRoomTasks]()
         
-        await withTaskGroup(of: LoadedRoomTasks.self) { group in
+        await withTaskGroup(of: RoomPreparationResult.self) { group in
             for _ in 0..<min(maximumConcurrentRoomLoads, joinedRooms.count) {
-                guard let room = iterator.next() else { break }
+                guard !Task.isCancelled, let room = iterator.next() else { break }
                 group.addTask {
-                    await loadTasks(in: room,
-                                    ownUserID: ownUserID,
-                                    session: session,
-                                    urlSession: urlSession,
-                                    index: index)
+                    await prepareTasks(in: room, index: index)
                 }
             }
             
             while let result = await group.next() {
-                loadedRooms.append(result)
+                guard !Task.isCancelled else {
+                    group.cancelAll()
+                    return
+                }
+                switch result {
+                case .prepared(let room):
+                    preparedRooms.append(room)
+                case .loaded(let room):
+                    loadedRooms.append(room)
+                }
                 if let room = iterator.next() {
                     group.addTask {
-                        await loadTasks(in: room,
-                                        ownUserID: ownUserID,
-                                        session: session,
-                                        urlSession: urlSession,
-                                        index: index)
+                        await prepareTasks(in: room, index: index)
                     }
                 }
             }
         }
         
+        try Task.checkCancellation()
+        await loadedRooms.append(contentsOf: loadPreparedTasks(preparedRooms,
+                                                               ownUserID: ownUserID,
+                                                               session: session,
+                                                               urlSession: urlSession,
+                                                               index: index))
         try Task.checkCancellation()
         let tasks = loadedRooms
             .flatMap(\.tasks)
@@ -1141,19 +1252,20 @@ private extension NitroTaskService {
                     : lhs.id < rhs.id
             }
         let recoveryCandidates = loadedRooms.flatMap(\.recoveryCandidates)
+        let unavailableRoomIDs = Set(loadedRooms.lazy
+            .filter(\.isUnavailable)
+            .map(\.reconciliation.roomID))
         return LoadedTasks(list: .init(tasks: tasks,
-                                       unavailableRoomCount: loadedRooms.count(where: \.isUnavailable),
+                                       unavailableRoomCount: unavailableRoomIDs.count,
                                        pendingEventCount: recoveryCandidates.count),
                            recoveryCandidates: recoveryCandidates,
-                           reconciliations: loadedRooms.map(\.reconciliation))
+                           reconciliations: loadedRooms.map(\.reconciliation),
+                           unavailableRoomIDs: unavailableRoomIDs)
     }
     
     @concurrent
-    private static func loadTasks(in room: MatrixRustSDK.Room,
-                                  ownUserID: String,
-                                  session: Session,
-                                  urlSession: URLSession,
-                                  index: NitroTaskIndex) async -> LoadedRoomTasks {
+    private static func prepareTasks(in room: MatrixRustSDK.Room,
+                                     index: NitroTaskIndex) async -> RoomPreparationResult {
         let roomID = room.id()
         let indexedEventIDs = index.eventIDs(in: roomID)
         do {
@@ -1162,13 +1274,13 @@ private extension NitroTaskService {
             guard info.membership == .joined,
                   !info.isSpace,
                   info.successorRoom == nil else {
-                return LoadedRoomTasks(tasks: [],
-                                       recoveryCandidates: [],
-                                       isUnavailable: false,
-                                       reconciliation: .init(roomID: roomID,
-                                                             retainedEventIDs: [],
-                                                             proposedPinRevision: nil,
-                                                             isComplete: true))
+                return .loaded(LoadedRoomTasks(tasks: [],
+                                               recoveryCandidates: [],
+                                               isUnavailable: false,
+                                               reconciliation: .init(roomID: roomID,
+                                                                     retainedEventIDs: [],
+                                                                     proposedPinRevision: nil,
+                                                                     isComplete: true)))
             }
             
             let observedRevision = NitroTaskIndex.pinRevision(info.pinnedEventIds)
@@ -1181,9 +1293,6 @@ private extension NitroTaskService {
                                                           scansAllPins: scansAllPins,
                                                           roomID: info.id,
                                                           room: room)
-            let eventRecoveryCandidates = pinnedEvents.recoveryCandidates
-            var recoveryCandidates = pinnedEvents.recoveryCandidates
-            
             var powerLevels = info.powerLevels
             if powerLevels == nil {
                 powerLevels = try? await room.getPowerLevels()
@@ -1191,61 +1300,137 @@ private extension NitroTaskService {
             let canSend = powerLevels?.canOwnUserSendMessage(message: .roomMessage) == true
             let canPin = powerLevels?.canOwnUserPinUnpin() == true
             let roomName = info.displayName ?? room.displayName() ?? info.id
-            var tasks = [NitroTask]()
-            
-            for taskEvent in pinnedEvents.taskEvents {
-                try Task.checkCancellation()
-                let task = await loadTask(taskEvent,
-                                          roomID: info.id,
-                                          roomName: roomName,
-                                          ownUserID: ownUserID,
-                                          canSend: canSend,
-                                          canPin: canPin,
-                                          waitForDecryption: false,
-                                          room: room,
-                                          session: session,
-                                          urlSession: urlSession)
-                tasks.append(task)
-                if !task.stateIsAvailable {
-                    let candidate = RecoveryCandidate(roomID: info.id, eventID: task.id)
-                    if !recoveryCandidates.contains(candidate) {
-                        recoveryCandidates.append(candidate)
-                    }
-                }
-            }
-            let retainedEventIDs = tasks.map(\.id) + eventRecoveryCandidates
-                .map(\.eventID)
-                .filter { indexedEventIDSet.contains($0) }
-            let proposedRevision = try await reconciledPinRevision(observedRevision,
-                                                                   scansAllPins: scansAllPins,
-                                                                   hasUnavailableEvents: !eventRecoveryCandidates.isEmpty,
-                                                                   room: room)
-            
-            return LoadedRoomTasks(tasks: tasks,
-                                   recoveryCandidates: recoveryCandidates,
-                                   isUnavailable: false,
-                                   reconciliation: .init(roomID: info.id,
-                                                         retainedEventIDs: retainedEventIDs,
-                                                         proposedPinRevision: proposedRevision,
-                                                         isComplete: proposedRevision != nil))
+            return .prepared(PreparedRoomTasks(room: room,
+                                               roomID: info.id,
+                                               roomName: roomName,
+                                               canSend: canSend,
+                                               canPin: canPin,
+                                               indexedEventIDs: indexedEventIDSet,
+                                               observedRevision: observedRevision,
+                                               scansAllPins: scansAllPins,
+                                               taskEvents: pinnedEvents.taskEvents,
+                                               recoveryCandidates: pinnedEvents.recoveryCandidates))
         } catch is CancellationError {
-            return LoadedRoomTasks(tasks: [],
-                                   recoveryCandidates: [],
-                                   isUnavailable: false,
-                                   reconciliation: .init(roomID: roomID,
-                                                         retainedEventIDs: indexedEventIDs,
-                                                         proposedPinRevision: index.roomPinRevisions[roomID],
-                                                         isComplete: false))
+            return .loaded(LoadedRoomTasks(tasks: [],
+                                           recoveryCandidates: [],
+                                           isUnavailable: false,
+                                           reconciliation: .init(roomID: roomID,
+                                                                 retainedEventIDs: indexedEventIDs,
+                                                                 proposedPinRevision: index.roomPinRevisions[roomID],
+                                                                 isComplete: false)))
         } catch {
             MXLog.error("Failed loading Nitro tasks for \(roomID) with error: \(error)")
-            return LoadedRoomTasks(tasks: [],
-                                   recoveryCandidates: [],
-                                   isUnavailable: true,
-                                   reconciliation: .init(roomID: roomID,
-                                                         retainedEventIDs: indexedEventIDs,
-                                                         proposedPinRevision: index.roomPinRevisions[roomID],
-                                                         isComplete: false))
+            return .loaded(LoadedRoomTasks(tasks: [],
+                                           recoveryCandidates: [],
+                                           isUnavailable: true,
+                                           reconciliation: .init(roomID: roomID,
+                                                                 retainedEventIDs: indexedEventIDs,
+                                                                 proposedPinRevision: index.roomPinRevisions[roomID],
+                                                                 isComplete: false)))
         }
+    }
+    
+    @concurrent
+    private static func loadPreparedTasks(_ rooms: [PreparedRoomTasks],
+                                          ownUserID: String,
+                                          session: Session,
+                                          urlSession: URLSession,
+                                          index: NitroTaskIndex) async -> [LoadedRoomTasks] {
+        let taskLoadJobs = rooms.enumerated().flatMap { roomIndex, room in
+            room.taskEvents.map { TaskLoadJob(roomIndex: roomIndex, taskEvent: $0) }
+        }
+        var jobs = taskLoadJobs.makeIterator()
+        var tasksByRoomIndex = [Int: [NitroTask]]()
+        
+        await withTaskGroup(of: LoadedPreparedTask.self) { group in
+            for _ in 0..<min(maximumConcurrentTaskLoads, taskLoadJobs.count) {
+                guard !Task.isCancelled, let job = jobs.next() else { break }
+                let room = rooms[job.roomIndex]
+                group.addTask {
+                    let task = await loadTask(job.taskEvent,
+                                              roomID: room.roomID,
+                                              roomName: room.roomName,
+                                              ownUserID: ownUserID,
+                                              canSend: room.canSend,
+                                              canPin: room.canPin,
+                                              waitForDecryption: false,
+                                              room: room.room,
+                                              session: session,
+                                              urlSession: urlSession)
+                    return LoadedPreparedTask(roomIndex: job.roomIndex, task: task)
+                }
+            }
+            
+            while let result = await group.next() {
+                guard !Task.isCancelled else {
+                    group.cancelAll()
+                    return
+                }
+                tasksByRoomIndex[result.roomIndex, default: []].append(result.task)
+                guard let job = jobs.next() else { continue }
+                let room = rooms[job.roomIndex]
+                group.addTask {
+                    let task = await loadTask(job.taskEvent,
+                                              roomID: room.roomID,
+                                              roomName: room.roomName,
+                                              ownUserID: ownUserID,
+                                              canSend: room.canSend,
+                                              canPin: room.canPin,
+                                              waitForDecryption: false,
+                                              room: room.room,
+                                              session: session,
+                                              urlSession: urlSession)
+                    return LoadedPreparedTask(roomIndex: job.roomIndex, task: task)
+                }
+            }
+        }
+        
+        var loadedRooms = [LoadedRoomTasks]()
+        for (roomIndex, room) in rooms.enumerated() {
+            let tasks = tasksByRoomIndex[roomIndex] ?? []
+            var recoveryCandidates = room.recoveryCandidates
+            for task in tasks where !task.stateIsAvailable {
+                let candidate = RecoveryCandidate(roomID: room.roomID, eventID: task.id)
+                if !recoveryCandidates.contains(candidate) {
+                    recoveryCandidates.append(candidate)
+                }
+            }
+            let retainedEventIDs = tasks.map(\.id) + room.recoveryCandidates
+                .map(\.eventID)
+                .filter { room.indexedEventIDs.contains($0) }
+            do {
+                try Task.checkCancellation()
+                let proposedRevision = try await reconciledPinRevision(room.observedRevision,
+                                                                       scansAllPins: room.scansAllPins,
+                                                                       hasUnavailableEvents: !room.recoveryCandidates.isEmpty,
+                                                                       room: room.room)
+                loadedRooms.append(LoadedRoomTasks(tasks: tasks,
+                                                   recoveryCandidates: recoveryCandidates,
+                                                   isUnavailable: false,
+                                                   reconciliation: .init(roomID: room.roomID,
+                                                                         retainedEventIDs: retainedEventIDs,
+                                                                         proposedPinRevision: proposedRevision,
+                                                                         isComplete: proposedRevision != nil)))
+            } catch is CancellationError {
+                loadedRooms.append(LoadedRoomTasks(tasks: [],
+                                                   recoveryCandidates: [],
+                                                   isUnavailable: false,
+                                                   reconciliation: .init(roomID: room.roomID,
+                                                                         retainedEventIDs: Array(room.indexedEventIDs),
+                                                                         proposedPinRevision: index.roomPinRevisions[room.roomID],
+                                                                         isComplete: false)))
+            } catch {
+                MXLog.error("Failed reconciling Nitro tasks for \(room.roomID) with error: \(error)")
+                loadedRooms.append(LoadedRoomTasks(tasks: [],
+                                                   recoveryCandidates: [],
+                                                   isUnavailable: true,
+                                                   reconciliation: .init(roomID: room.roomID,
+                                                                         retainedEventIDs: Array(room.indexedEventIDs),
+                                                                         proposedPinRevision: index.roomPinRevisions[room.roomID],
+                                                                         isComplete: false)))
+            }
+        }
+        return loadedRooms
     }
     
     @concurrent
@@ -1524,11 +1709,10 @@ private extension NitroTaskService {
                                                     failedEventCount: failedCandidates.count)))
     }
     
-    private func cancelRecovery() {
+    private func stopRecovery() {
         recoveryTask?.cancel()
         recoveryTask = nil
         recoveryTaskID = nil
-        recoveryCandidates.removeAll()
     }
     
     private func loadTaskIndex() async -> NitroTaskIndex? {
@@ -1597,6 +1781,7 @@ private extension NitroTaskService {
         self.cachedTaskList = NitroTaskList(tasks: Self.sortedTasks(tasks),
                                             unavailableRoomCount: cachedTaskList.unavailableRoomCount,
                                             pendingEventCount: cachedTaskList.pendingEventCount)
+        persistCachedTasks()
     }
     
     private func removeCachedTask(_ task: NitroTask) {
@@ -1604,6 +1789,7 @@ private extension NitroTaskService {
         self.cachedTaskList = NitroTaskList(tasks: cachedTaskList.tasks.filter { $0.id != task.id },
                                             unavailableRoomCount: cachedTaskList.unavailableRoomCount,
                                             pendingEventCount: cachedTaskList.pendingEventCount)
+        persistCachedTasks()
     }
     
     private func updateCachedPendingEventCount(_ pendingEventCount: Int) {
@@ -1611,6 +1797,20 @@ private extension NitroTaskService {
         self.cachedTaskList = NitroTaskList(tasks: cachedTaskList.tasks,
                                             unavailableRoomCount: cachedTaskList.unavailableRoomCount,
                                             pendingEventCount: pendingEventCount)
+        persistCachedTasks()
+    }
+    
+    private func persistCachedTasks() {
+        guard let snapshotStore, let cachedTaskList else { return }
+        snapshotWriteTask?.cancel()
+        snapshotWriteTask = Task(name: "Save Nitro task snapshot") {
+            do {
+                try await Task.sleep(for: Self.snapshotWriteDelay)
+            } catch {
+                return
+            }
+            await snapshotStore.save(cachedTaskList)
+        }
     }
     
     private nonisolated static func sortedTasks(_ tasks: [NitroTask]) -> [NitroTask] {

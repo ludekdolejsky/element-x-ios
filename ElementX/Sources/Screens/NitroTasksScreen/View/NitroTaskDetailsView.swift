@@ -81,6 +81,7 @@ struct NitroTaskDetailsView: View {
                             } label: {
                                 Label(UntranslatedL10n.actionArchiveNitroTaskIos, icon: \.delete)
                             }
+                            .disabled(!context.viewState.canMutateTasks)
                         }
                     }
                 }
@@ -95,7 +96,7 @@ struct NitroTaskDetailsView: View {
                         Button(L10n.actionCancel) {
                             isEditing = false
                         }
-                    } else if task?.canEditContent == true {
+                    } else if task?.canEditContent == true, context.viewState.canMutateTasks {
                         Button(L10n.actionEdit) {
                             beginEditing()
                         }
@@ -173,7 +174,7 @@ struct NitroTaskDetailsView: View {
         } label: {
             LabeledContent(UntranslatedL10n.screenNitroTaskStatusIos, value: task.status.title)
         }
-        .disabled(!task.canUpdate)
+        .disabled(!task.canUpdate || !context.viewState.canMutateTasks)
     }
     
     private func assigneeMenu(_ task: NitroTask) -> some View {
@@ -190,7 +191,7 @@ struct NitroTaskDetailsView: View {
             LabeledContent(UntranslatedL10n.screenNitroTaskAssigneeIos,
                            value: task.assigneeDisplayName ?? task.state.assignee ?? UntranslatedL10n.screenNitroTaskUnassignedIos)
         }
-        .disabled(!task.canUpdate)
+        .disabled(!task.canUpdate || !context.viewState.canMutateTasks)
     }
 }
 

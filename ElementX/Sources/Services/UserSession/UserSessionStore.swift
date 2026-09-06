@@ -74,7 +74,9 @@ class UserSessionStore: UserSessionStoreProtocol {
         do {
             let session = try client.session()
             let userID = try client.userId()
-            let clientProxy = try await setupProxyForClient(client)
+            let clientProxy = try await setupProxyForClient(client,
+                                                            sessionDirectories: sessionDirectories,
+                                                            passphrase: passphrase)
             
             keychainController.setRestorationToken(RestorationToken(session: session,
                                                                     sessionDirectories: sessionDirectories,
@@ -153,7 +155,9 @@ class UserSessionStore: UserSessionStoreProtocol {
             
             Task(priority: .low) { await appHooks.remoteSettingsHook.updateCache(using: client) }
             
-            return try await .success(setupProxyForClient(client))
+            return try await .success(setupProxyForClient(client,
+                                                          sessionDirectories: credentials.restorationToken.sessionDirectories,
+                                                          passphrase: credentials.restorationToken.passphrase))
         } catch UserSessionStoreError.failedSettingUpClientProxy(let error) {
             // If this has failed, there is likely something wrong with the creation of the sync service
             // There is nothing we can do, but at the same time we don't want the user to the get logged out
@@ -165,12 +169,18 @@ class UserSessionStore: UserSessionStoreProtocol {
         }
     }
     
-    private func setupProxyForClient(_ client: ClientProtocol) async throws -> ClientProxyProtocol {
+    private func setupProxyForClient(_ client: ClientProtocol,
+                                     sessionDirectories: SessionDirectories,
+                                     passphrase: String) async throws -> ClientProxyProtocol {
         do {
+            let nitroTaskSnapshotStore = NitroConfiguration.isEnabled
+                ? NitroTaskSnapshotStore(cacheDirectory: sessionDirectories.cacheDirectory, passphrase: passphrase)
+                : nil
             return try await ClientProxy(client: client,
                                          networkMonitor: networkMonitor,
                                          appSettings: appSettings,
-                                         analyticsService: analyticsService)
+                                         analyticsService: analyticsService,
+                                         nitroTaskSnapshotStore: nitroTaskSnapshotStore)
         } catch {
             throw UserSessionStoreError.failedSettingUpClientProxy(error)
         }

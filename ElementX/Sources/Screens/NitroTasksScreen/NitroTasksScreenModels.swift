@@ -26,6 +26,7 @@ struct NitroTasksScreenViewState: BindableState {
     var membersByRoomID = [String: [NitroTaskMember]]()
     var isLoading = false
     var hasLoaded = false
+    var isUsingPersistentSnapshot = false
     var busyTaskID: String?
     var unavailableRoomCount = 0
     var pendingEventCount = 0
@@ -39,6 +40,10 @@ struct NitroTasksScreenViewState: BindableState {
     
     var isMutating: Bool {
         busyTaskID != nil
+    }
+    
+    var canMutateTasks: Bool {
+        !isUsingPersistentSnapshot
     }
     
     var rooms: [NitroTaskRoom] {
