@@ -33,9 +33,12 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
     private let clientProxy: NitroClientProxyProtocol
     private let tasksScreenCoordinator: NitroTasksScreenCoordinator
     private let navigationStackCoordinator = NavigationStackCoordinator()
+    private let remindersScreenCoordinator: NitroRemindersScreenCoordinator?
+    private let remindersNavigationStackCoordinator: NavigationStackCoordinator?
     private let actionsSubject = PassthroughSubject<NitroUserSessionFeatureCoordinatorAction, Never>()
     private var cancellables = Set<AnyCancellable>()
     private var tabObservationTask: Task<Void, Never>?
+    private var remindersTabObservationTask: Task<Void, Never>?
     private var externalChangeCheckTask: Task<Void, Never>?
     private var reminderPresentationTask: Task<Void, Never>?
     private var externalChangeSnapshot: TasksExternalChangeSnapshot?
@@ -43,6 +46,12 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
     private var hasStarted = false
     
     let tabDetails: NavigationTabCoordinator<UserSessionFlowCoordinator.HomeTab>.TabDetails
+    let remindersTabDetails: NavigationTabCoordinator<UserSessionFlowCoordinator.HomeTab>.TabDetails?
+
+    var remindersTab: NavigationTabCoordinator<UserSessionFlowCoordinator.HomeTab>.Tab? {
+        guard let remindersNavigationStackCoordinator, let remindersTabDetails else { return nil }
+        return .init(coordinator: remindersNavigationStackCoordinator, details: remindersTabDetails)
+    }
     
     var actionsPublisher: AnyPublisher<NitroUserSessionFeatureCoordinatorAction, Never> {
         actionsSubject.eraseToAnyPublisher()
@@ -61,12 +70,31 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
                            icon: \.checkCircle,
                            selectedIcon: \.checkCircleSolid)
         navigationStackCoordinator.setRootCoordinator(tasksScreenCoordinator)
+
+        if let reminderBaseURL = parameters.reminderBaseURL {
+            let remindersScreenCoordinator = NitroRemindersScreenCoordinator(parameters: .init(clientProxy: clientProxy,
+                                                                                               reminderService: NitroReminderService(baseURL: reminderBaseURL),
+                                                                                               previewService: NitroReminderPreviewService(clientProxy: parameters.userSession.clientProxy)))
+            let remindersNavigationStackCoordinator = NavigationStackCoordinator()
+            remindersNavigationStackCoordinator.setRootCoordinator(remindersScreenCoordinator)
+            self.remindersScreenCoordinator = remindersScreenCoordinator
+            self.remindersNavigationStackCoordinator = remindersNavigationStackCoordinator
+            remindersTabDetails = .init(tag: .reminders,
+                                        title: UntranslatedL10n.screenNitroRemindersTitleIos,
+                                        icon: \.notifications,
+                                        selectedIcon: \.notificationsSolid)
+        } else {
+            remindersScreenCoordinator = nil
+            remindersNavigationStackCoordinator = nil
+            remindersTabDetails = nil
+        }
     }
     
     func start() {
         guard !hasStarted else { return }
         hasStarted = true
         setupTasksObservers()
+        setupRemindersObservers()
         setupCatchUpObserver()
         setupRestoreObserver()
         clientProxy.nitroCatchUpService.restore()
@@ -77,6 +105,8 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
         hasStarted = false
         tabObservationTask?.cancel()
         tabObservationTask = nil
+        remindersTabObservationTask?.cancel()
+        remindersTabObservationTask = nil
         externalChangeCheckTask?.cancel()
         externalChangeCheckTask = nil
         reminderPresentationTask?.cancel()
@@ -84,10 +114,12 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
         cancellables.removeAll()
         clientProxy.nitroCatchUpService.stop()
         navigationStackCoordinator.stop()
+        remindersNavigationStackCoordinator?.stop()
     }
     
     isolated deinit {
         tabObservationTask?.cancel()
+        remindersTabObservationTask?.cancel()
         externalChangeCheckTask?.cancel()
         reminderPresentationTask?.cancel()
     }
@@ -110,8 +142,6 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
                 switch action {
                 case .presentCreate(let initialRoomID):
                     presentTaskCreate(initialRoomID: initialRoomID)
-                case .presentReminders:
-                    presentReminders()
                 case .presentReminder(let task):
                     reminderPresentationTask?.cancel()
                     reminderPresentationTask = Task(name: "Present Nitro task reminder") { [weak self] in
@@ -205,6 +235,35 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
         }
     }
     
+    private func setupRemindersObservers() {
+        remindersScreenCoordinator?.actionsPublisher
+            .sink { [weak self] action in
+                guard let self else { return }
+                remindersNavigationStackCoordinator?.popToRoot(animated: false)
+                switch action {
+                case .openReminder(let roomID, let eventID, let threadRootID):
+                    if let threadRootID {
+                        actionsSubject.send(.openRoute(.thread(roomID: roomID,
+                                                               threadRootEventID: threadRootID,
+                                                               focusEventID: eventID)))
+                    } else {
+                        actionsSubject.send(.openRoute(.event(eventID: eventID, roomID: roomID, via: [])))
+                    }
+                }
+            }
+            .store(in: &cancellables)
+
+        guard let remindersScreenCoordinator else { return }
+        let selectedTabs = parameters.navigationTabCoordinator.observe(\.selectedTab)
+        remindersTabObservationTask = Task(name: "Observe Nitro reminders tab") { [weak remindersScreenCoordinator] in
+            for await selectedTab in selectedTabs {
+                guard !Task.isCancelled else { return }
+                guard selectedTab == .reminders else { continue }
+                remindersScreenCoordinator?.refresh()
+            }
+        }
+    }
+
     private func presentTaskCreate(initialRoomID: String?) {
         let coordinator = NitroTaskCreateScreenCoordinator(parameters: .init(taskService: clientProxy.nitroTaskService,
                                                                              draft: .init(title: "",
@@ -223,29 +282,6 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
             }
             .store(in: &cancellables)
         navigationStackCoordinator.setSheetCoordinator(coordinator)
-    }
-    
-    private func presentReminders() {
-        guard let reminderBaseURL = parameters.reminderBaseURL else { return }
-        let coordinator = NitroRemindersScreenCoordinator(parameters: .init(clientProxy: clientProxy,
-                                                                            reminderService: NitroReminderService(baseURL: reminderBaseURL)))
-        coordinator.actionsPublisher
-            .sink { [weak self] action in
-                guard let self else { return }
-                navigationStackCoordinator.popToRoot(animated: false)
-                switch action {
-                case .openReminder(let roomID, let eventID, let threadRootID):
-                    if let threadRootID {
-                        actionsSubject.send(.openRoute(.thread(roomID: roomID,
-                                                               threadRootEventID: threadRootID,
-                                                               focusEventID: eventID)))
-                    } else {
-                        actionsSubject.send(.openRoute(.event(eventID: eventID, roomID: roomID, via: [])))
-                    }
-                }
-            }
-            .store(in: &cancellables)
-        navigationStackCoordinator.push(coordinator)
     }
     
     private func presentTaskReminder(_ task: NitroTask) async {

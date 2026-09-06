@@ -18,6 +18,7 @@ enum NitroRemindersScreenAlertID: Hashable {
 
 struct NitroRemindersScreenViewState: BindableState {
     var reminders: [NitroReminder] = []
+    var previews = [String: NitroReminderMessagePreview]()
     var isLoading = false
     var hasLoaded = false
     var busyReminderID: String?

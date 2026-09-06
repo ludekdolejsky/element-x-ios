@@ -9,7 +9,6 @@ import Foundation
 
 enum NitroTasksScreenViewModelAction {
     case presentCreate(initialRoomID: String?)
-    case presentReminders
     case presentReminder(NitroTask)
     case openTask(NitroTask)
     case openSource(NitroTask)
@@ -142,7 +141,6 @@ enum NitroTasksScreenViewAction {
     case selectTask(NitroTask)
     case dismissDetails
     case showCreate
-    case showReminders
     case remind(NitroTask)
     case openTask(NitroTask)
     case openSource(NitroTask)

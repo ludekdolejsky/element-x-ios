@@ -258,6 +258,10 @@ internal nonisolated enum UntranslatedL10n {
   internal static var screenNitroRemindersEmptyUpcomingMessageIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_empty_upcoming_message_ios") }
   /// No upcoming reminders
   internal static var screenNitroRemindersEmptyUpcomingTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_empty_upcoming_title_ios") }
+  /// Loading message…
+  internal static var screenNitroRemindersLoadingMessageIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_loading_message_ios") }
+  /// Message unavailable
+  internal static var screenNitroRemindersMessageUnavailableIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_message_unavailable_ios") }
   /// Set %1$@ · Due %2$@
   internal static func screenNitroRemindersMetaIos(_ p1: Any, _ p2: Any) -> String {
     return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_meta_ios", String(describing: p1), String(describing: p2))

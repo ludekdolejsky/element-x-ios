@@ -77,17 +77,6 @@ final class HomeScreenViewModelTests {
     }
     
     @Test
-    func showReminders() async throws {
-        setupViewModel()
-        let deferred = deferFulfillment(viewModel.actions) { action in
-            action == .presentReminders
-        }
-        
-        context.send(viewAction: .showReminders)
-        try await deferred.fulfill()
-    }
-    
-    @Test
     func leaveRoomAlert() async throws {
         setupViewModel()
         
@@ -544,8 +533,6 @@ extension HomeScreenViewModelAction: @MainActor @retroactive Equatable {
         case (.presentFeedbackScreen, .presentFeedbackScreen):
             true
         case (.presentStartChatScreen, .presentStartChatScreen):
-            true
-        case (.presentReminders, .presentReminders):
             true
         case (.logout, .logout):
             true

@@ -20,7 +20,7 @@ enum UserSessionFlowCoordinatorAction {
 }
 
 class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
-    enum HomeTab: Hashable, Sendable { case chats, spaces, tasks, search }
+    enum HomeTab: Hashable, Sendable { case chats, spaces, tasks, reminders, search }
     
     private let navigationRootCoordinator: NavigationRootCoordinator
     private let navigationTabCoordinator: NavigationTabCoordinator<HomeTab>
@@ -134,6 +134,9 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
         ]
         if let nitroFeatureCoordinator {
             tabs.append(.init(coordinator: nitroFeatureCoordinator, details: nitroFeatureCoordinator.tabDetails))
+            if let remindersTab = nitroFeatureCoordinator.remindersTab {
+                tabs.append(remindersTab)
+            }
         }
         if let searchTabNavigationStackCoordinator, let searchTabDetails {
             tabs.append(.init(coordinator: searchTabNavigationStackCoordinator, details: searchTabDetails))

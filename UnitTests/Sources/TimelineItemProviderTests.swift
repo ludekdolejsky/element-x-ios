@@ -13,6 +13,18 @@ import Testing
 
 struct TimelineItemProviderTests {
     @Test
+    func lightweightTimelineSubscriptionDoesNotFetchMembers() async {
+        let timeline = TimelineSDKMock()
+        timeline.addListenerListenerReturnValue = TaskHandleSDKMock()
+        let proxy = TimelineProxy(timeline: timeline, kind: .detached)
+        
+        await proxy.subscribeForUpdates(fetchMembers: false)
+        await Task.yield()
+        
+        #expect(!timeline.fetchMembersCalled)
+    }
+    
+    @Test
     func marksInitialSnapshotOnlyAfterReset() async throws {
         let timeline = TimelineSDKMock()
         let listenerAddedSubject = PassthroughSubject<Void, Never>()

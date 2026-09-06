@@ -93,8 +93,6 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
             }
         case .showCreate:
             actionsSubject.send(.presentCreate(initialRoomID: state.bindings.selectedRoomID))
-        case .showReminders:
-            actionsSubject.send(.presentReminders)
         case .remind(let task):
             if state.bindings.selectedTask == nil {
                 actionsSubject.send(.presentReminder(task))

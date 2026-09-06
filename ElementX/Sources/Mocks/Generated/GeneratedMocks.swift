@@ -12871,6 +12871,37 @@ nonisolated class TimelineProxyMock: TimelineProxyProtocol, @unchecked Sendable 
         subscribeForUpdatesCallsCountLock.withLock { subscribeForUpdatesUnderlyingCallsCount += 1 }
         await subscribeForUpdatesClosure?()
     }
+    //MARK: - subscribeForUpdates
+
+    private let subscribeForUpdatesFetchMembersCallsCountLock = NSLock()
+    private nonisolated(unsafe) var subscribeForUpdatesFetchMembersUnderlyingCallsCount = 0
+    var subscribeForUpdatesFetchMembersCallsCount: Int {
+        get { subscribeForUpdatesFetchMembersCallsCountLock.withLock { subscribeForUpdatesFetchMembersUnderlyingCallsCount } }
+        set { subscribeForUpdatesFetchMembersCallsCountLock.withLock { subscribeForUpdatesFetchMembersUnderlyingCallsCount = newValue } }
+    }
+    var subscribeForUpdatesFetchMembersCalled: Bool {
+        return subscribeForUpdatesFetchMembersCallsCount > 0
+    }
+    private let subscribeForUpdatesFetchMembersReceivedFetchMembersLock = NSLock()
+    private nonisolated(unsafe) var subscribeForUpdatesFetchMembersUnderlyingReceivedFetchMembers: Bool?
+    var subscribeForUpdatesFetchMembersReceivedFetchMembers: Bool? {
+        get { subscribeForUpdatesFetchMembersReceivedFetchMembersLock.withLock { subscribeForUpdatesFetchMembersUnderlyingReceivedFetchMembers } }
+        set { subscribeForUpdatesFetchMembersReceivedFetchMembersLock.withLock { subscribeForUpdatesFetchMembersUnderlyingReceivedFetchMembers = newValue } }
+    }
+    private let subscribeForUpdatesFetchMembersReceivedInvocationsLock = NSLock()
+    private nonisolated(unsafe) var subscribeForUpdatesFetchMembersUnderlyingReceivedInvocations: [Bool] = []
+    var subscribeForUpdatesFetchMembersReceivedInvocations: [Bool] {
+        get { subscribeForUpdatesFetchMembersReceivedInvocationsLock.withLock { subscribeForUpdatesFetchMembersUnderlyingReceivedInvocations } }
+        set { subscribeForUpdatesFetchMembersReceivedInvocationsLock.withLock { subscribeForUpdatesFetchMembersUnderlyingReceivedInvocations = newValue } }
+    }
+    nonisolated(unsafe) var subscribeForUpdatesFetchMembersClosure: ((Bool) async -> Void)?
+
+    @concurrent func subscribeForUpdates(fetchMembers: Bool) async {
+        subscribeForUpdatesFetchMembersCallsCountLock.withLock { subscribeForUpdatesFetchMembersUnderlyingCallsCount += 1 }
+        subscribeForUpdatesFetchMembersReceivedFetchMembers = fetchMembers
+        subscribeForUpdatesFetchMembersReceivedInvocationsLock.withLock { subscribeForUpdatesFetchMembersUnderlyingReceivedInvocations.append(fetchMembers) }
+        await subscribeForUpdatesFetchMembersClosure?(fetchMembers)
+    }
     //MARK: - fetchDetails
 
     private let fetchDetailsForCallsCountLock = NSLock()

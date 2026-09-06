@@ -63,13 +63,6 @@ struct NitroTasksScreen: View {
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
-                context.send(viewAction: .showReminders)
-            } label: {
-                CompoundIcon(\.notifications)
-            }
-            .accessibilityLabel(UntranslatedL10n.screenNitroRemindersTitleIos)
-            
-            Button {
                 context.send(viewAction: .showCreate)
             } label: {
                 CompoundIcon(\.plus)

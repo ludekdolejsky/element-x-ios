@@ -46,6 +46,8 @@
 "screen_nitro_reminders_empty_done_message_ios" = "Reminders you mark done will appear here.";
 "screen_nitro_reminders_reminder_label_ios" = "Reminder %1$@";
 "screen_nitro_reminders_meta_ios" = "Set %1$@ · Due %2$@";
+"screen_nitro_reminders_loading_message_ios" = "Loading message…";
+"screen_nitro_reminders_message_unavailable_ios" = "Message unavailable";
 "screen_nitro_reminders_edit_title_ios" = "Edit reminder time";
 "screen_nitro_reminders_edit_hint_ios" = "Set an exact local date and time for this reminder.";
 "action_add_nitro_task_ios" = "Add task";

@@ -14,7 +14,6 @@ struct NitroTasksScreenCoordinatorParameters {
 
 enum NitroTasksScreenCoordinatorAction {
     case presentCreate(initialRoomID: String?)
-    case presentReminders
     case presentReminder(NitroTask)
     case openTask(NitroTask)
     case openSource(NitroTask)
@@ -40,8 +39,6 @@ final class NitroTasksScreenCoordinator: CoordinatorProtocol {
                 switch action {
                 case .presentCreate(let initialRoomID):
                     actionsSubject.send(.presentCreate(initialRoomID: initialRoomID))
-                case .presentReminders:
-                    actionsSubject.send(.presentReminders)
                 case .presentReminder(let task):
                     actionsSubject.send(.presentReminder(task))
                 case .openTask(let task):

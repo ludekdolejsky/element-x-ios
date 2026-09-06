@@ -60,6 +60,10 @@ final class TimelineProxy: TimelineProxyProtocol {
     }
     
     func subscribeForUpdates() async {
+        await subscribeForUpdates(fetchMembers: true)
+    }
+    
+    func subscribeForUpdates(fetchMembers: Bool) async {
         guard innerTimelineItemProvider == nil else {
             MXLog.warning("Timeline already subscribed for updates")
             return
@@ -76,8 +80,10 @@ final class TimelineProxy: TimelineProxyProtocol {
         
         innerTimelineItemProvider = provider
         
-        Task {
-            await timeline.fetchMembers()
+        if fetchMembers {
+            Task {
+                await timeline.fetchMembers()
+            }
         }
     }
     

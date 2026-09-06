@@ -102,10 +102,7 @@ struct NitroRemindersScreen: View {
                             .font(.compound.bodyXS)
                             .foregroundStyle(.compound.textSecondary)
                     }
-                    Text(UntranslatedL10n.screenNitroRemindersReminderLabelIos(reminder.label))
-                        .font(.compound.bodyMD)
-                        .foregroundStyle(.compound.textPrimary)
-                        .lineLimit(2)
+                    reminderPreview(reminder)
                     Text(UntranslatedL10n.screenNitroRemindersMetaIos(formatted(reminder.createdDate), formatted(reminder.dueDate)))
                         .font(.compound.bodyXS)
                         .foregroundStyle(.compound.textSecondary)
@@ -122,6 +119,36 @@ struct NitroRemindersScreen: View {
             }
         }
         .padding(.vertical, 4)
+    }
+    
+    @ViewBuilder
+    private func reminderPreview(_ reminder: NitroReminder) -> some View {
+        if let preview = context.viewState.previews[reminder.id] {
+            Text(preview.text)
+                .font(.compound.bodyMD)
+                .foregroundStyle(preview.isAvailable ? .compound.textPrimary : .compound.textSecondary)
+                .lineLimit(2)
+            if let sender = preview.sender {
+                HStack(spacing: 4) {
+                    Text(sender)
+                    if preview.isEdited {
+                        Text("·")
+                        Text(L10n.commonEditedSuffix)
+                    }
+                }
+                .font(.compound.bodyXS)
+                .foregroundStyle(.compound.textSecondary)
+                .lineLimit(1)
+            }
+        } else {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(UntranslatedL10n.screenNitroRemindersLoadingMessageIos)
+                    .font(.compound.bodyMD)
+                    .foregroundStyle(.compound.textSecondary)
+            }
+        }
     }
     
     private func reminderMenu(_ reminder: NitroReminder) -> some View {
@@ -253,7 +280,8 @@ struct NitroRemindersScreen_Previews: PreviewProvider, TestablePreview {
         let clientProxy = NitroClientProxyMock(homeserver: "https://example.com")
         clientProxy.requestOpenIDTokenReturnValue = .failure(.invalidResponse)
         return NitroRemindersScreenViewModel(clientProxy: clientProxy,
-                                             reminderService: NitroReminderService(baseURL: .homeDirectory))
+                                             reminderService: NitroReminderService(baseURL: .homeDirectory),
+                                             previewService: NitroReminderPreviewServiceMock())
     }()
     
     static var previews: some View {

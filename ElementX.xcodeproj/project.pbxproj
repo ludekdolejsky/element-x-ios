@@ -523,6 +523,7 @@
 		4EAC427267424192964B16B3 /* AppSettingsHook.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13BE9781699FB510E9263192 /* AppSettingsHook.swift */; };
 		4ED764A24F2A715C25CF07F1 /* TimelineMediaPreviewFileExportPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30856520F3263D0E195710D7 /* TimelineMediaPreviewFileExportPicker.swift */; };
 		4F2DF6138E87A4B8C2488CA3 /* VoiceMessageCacheProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43A84EE187D0C772E18A4E39 /* VoiceMessageCacheProtocol.swift */; };
+		4F46F160D9BADBEBBF810D4A /* NitroReminderPreviewServiceMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBC9002775210BFA31F2E7E /* NitroReminderPreviewServiceMock.swift */; };
 		4F51C7C8131D060108B80575 /* NavigationCoordinators.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79351405CD99312A182B2488 /* NavigationCoordinators.swift */; };
 		4FDC8A9764CFDA90CE035725 /* Duration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FB2253D36E81E045E1CB432 /* Duration.swift */; };
 		4FE688FE9375B2FBF424146A /* TextBasedRoomTimelineViewProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6EA0D8B0BBD8805F7D5A133 /* TextBasedRoomTimelineViewProtocol.swift */; };
@@ -745,6 +746,7 @@
 		70D659375FD031EA41477A7D /* NitroTasksScreenViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2574A3978E4635F8CF5E2E14 /* NitroTasksScreenViewModel.swift */; };
 		715FB2D768E8919979EACD71 /* StopButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A786DE47C0DBCE0CD163193 /* StopButton.swift */; };
 		71643093F87153F633A1B025 /* ThreadDecorator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4F09CB613C54FDC73AE6A /* ThreadDecorator.swift */; };
+		71926DAAC1CD1FF540023BD6 /* NitroReminderPreviewServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6DE30E5503FD300C5862967 /* NitroReminderPreviewServiceTests.swift */; };
 		719E7AAD1F8E68F68F30FECD /* Task.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40C19719687984FD9478FBE /* Task.swift */; };
 		71AC1CAAC23403FFE847F2C9 /* ComposerToolbarViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90514BE9B8ACCBCF0AD2489 /* ComposerToolbarViewModel.swift */; };
 		71B62C48B8079D49F3FBC845 /* ExpiringTaskRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B7A28A6606D58D1E38C55A /* ExpiringTaskRunnerTests.swift */; };
@@ -1383,6 +1385,7 @@
 		D150D6E96CA6CA09FA50E13C /* LabsScreenCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF17EFB2833B4CE5C06E7F8 /* LabsScreenCoordinator.swift */; };
 		D16B3134A7FF4FBA0749014A /* AuthenticationClassicAppAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5C45578F406698388B97C07 /* AuthenticationClassicAppAccountView.swift */; };
 		D18B70975644C24F60656C0D /* KnockRequestProxyProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07851F4EA81AA3339806A7B /* KnockRequestProxyProtocol.swift */; };
+		D19769EA3FB7E06C7AFBF7DA /* NitroReminderPreviewService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47DB8E7CE9C4F7E4AE999126 /* NitroReminderPreviewService.swift */; };
 		D19A748E95E2FAB2940570F0 /* CallScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4103AB4340F2974D690A12A /* CallScreen.swift */; };
 		D1D46856E8AB5790FC0C5FFB /* NitroTasksScreenCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01D5C7FF7FF42FF5B2A4D5B8 /* NitroTasksScreenCoordinator.swift */; };
 		D2048FD56760BDABA3DB5FC2 /* AppLockServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26EAAB54C6CE91D64B69A9F8 /* AppLockServiceProtocol.swift */; };
@@ -2287,6 +2290,7 @@
 		475EB595D7527E9A8A14043E /* uz */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = uz; path = uz.lproj/Localizable.strings; sourceTree = "<group>"; };
 		477A8C656B7B26E99C35927F /* StartChatFlowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartChatFlowCoordinator.swift; sourceTree = "<group>"; };
 		47873756E45B46683D97DC32 /* LegalInformationScreenModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegalInformationScreenModels.swift; sourceTree = "<group>"; };
+		47DB8E7CE9C4F7E4AE999126 /* NitroReminderPreviewService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitroReminderPreviewService.swift; sourceTree = "<group>"; };
 		47EBB5D698CE9A25BB553A2D /* Strings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Strings.swift; sourceTree = "<group>"; };
 		47F16AC2BBD0C51C0B94FACE /* NitroCatchUpScreenViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitroCatchUpScreenViewModelTests.swift; sourceTree = "<group>"; };
 		47F29139BC2A804CE5E0757E /* MediaUploadPreviewScreenViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaUploadPreviewScreenViewModel.swift; sourceTree = "<group>"; };
@@ -2403,6 +2407,7 @@
 		5B2A2B168C8DC14A1A9D1C64 /* NotificationToneManagerProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationToneManagerProtocol.swift; sourceTree = "<group>"; };
 		5B609486E3B9AF012AEE3E78 /* 94 */ = {isa = PBXFileReference; path = 94; sourceTree = "<group>"; };
 		5B8F0ED874DF8C9A51B0AB6F /* SettingsScreenCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreenCoordinator.swift; sourceTree = "<group>"; };
+		5BBC9002775210BFA31F2E7E /* NitroReminderPreviewServiceMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitroReminderPreviewServiceMock.swift; sourceTree = "<group>"; };
 		5C1F000589F2CEE6B03ECFAB /* TimelineMediaPreviewViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineMediaPreviewViewModelTests.swift; sourceTree = "<group>"; };
 		5C4E14E3688FF3532456A656 /* TimelineScrollButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineScrollButton.swift; sourceTree = "<group>"; };
 		5C60559596897AC65D2CB799 /* LiveLocationSharingBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLocationSharingBannerView.swift; sourceTree = "<group>"; };
@@ -3067,6 +3072,7 @@
 		C6226157579DC0A2788C7663 /* NitroGIFPickerScreenViewModelProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitroGIFPickerScreenViewModelProtocol.swift; sourceTree = "<group>"; };
 		C687844F60BFF532D49A994C /* AnalyticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsTests.swift; sourceTree = "<group>"; };
 		C6A9F49B3EE59147AF2F70BB /* SeparatorRoomTimelineItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeparatorRoomTimelineItem.swift; sourceTree = "<group>"; };
+		C6DE30E5503FD300C5862967 /* NitroReminderPreviewServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitroReminderPreviewServiceTests.swift; sourceTree = "<group>"; };
 		C705E605EF57C19DBE86FFA1 /* PlaceholderAvatarImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderAvatarImage.swift; sourceTree = "<group>"; };
 		C715CFE00686DACA59D836EA /* fa */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fa; path = fa.lproj/SAS.strings; sourceTree = "<group>"; };
 		C723327DC4A3093CD9675B27 /* CLLocationManagerMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLLocationManagerMock.swift; sourceTree = "<group>"; };
@@ -4287,6 +4293,7 @@
 				8DA1E8F287680C8ED25EDBAC /* NetworkMonitorMock.swift */,
 				0A369A0159BE62B98DE0D3FD /* NitroCatchUpServiceMock.swift */,
 				34894CE8A6E4479DD50D0A7B /* NitroClientProxyMock.swift */,
+				5BBC9002775210BFA31F2E7E /* NitroReminderPreviewServiceMock.swift */,
 				0CB1CF2F274BAD760563DA34 /* NitroTaskServiceMock.swift */,
 				840182D7A61402D5947DE094 /* NotificationItemProxyMock.swift */,
 				382B50F7E379B3DBBD174364 /* NotificationSettingsProxyMock.swift */,
@@ -5263,6 +5270,7 @@
 		5FB6DF1FD913BBDCAD6E4CE2 /* NitroReminders */ = {
 			isa = PBXGroup;
 			children = (
+				47DB8E7CE9C4F7E4AE999126 /* NitroReminderPreviewService.swift */,
 				46D0E72942F4D3363175CC38 /* NitroReminderService.swift */,
 				41A215380DCDF3DB4385E6BB /* NitroReminderServiceProtocol.swift */,
 			);
@@ -5582,6 +5590,7 @@
 				51CF44B56BB54195EB6234B9 /* NitroMessageCopyFormatterTests.swift */,
 				CFC1D3E2E54E0E357B9B2D44 /* NitroRecentEmojiStoreTests.swift */,
 				AC7C93350C3461AD3FF177D5 /* NitroReminderCreateScreenViewModelTests.swift */,
+				C6DE30E5503FD300C5862967 /* NitroReminderPreviewServiceTests.swift */,
 				68B96DC9267AC82F5E5ADA61 /* NitroReminderServiceTests.swift */,
 				38BEC2267578BE8AC929F40D /* NitroRemindersScreenViewModelTests.swift */,
 				A6E4D9CCD8AFD241E12DCEAD /* NitroRoomWidgetDiagnosticsTests.swift */,
@@ -8775,6 +8784,7 @@
 				32B87E4395739100B3A18430 /* NitroMessageCopyFormatterTests.swift in Sources */,
 				6764F95F36F6927F46C07A20 /* NitroRecentEmojiStoreTests.swift in Sources */,
 				EAF4F5116399E94494651CFC /* NitroReminderCreateScreenViewModelTests.swift in Sources */,
+				71926DAAC1CD1FF540023BD6 /* NitroReminderPreviewServiceTests.swift in Sources */,
 				95A6FE8A2CF87A64C7796B50 /* NitroReminderServiceTests.swift in Sources */,
 				C247F202FAD3434A2F265910 /* NitroRemindersScreenViewModelTests.swift in Sources */,
 				E48C5DE7CBBACCE64CA94259 /* NitroRoomWidgetDiagnosticsTests.swift in Sources */,
@@ -9513,6 +9523,8 @@
 				78983F88D310AD02EB02357A /* NitroReminderCreateScreenModels.swift in Sources */,
 				5DC57DBC0E2D2F848D94406B /* NitroReminderCreateScreenViewModel.swift in Sources */,
 				134E52F245EE57031C7FFD5C /* NitroReminderCreateScreenViewModelProtocol.swift in Sources */,
+				D19769EA3FB7E06C7AFBF7DA /* NitroReminderPreviewService.swift in Sources */,
+				4F46F160D9BADBEBBF810D4A /* NitroReminderPreviewServiceMock.swift in Sources */,
 				64E551BEDC0407307C1CF1CB /* NitroReminderService.swift in Sources */,
 				CB3243E5329AFAEEC6478883 /* NitroReminderServiceProtocol.swift in Sources */,
 				5A1DFB4BAB935CB460988AE6 /* NitroRemindersScreen.swift in Sources */,

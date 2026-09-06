@@ -11,6 +11,7 @@ import SwiftUI
 struct NitroRemindersScreenCoordinatorParameters {
     let clientProxy: NitroClientProxyProtocol
     let reminderService: NitroReminderServiceProtocol
+    let previewService: NitroReminderPreviewServiceProtocol
 }
 
 enum NitroRemindersScreenCoordinatorAction {
@@ -20,6 +21,7 @@ enum NitroRemindersScreenCoordinatorAction {
 final class NitroRemindersScreenCoordinator: CoordinatorProtocol {
     private let viewModel: NitroRemindersScreenViewModelProtocol
     private var cancellables = Set<AnyCancellable>()
+    private var hasStarted = false
     
     private let actionsSubject = PassthroughSubject<NitroRemindersScreenCoordinatorAction, Never>()
     var actionsPublisher: AnyPublisher<NitroRemindersScreenCoordinatorAction, Never> {
@@ -28,10 +30,13 @@ final class NitroRemindersScreenCoordinator: CoordinatorProtocol {
     
     init(parameters: NitroRemindersScreenCoordinatorParameters) {
         viewModel = NitroRemindersScreenViewModel(clientProxy: parameters.clientProxy,
-                                                  reminderService: parameters.reminderService)
+                                                  reminderService: parameters.reminderService,
+                                                  previewService: parameters.previewService)
     }
     
     func start() {
+        guard !hasStarted else { return }
+        hasStarted = true
         viewModel.actionsPublisher
             .sink { [weak self] action in
                 switch action {
@@ -42,6 +47,17 @@ final class NitroRemindersScreenCoordinator: CoordinatorProtocol {
                 }
             }
             .store(in: &cancellables)
+    }
+    
+    func stop() {
+        guard hasStarted else { return }
+        hasStarted = false
+        cancellables.removeAll()
+        viewModel.stop()
+    }
+    
+    func refresh() {
+        viewModel.refresh()
     }
     
     func toPresentable() -> AnyView {

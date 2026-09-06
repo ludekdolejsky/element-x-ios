@@ -83,6 +83,7 @@ protocol TimelineProxyProtocol: Sendable {
     var timelineItemProvider: TimelineItemProviderProtocol { get }
     
     func subscribeForUpdates() async
+    func subscribeForUpdates(fetchMembers: Bool) async
     
     func fetchDetails(for eventID: String)
     
