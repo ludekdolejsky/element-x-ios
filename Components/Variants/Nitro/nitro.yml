@@ -10,6 +10,7 @@ settings:
   NITRO_REMINDER_BASE_URL: https://matrix-bot.nitrovery.com
   NITRO_TRANSCRIPTION_BASE_URL: https://matrix-bot.nitrovery.com
   NITRO_GIPHY_API_KEY: "YFOiKMrjCHDnSMNqZtPHrCvtlp1v7V4h"
+  NITRO_MAPTILER_API_KEY: ""
 
   # Nitro doesn't share data or credentials with Element Classic.
   CLASSIC_APP_GROUP_IDENTIFIER: ""
@@ -29,6 +30,7 @@ targets:
         nitroReminderBaseURL: $(NITRO_REMINDER_BASE_URL)
         nitroTranscriptionBaseURL: $(NITRO_TRANSCRIPTION_BASE_URL)
         nitroGiphyAPIKey: $(NITRO_GIPHY_API_KEY)
+        nitroMapTilerAPIKey: $(NITRO_MAPTILER_API_KEY)
     entitlements:
       properties:REPLACE:
         aps-environment: development

@@ -53,6 +53,11 @@ nonisolated enum NitroConfiguration {
         return apiKey
     }
 
+    static var mapTilerConfiguration: MapTilerConfiguration? {
+        resolvedMapTilerConfiguration(isNitroBuild: isEnabled,
+                                      apiKey: InfoPlistReader.main.nitroMapTilerAPIKey)
+    }
+
     static func resolvedPushGatewayBaseURL(isNitroBuild: Bool, configuredURL: URL?) -> URL {
         guard isNitroBuild else { return defaultPushGatewayBaseURL }
         return configuredURL ?? defaultNitroPushGatewayBaseURL
@@ -63,5 +68,13 @@ nonisolated enum NitroConfiguration {
                                             defaultURL: URL) -> URL? {
         guard isNitroBuild else { return nil }
         return configuredURL ?? defaultURL
+    }
+
+    static func resolvedMapTilerConfiguration(isNitroBuild: Bool, apiKey: String?) -> MapTilerConfiguration? {
+        guard isNitroBuild, let apiKey, !apiKey.isEmpty else { return nil }
+        return MapTilerConfiguration(baseURL: "https://api.maptiler.com/maps",
+                                     apiKey: apiKey,
+                                     lightStyleID: "basic-v2",
+                                     darkStyleID: "basic-v2-dark")
     }
 }

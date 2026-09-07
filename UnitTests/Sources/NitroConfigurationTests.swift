@@ -36,4 +36,15 @@ struct NitroConfigurationTests {
                                                                configuredURL: "https://matrix-bot.nitrovery.com",
                                                                defaultURL: "https://matrix-bot.nitrovery.com") == nil)
     }
+
+    @Test
+    func resolvesNitroMapTilerConfiguration() throws {
+        let configuration = try #require(NitroConfiguration.resolvedMapTilerConfiguration(isNitroBuild: true,
+                                                                                          apiKey: "test-key"))
+        #expect(configuration.apiKey == "test-key")
+        #expect(configuration.lightStyleID == "basic-v2")
+        #expect(configuration.darkStyleID == "basic-v2-dark")
+        #expect(NitroConfiguration.resolvedMapTilerConfiguration(isNitroBuild: false, apiKey: "test-key") == nil)
+        #expect(NitroConfiguration.resolvedMapTilerConfiguration(isNitroBuild: true, apiKey: nil) == nil)
+    }
 }

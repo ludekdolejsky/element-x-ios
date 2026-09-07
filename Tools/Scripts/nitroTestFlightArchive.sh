@@ -19,6 +19,7 @@ authentication_key_id=${NITRO_ASC_AUTH_KEY_ID:-XNG7V5KX5G}
 authentication_key_issuer_id=${NITRO_ASC_AUTH_KEY_ISSUER_ID:-69a6de6e-8710-47e3-e053-5b8c7c11a4d1}
 signing_keychain=${NITRO_SIGNING_KEYCHAIN:-"$HOME/Library/Keychains/element-nitro-build.keychain-db"}
 signing_password_file=${NITRO_SIGNING_PASSWORD_FILE:-"$HOME/.config/element-nitro-release/signing-keychain-password"}
+maptiler_api_key_file=${NITRO_MAPTILER_API_KEY_FILE:-"$HOME/.config/element-nitro-release/maptiler-api-key"}
 marketing_version=${NITRO_MARKETING_VERSION:-$(sed -n 's/^[[:space:]]*MARKETING_VERSION: //p' "$repository_root/project.yml" | head -1)}
 
 if [[ -e $archive_path ]]; then
@@ -30,6 +31,24 @@ if [[ ! -f $authentication_key_path ]]; then
     echo "App Store Connect authentication key not found: $authentication_key_path" >&2
     exit 2
 fi
+
+if [[ ! -s $maptiler_api_key_file ]]; then
+    echo "MapTiler API key not found: $maptiler_api_key_file" >&2
+    exit 2
+fi
+
+maptiler_api_key=$(< "$maptiler_api_key_file")
+if [[ ! $maptiler_api_key =~ ^[A-Za-z0-9_-]+$ ]]; then
+    echo "MapTiler API key contains unexpected characters." >&2
+    exit 2
+fi
+
+release_configuration_directory=$(mktemp -d "${TMPDIR:-/tmp}/nitro-release.XXXXXX")
+trap 'rm -rf "$release_configuration_directory"' EXIT
+release_xcconfig="$release_configuration_directory/NitroRelease.xcconfig"
+printf 'NITRO_MAPTILER_API_KEY = %s\n' "$maptiler_api_key" > "$release_xcconfig"
+chmod 600 "$release_xcconfig"
+unset maptiler_api_key
 
 if [[ -f $signing_keychain && -f $signing_password_file ]]; then
     security unlock-keychain -p "$(< "$signing_password_file")" "$signing_keychain"
@@ -45,6 +64,7 @@ xcodebuild \
     -destination generic/platform=iOS \
     -archivePath "$archive_path" \
     -derivedDataPath "$derived_data_path" \
+    -xcconfig "$release_xcconfig" \
     MARKETING_VERSION="$marketing_version" \
     CURRENT_PROJECT_VERSION="$build_number" \
     -allowProvisioningUpdates \

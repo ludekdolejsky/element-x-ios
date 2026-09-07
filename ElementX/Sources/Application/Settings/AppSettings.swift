@@ -393,10 +393,11 @@ final nonisolated class AppSettings: @unchecked Sendable {
     // MARK: - Maps
     
     /// The locally-bundled MapTiler configuration.
-    static let bundledMapTilerConfiguration = MapTilerConfiguration(baseURL: "https://api.maptiler.com/maps",
-                                                                    apiKey: Secrets.mapLibreAPIKey,
-                                                                    lightStyleID: "9bc819c8-e627-474a-a348-ec144fe3d810",
-                                                                    darkStyleID: "dea61faf-292b-4774-9660-58fcef89a7f3")
+    static let bundledMapTilerConfiguration = NitroConfiguration.mapTilerConfiguration
+        ?? MapTilerConfiguration(baseURL: "https://api.maptiler.com/maps",
+                                 apiKey: Secrets.mapLibreAPIKey,
+                                 lightStyleID: "9bc819c8-e627-474a-a348-ec144fe3d810",
+                                 darkStyleID: "dea61faf-292b-4774-9660-58fcef89a7f3")
     
     /// The MapTiler configuration used to build map URLs, which defaults to the bundled one.
     private(set) var mapTilerConfiguration = RemotePreference(AppSettings.bundledMapTilerConfiguration)

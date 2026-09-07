@@ -10831,6 +10831,7 @@
 				MTL_FAST_MATH = YES;
 				NITRO_CATCH_UP_BASE_URL = "https://matrix-bot.nitrovery.com";
 				NITRO_GIPHY_API_KEY = YFOiKMrjCHDnSMNqZtPHrCvtlp1v7V4h;
+				NITRO_MAPTILER_API_KEY = "";
 				NITRO_PUSH_GATEWAY_BASE_URL = "https://push.nitrovery.com";
 				NITRO_REMINDER_BASE_URL = "https://matrix-bot.nitrovery.com";
 				NITRO_TRANSCRIPTION_BASE_URL = "https://matrix-bot.nitrovery.com";
@@ -10919,6 +10920,7 @@
 				MTL_FAST_MATH = YES;
 				NITRO_CATCH_UP_BASE_URL = "https://matrix-bot.nitrovery.com";
 				NITRO_GIPHY_API_KEY = YFOiKMrjCHDnSMNqZtPHrCvtlp1v7V4h;
+				NITRO_MAPTILER_API_KEY = "";
 				NITRO_PUSH_GATEWAY_BASE_URL = "https://push.nitrovery.com";
 				NITRO_REMINDER_BASE_URL = "https://matrix-bot.nitrovery.com";
 				NITRO_TRANSCRIPTION_BASE_URL = "https://matrix-bot.nitrovery.com";

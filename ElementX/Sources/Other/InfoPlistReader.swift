@@ -24,6 +24,7 @@ nonisolated struct InfoPlistReader {
         static let nitroReminderBaseURL = "nitroReminderBaseURL"
         static let nitroTranscriptionBaseURL = "nitroTranscriptionBaseURL"
         static let nitroGiphyAPIKey = "nitroGiphyAPIKey"
+        static let nitroMapTilerAPIKey = "nitroMapTilerAPIKey"
         static let utExportedTypeDeclarationsKey = "UTExportedTypeDeclarations"
         static let utTypeIdentifierKey = "UTTypeIdentifier"
         static let utDescriptionKey = "UTTypeDescription"
@@ -135,6 +136,10 @@ nonisolated struct InfoPlistReader {
 
     var nitroGiphyAPIKey: String? {
         nonEmptyStringInfoPlistValue(forKey: Keys.nitroGiphyAPIKey)
+    }
+
+    var nitroMapTilerAPIKey: String? {
+        nonEmptyStringInfoPlistValue(forKey: Keys.nitroMapTilerAPIKey)
     }
     
     // MARK: - Custom App Scheme

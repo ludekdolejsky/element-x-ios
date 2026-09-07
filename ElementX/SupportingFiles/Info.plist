@@ -138,6 +138,8 @@
 	<string>$(NITRO_TRANSCRIPTION_BASE_URL)</string>
 	<key>nitroGiphyAPIKey</key>
 	<string>$(NITRO_GIPHY_API_KEY)</string>
+	<key>nitroMapTilerAPIKey</key>
+	<string>$(NITRO_MAPTILER_API_KEY)</string>
 	<key>productionAppName</key>
 	<string>$(PRODUCTION_APP_NAME)</string>
 </dict>
