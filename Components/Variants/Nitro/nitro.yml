@@ -28,6 +28,7 @@ targets:
         nitroCatchUpBaseURL: $(NITRO_CATCH_UP_BASE_URL)
         nitroReminderBaseURL: $(NITRO_REMINDER_BASE_URL)
         nitroTranscriptionBaseURL: $(NITRO_TRANSCRIPTION_BASE_URL)
+        nitroGiphyAPIKey: $(NITRO_GIPHY_API_KEY)
     entitlements:
       properties:REPLACE:
         aps-environment: development
