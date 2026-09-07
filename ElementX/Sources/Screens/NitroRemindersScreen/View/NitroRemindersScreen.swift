@@ -119,6 +119,12 @@ struct NitroRemindersScreen: View {
             }
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .contextMenu {
+            if context.viewState.busyReminderID != reminder.id {
+                reminderMenuContent(reminder)
+            }
+        }
     }
     
     @ViewBuilder
@@ -153,47 +159,54 @@ struct NitroRemindersScreen: View {
     
     private func reminderMenu(_ reminder: NitroReminder) -> some View {
         Menu {
-            Button {
-                context.send(viewAction: .open(reminder))
-            } label: {
-                Label(UntranslatedL10n.actionOpenIos, icon: \.visibilityOn)
-            }
-            
-            if reminder.status != .done {
-                Button {
-                    context.send(viewAction: .markDone(reminder))
-                } label: {
-                    Label(L10n.actionDone, icon: \.check)
-                }
-            }
-            
-            Section {
-                Button(UntranslatedL10n.actionSnooze20MinutesIos) {
-                    context.send(viewAction: .snooze(reminder, 20 * 60))
-                }
-                Button(UntranslatedL10n.actionSnooze24HoursIos) {
-                    context.send(viewAction: .snooze(reminder, 24 * 60 * 60))
-                }
-                Button(UntranslatedL10n.actionSnoozeOneWeekIos) {
-                    context.send(viewAction: .snooze(reminder, 7 * 24 * 60 * 60))
-                }
-                Button {
-                    context.send(viewAction: .edit(reminder))
-                } label: {
-                    Label(UntranslatedL10n.actionEditTimeIos, icon: \.edit)
-                }
-            }
-            
-            Button(role: .destructive) {
-                context.send(viewAction: .delete(reminder))
-            } label: {
-                Label(L10n.actionDelete, icon: \.delete)
-            }
+            reminderMenuContent(reminder)
         } label: {
             Image(systemSymbol: .ellipsis)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
                 .foregroundStyle(.compound.iconPrimary)
         }
         .accessibilityLabel(L10n.actionOpenContextMenu)
+    }
+    
+    @ViewBuilder
+    private func reminderMenuContent(_ reminder: NitroReminder) -> some View {
+        Button {
+            context.send(viewAction: .open(reminder))
+        } label: {
+            Label(UntranslatedL10n.actionOpenIos, icon: \.visibilityOn)
+        }
+        
+        if reminder.status != .done {
+            Button {
+                context.send(viewAction: .markDone(reminder))
+            } label: {
+                Label(L10n.actionDone, icon: \.check)
+            }
+        }
+        
+        Section {
+            Button(UntranslatedL10n.actionSnooze20MinutesIos) {
+                context.send(viewAction: .snooze(reminder, 20 * 60))
+            }
+            Button(UntranslatedL10n.actionSnooze24HoursIos) {
+                context.send(viewAction: .snooze(reminder, 24 * 60 * 60))
+            }
+            Button(UntranslatedL10n.actionSnoozeOneWeekIos) {
+                context.send(viewAction: .snooze(reminder, 7 * 24 * 60 * 60))
+            }
+            Button {
+                context.send(viewAction: .edit(reminder))
+            } label: {
+                Label(UntranslatedL10n.actionEditTimeIos, icon: \.edit)
+            }
+        }
+        
+        Button(role: .destructive) {
+            context.send(viewAction: .delete(reminder))
+        } label: {
+            Label(L10n.actionDelete, icon: \.delete)
+        }
     }
     
     private func editSheet(reminder: NitroReminder) -> some View {
