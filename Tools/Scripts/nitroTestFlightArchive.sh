@@ -44,10 +44,15 @@ if [[ ! $maptiler_api_key =~ ^[A-Za-z0-9_-]+$ ]]; then
 fi
 
 release_configuration_directory=$(mktemp -d "${TMPDIR:-/tmp}/nitro-release.XXXXXX")
-trap 'rm -rf "$release_configuration_directory"' EXIT
-release_xcconfig="$release_configuration_directory/NitroRelease.xcconfig"
-printf 'NITRO_MAPTILER_API_KEY = %s\n' "$maptiler_api_key" > "$release_xcconfig"
-chmod 600 "$release_xcconfig"
+info_plist_path="$repository_root/ElementX/SupportingFiles/Info.plist"
+info_plist_backup="$release_configuration_directory/Info.plist"
+cp "$info_plist_path" "$info_plist_backup"
+cleanup() {
+    cp "$info_plist_backup" "$info_plist_path"
+    rm -rf "$release_configuration_directory"
+}
+trap cleanup EXIT
+/usr/libexec/PlistBuddy -c "Set :nitroMapTilerAPIKey $maptiler_api_key" "$info_plist_path"
 unset maptiler_api_key
 
 if [[ -f $signing_keychain && -f $signing_password_file ]]; then
@@ -64,7 +69,6 @@ xcodebuild \
     -destination generic/platform=iOS \
     -archivePath "$archive_path" \
     -derivedDataPath "$derived_data_path" \
-    -xcconfig "$release_xcconfig" \
     MARKETING_VERSION="$marketing_version" \
     CURRENT_PROJECT_VERSION="$build_number" \
     -allowProvisioningUpdates \
