@@ -264,6 +264,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
             webView.isOpaque = false
             webView.backgroundColor = .compound.bgCanvasDefault
             webView.scrollView.backgroundColor = .compound.bgCanvasDefault
+            webView.scrollView.contentInsetAdjustmentBehavior = .never
         }
         
         func stop() {
