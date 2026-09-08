@@ -257,7 +257,8 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     }
     
     func currentTaskIndexRevision() async -> String? {
-        try? await client.accountData(eventType: NitroTaskEventParser.taskIndexEventType)
+        guard let index = await loadTaskIndex() else { return nil }
+        return try? index.revisionString()
     }
     
     func loadTasks() async -> Result<NitroTaskList, NitroTaskServiceError> {
@@ -1395,6 +1396,9 @@ extension NitroTaskService {
                 }
                 let rebasedIndex = NitroTaskIndex.replaying(pendingMutations, on: current)
                 guard let next = update.reconciledIndex(from: rebasedIndex) else { return previousState }
+                guard next != current else {
+                    return TaskIndexWriteState(index: next, pendingMutations: pendingMutations)
+                }
                 try await client.setAccountData(eventType: NitroTaskEventParser.taskIndexEventType,
                                                 content: next.jsonString())
                 return TaskIndexWriteState(index: next, pendingMutations: pendingMutations)

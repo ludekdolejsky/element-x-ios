@@ -12,6 +12,52 @@ import Testing
 
 struct NitroTaskServiceTests {
     @Test
+    func unchangedTaskIndexIsNotWrittenDuringRefresh() async throws {
+        let client = ClientSDKMock(.init())
+        client.sessionReturnValue = .init(accessToken: "token",
+                                          refreshToken: nil,
+                                          userId: "@user:example.org",
+                                          deviceId: "DEVICE",
+                                          homeserverUrl: "https://example.org",
+                                          oauthData: nil,
+                                          slidingSyncVersion: .native)
+        client.userIdReturnValue = "@user:example.org"
+        client.roomsReturnValue = []
+        client.accountDataEventTypeReturnValue = try NitroTaskIndex(migrationComplete: true,
+                                                                    tasks: [],
+                                                                    roomPinRevisions: [:]).jsonString()
+        let service = NitroTaskService(client: client)
+        
+        guard case .success = await service.loadTasks() else {
+            Issue.record("The task refresh unexpectedly failed.")
+            return
+        }
+        
+        #expect(client.setAccountDataEventTypeContentCallsCount == 0)
+    }
+    
+    @Test
+    func taskIndexRevisionIsStableAcrossEquivalentJSON() async {
+        let client = ClientSDKMock(.init())
+        let responses = NitroTaskAccountDataResponses(values: [
+            """
+            {"version":1,"migration_complete":true,"tasks":[{"room_id":"!one:example.org","event_id":"$one"},{"room_id":"!two:example.org","event_id":"$two"}],"room_pin_revisions":{}}
+            """,
+            """
+            {"room_pin_revisions":{},"tasks":[{"event_id":"$two","room_id":"!two:example.org"},{"event_id":"$one","room_id":"!one:example.org"}],"migration_complete":true,"version":1}
+            """
+        ])
+        client.accountDataEventTypeClosure = { _ in await responses.next() }
+        let service = NitroTaskService(client: client)
+        
+        let firstRevision = await service.currentTaskIndexRevision()
+        let secondRevision = await service.currentTaskIndexRevision()
+        
+        #expect(firstRevision != nil)
+        #expect(firstRevision == secondRevision)
+    }
+    
+    @Test
     func newerLoadWinsWhenCancelledIndexReadFinishesLater() async {
         let gate = NitroTaskAccountDataGate(blockedCalls: [1, 3])
         let client = ClientSDKMock(.init())
@@ -46,6 +92,19 @@ struct NitroTaskServiceTests {
             Issue.record("The newer load was superseded by cancelled work.")
             return
         }
+    }
+}
+
+private actor NitroTaskAccountDataResponses {
+    private var values: [String]
+    
+    init(values: [String]) {
+        self.values = values
+    }
+    
+    func next() -> String? {
+        guard !values.isEmpty else { return nil }
+        return values.removeFirst()
     }
 }
 

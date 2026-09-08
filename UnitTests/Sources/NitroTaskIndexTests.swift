@@ -46,6 +46,40 @@ struct NitroTaskIndexTests {
     }
     
     @Test
+    func revisionIgnoresTaskAndJSONKeyOrder() throws {
+        let first = try #require(NitroTaskIndex.decode("""
+        {
+          "version": 1,
+          "migration_complete": true,
+          "tasks": [
+            { "room_id": "!one:example.org", "event_id": "$one" },
+            { "room_id": "!two:example.org", "event_id": "$two" }
+          ],
+          "room_pin_revisions": {
+            "!one:example.org": "one",
+            "!two:example.org": "two"
+          }
+        }
+        """))
+        let reordered = try #require(NitroTaskIndex.decode("""
+        {
+          "room_pin_revisions": {
+            "!two:example.org": "two",
+            "!one:example.org": "one"
+          },
+          "tasks": [
+            { "event_id": "$two", "room_id": "!two:example.org" },
+            { "event_id": "$one", "room_id": "!one:example.org" }
+          ],
+          "migration_complete": true,
+          "version": 1
+        }
+        """))
+        
+        #expect(try first.revisionString() == reordered.revisionString())
+    }
+    
+    @Test
     func addingAndRemovingEntriesInvalidatesTheRoomRevision() throws {
         let roomID = "!room:example.org"
         let initial = NitroTaskIndex(migrationComplete: true,

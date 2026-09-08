@@ -81,13 +81,21 @@ nonisolated struct NitroTaskIndex: Equatable, Sendable {
     }
     
     func jsonString() throws -> String {
+        try jsonString(tasks: tasks)
+    }
+    
+    func revisionString() throws -> String {
+        try jsonString(tasks: tasks.sorted { ($0.roomID, $0.eventID) < ($1.roomID, $1.eventID) })
+    }
+    
+    private func jsonString(tasks: [Entry]) throws -> String {
         let content: [String: Any] = [
             "version": 1,
             "migration_complete": migrationComplete,
             "tasks": tasks.map { ["room_id": $0.roomID, "event_id": $0.eventID] },
             "room_pin_revisions": roomPinRevisions
         ]
-        let data = try JSONSerialization.data(withJSONObject: content)
+        let data = try JSONSerialization.data(withJSONObject: content, options: .sortedKeys)
         guard let json = String(data: data, encoding: .utf8) else {
             throw CocoaError(.fileWriteInapplicableStringEncoding)
         }
