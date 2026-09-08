@@ -26,6 +26,9 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
     private let taskService: NitroTaskServiceProtocol
     private var loadTask: Task<Void, Never>?
     private var loadTaskID: UUID?
+    private var discoveryTask: Task<Void, Never>?
+    private var discoveryTaskID: UUID?
+    private var pendingDiscoveryRevision: Int?
     private var memberTask: Task<Void, Never>?
     private var memberTaskID: UUID?
     private var mutationTask: Task<Void, Never>?
@@ -62,12 +65,19 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
             .store(in: &cancellables)
     }
     
+    isolated deinit {
+        loadTask?.cancel()
+        discoveryTask?.cancel()
+        memberTask?.cancel()
+        mutationTask?.cancel()
+    }
+    
     override func process(viewAction: NitroTasksScreenViewAction) {
         switch viewAction {
         case .load:
             guard loadTask == nil, !state.hasLoaded || shouldRefreshCachedSnapshot else { return }
             shouldRefreshCachedSnapshot = false
-            startLoad()
+            startLoad(useFastPath: true)
         case .refresh:
             requestRefresh()
         case .retryPendingTasks:
@@ -153,26 +163,42 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
             startLoad()
         } else if !pendingRefreshRoomIDs.isEmpty {
             startLoad(roomIDs: pendingRefreshRoomIDs)
+        } else {
+            startPendingDiscoveryIfPossible()
         }
     }
     
-    private func startLoad(roomIDs: Set<String>? = nil) {
+    private func startLoad(roomIDs: Set<String>? = nil, useFastPath: Bool = false) {
         isRefreshPending = false
         pendingRefreshRoomIDs.removeAll()
         loadTask?.cancel()
+        if roomIDs != nil, discoveryTask != nil {
+            pendingDiscoveryRevision = dataRevision
+        } else if roomIDs == nil {
+            pendingDiscoveryRevision = nil
+        }
+        discoveryTask?.cancel()
+        discoveryTask = nil
+        discoveryTaskID = nil
         state.pendingEventCount = 0
         state.failedEventCount = 0
         let taskID = UUID()
         let revision = dataRevision
         loadTaskID = taskID
         loadTask = Task { [weak self] in
-            await self?.load(taskID: taskID, revision: revision, roomIDs: roomIDs)
+            await self?.load(taskID: taskID, revision: revision, roomIDs: roomIDs, useFastPath: useFastPath)
         }
     }
     
-    private func load(taskID: UUID, revision: Int, roomIDs: Set<String>?) async {
+    private func load(taskID: UUID, revision: Int, roomIDs: Set<String>?, useFastPath: Bool) async {
+        let performance = NitroPerformance.start(name: "Nitro Tasks foreground refresh",
+                                                 operation: "nitro.tasks.foreground")
+        performance.setTag(roomIDs == nil ? "all" : "rooms", key: "nitro.tasks.scope")
+        var performanceOutcome = NitroPerformance.Outcome.cancelled
         state.isLoading = true
         defer {
+            performance.setData(state.tasks.count, key: "nitro.tasks.count")
+            performance.finish(performanceOutcome)
             if loadTaskID == taskID {
                 state.isLoading = false
                 state.hasLoaded = true
@@ -182,10 +208,13 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
             }
         }
         
-        if roomIDs == nil, !state.hasLoaded, let cachedTaskList = await taskService.loadCachedTasks() {
-            guard !Task.isCancelled, loadTaskID == taskID, dataRevision == revision else { return }
-            apply(cachedTaskList, isAuthoritative: false)
-            state.hasLoaded = true
+        if roomIDs == nil, useFastPath {
+            guard await hydrateCachedTasksIfNeeded(taskID: taskID, revision: revision) else { return }
+            if state.hasLoaded,
+               let outcome = await refreshKnownTasks(taskID: taskID, revision: revision) {
+                performanceOutcome = outcome
+                return
+            }
         }
         
         let result = if let roomIDs {
@@ -200,12 +229,126 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
             if result.pendingEventCount > 0 {
                 taskService.startPendingTaskRecovery()
             }
+            performanceOutcome = .success
         case .failure(.cancelled):
             break
         case .failure:
             guard !Task.isCancelled, loadTaskID == taskID, dataRevision == revision else { return }
             taskService.startPendingTaskRecovery()
             showFailure()
+            performanceOutcome = .failure
+        }
+    }
+    
+    private func hydrateCachedTasksIfNeeded(taskID: UUID, revision: Int) async -> Bool {
+        guard !state.hasLoaded else { return true }
+        let performance = NitroPerformance.start(name: "Nitro Tasks cached snapshot",
+                                                 operation: "nitro.tasks.snapshot")
+        let cachedTaskList = await taskService.loadCachedTasks()
+        performance.setData(cachedTaskList?.tasks.count ?? 0, key: "nitro.tasks.count")
+        performance.setTag(cachedTaskList == nil ? "miss" : "hit", key: "nitro.cache")
+        performance.finish(Task.isCancelled ? .cancelled : .success)
+        guard !Task.isCancelled, loadTaskID == taskID, dataRevision == revision else { return false }
+        if let cachedTaskList {
+            apply(cachedTaskList, isAuthoritative: false)
+            state.hasLoaded = true
+        }
+        return true
+    }
+    
+    private func refreshKnownTasks(taskID: UUID, revision: Int) async -> NitroPerformance.Outcome? {
+        let performance = NitroPerformance.start(name: "Nitro Tasks known refresh",
+                                                 operation: "nitro.tasks.refresh_known")
+        switch await taskService.refreshKnownTasks() {
+        case .success(let result):
+            performance.setData(result.tasks.count, key: "nitro.tasks.count")
+            guard !Task.isCancelled, loadTaskID == taskID, dataRevision == revision else {
+                performance.finish(.cancelled)
+                return .cancelled
+            }
+            performance.finish(.success)
+            apply(result)
+            if result.pendingEventCount > 0 {
+                taskService.startPendingTaskRecovery()
+            }
+            pendingDiscoveryRevision = revision
+            return .success
+        case .failure(.cancelled):
+            performance.finish(.cancelled)
+            return .cancelled
+        case .failure:
+            performance.finish(.failure)
+            guard !Task.isCancelled, loadTaskID == taskID, dataRevision == revision else { return .cancelled }
+            return nil
+        }
+    }
+    
+    private func startBackgroundDiscovery(revision: Int) {
+        discoveryTask?.cancel()
+        let taskID = UUID()
+        let taskService = taskService
+        discoveryTaskID = taskID
+        discoveryTask = Task(priority: .utility) { [weak self] in
+            let performance = NitroPerformance.start(name: "Nitro Tasks all-room discovery",
+                                                     operation: "nitro.tasks.discovery")
+            guard !Task.isCancelled else {
+                performance.finish(.cancelled)
+                return
+            }
+            let result = await taskService.loadTasks()
+            guard let self else {
+                performance.finish(.cancelled)
+                return
+            }
+            finishDiscovery(result,
+                            taskID: taskID,
+                            revision: revision,
+                            wasCancelled: Task.isCancelled,
+                            performance: performance)
+        }
+    }
+    
+    private func startPendingDiscoveryIfPossible() {
+        guard loadTask == nil,
+              mutationTask == nil,
+              discoveryTask == nil,
+              let revision = pendingDiscoveryRevision,
+              revision == dataRevision else {
+            return
+        }
+        pendingDiscoveryRevision = nil
+        startBackgroundDiscovery(revision: revision)
+    }
+    
+    private func finishDiscovery(_ result: Result<NitroTaskList, NitroTaskServiceError>,
+                                 taskID: UUID,
+                                 revision: Int,
+                                 wasCancelled: Bool,
+                                 performance: NitroPerformance.Transaction) {
+        var performanceOutcome = NitroPerformance.Outcome.cancelled
+        defer {
+            performance.setData(state.tasks.count, key: "nitro.tasks.count")
+            performance.finish(performanceOutcome)
+            if discoveryTaskID == taskID {
+                discoveryTask = nil
+                discoveryTaskID = nil
+            }
+        }
+        
+        switch result {
+        case .success(let result):
+            guard !wasCancelled, discoveryTaskID == taskID, dataRevision == revision else { return }
+            apply(result)
+            if result.pendingEventCount > 0 {
+                taskService.startPendingTaskRecovery()
+            }
+            performanceOutcome = .success
+        case .failure(.cancelled):
+            break
+        case .failure:
+            guard !wasCancelled, discoveryTaskID == taskID, dataRevision == revision else { return }
+            taskService.startPendingTaskRecovery()
+            performanceOutcome = .failure
         }
     }
     
@@ -365,12 +508,16 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
     }
     
     private func invalidateLoad() {
-        if loadTask != nil {
+        if loadTask != nil || discoveryTask != nil {
             isRefreshPending = true
             pendingRefreshRoomIDs.removeAll()
         }
         dataRevision &+= 1
+        pendingDiscoveryRevision = nil
         loadTask?.cancel()
+        discoveryTask?.cancel()
+        discoveryTask = nil
+        discoveryTaskID = nil
     }
     
     private func apply(_ update: NitroTaskServiceUpdate) {
@@ -405,7 +552,7 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
         
         guard state.hasLoaded else {
             if shouldRestartInitialLoad {
-                startLoad()
+                startLoad(useFastPath: true)
             }
             return
         }

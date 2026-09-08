@@ -166,21 +166,24 @@ nonisolated struct NitroReminderService: NitroReminderServiceProtocol {
             return .failure(.invalidResponse)
         }
         let result: Result<CreateResponse, NitroReminderError> = await post(path: "api/reminders",
-                                                                            body: request)
+                                                                            body: request,
+                                                                            action: "create")
         return result.map { .init(id: $0.id, dueDate: Date(timeIntervalSince1970: TimeInterval($0.dueTimestamp))) }
     }
     
     func reminders(filter: NitroReminderFilter,
                    authentication: NitroReminderAuthentication) async -> Result<NitroReminderList, NitroReminderError> {
         let result: Result<ListResponse, NitroReminderError> = await post(path: "api/reminders/list",
-                                                                          body: ListRequest(filter: filter, authentication: authentication))
+                                                                          body: ListRequest(filter: filter, authentication: authentication),
+                                                                          action: "list")
         return result.map { .init(reminders: $0.reminders, now: Date(timeIntervalSince1970: TimeInterval($0.nowTimestamp))) }
     }
     
     func markDone(reminderID: String,
                   authentication: NitroReminderAuthentication) async -> Result<NitroReminder, NitroReminderError> {
         let result: Result<ActionResponse, NitroReminderError> = await post(path: "api/reminders/\(reminderID)/done",
-                                                                            body: ActionRequest(authentication: authentication))
+                                                                            body: ActionRequest(authentication: authentication),
+                                                                            action: "done")
         return result.map(\.reminder)
     }
     
@@ -188,19 +191,27 @@ nonisolated struct NitroReminderService: NitroReminderServiceProtocol {
                 until dueDate: Date,
                 authentication: NitroReminderAuthentication) async -> Result<NitroReminder, NitroReminderError> {
         let result: Result<ActionResponse, NitroReminderError> = await post(path: "api/reminders/\(reminderID)/snooze",
-                                                                            body: ActionRequest(authentication: authentication, dueDate: dueDate))
+                                                                            body: ActionRequest(authentication: authentication, dueDate: dueDate),
+                                                                            action: "snooze")
         return result.map(\.reminder)
     }
     
     func deleteReminder(reminderID: String,
                         authentication: NitroReminderAuthentication) async -> Result<Void, NitroReminderError> {
         let result: Result<EmptyResponse, NitroReminderError> = await post(path: "api/reminders/\(reminderID)/delete",
-                                                                           body: ActionRequest(authentication: authentication))
+                                                                           body: ActionRequest(authentication: authentication),
+                                                                           action: "delete")
         return result.map { _ in () }
     }
     
     private func post<Request: Encodable & Sendable, Response: Decodable & Sendable>(path: String,
-                                                                                     body: Request) async -> Result<Response, NitroReminderError> {
+                                                                                     body: Request,
+                                                                                     action: String) async -> Result<Response, NitroReminderError> {
+        let performance = NitroPerformance.start(name: "Nitro Reminders request",
+                                                 operation: "nitro.reminders.request")
+        performance.setTag(action, key: "nitro.reminders.action")
+        var performanceOutcome = NitroPerformance.Outcome.failure
+        defer { performance.finish(performanceOutcome) }
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = "POST"
         request.timeoutInterval = 30
@@ -223,10 +234,13 @@ nonisolated struct NitroReminderService: NitroReminderServiceProtocol {
             guard let response = try? JSONDecoder().decode(Response.self, from: data) else {
                 return .failure(.invalidResponse)
             }
+            performanceOutcome = .success
             return .success(response)
         } catch is CancellationError {
+            performanceOutcome = .cancelled
             return .failure(.cancelled)
         } catch let error as URLError where error.code == .cancelled {
+            performanceOutcome = .cancelled
             return .failure(.cancelled)
         } catch {
             return .failure(.transport)

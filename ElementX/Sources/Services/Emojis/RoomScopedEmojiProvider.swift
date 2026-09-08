@@ -250,6 +250,8 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol, NitroEmojiUsageRanki
     }
     
     private func fetchCustomCategories() async -> CustomCategories {
+        let performance = NitroPerformance.start(name: "Nitro custom emoji packs",
+                                                 operation: "nitro.emoji.packs")
         lastCustomEmojiLoadFailed = false
         async let currentRoomEventsTask = loadRoomState(roomID: roomID)
         async let globalSourcesTask = globalPackSources()
@@ -277,8 +279,12 @@ final class RoomScopedEmojiProvider: EmojiProviderProtocol, NitroEmojiUsageRanki
                 return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
             }
         let deduplicatedCategories = removingDuplicateShortcodes(from: categories)
-        return .init(contextual: deduplicatedCategories.filter { !$0.isGlobal }.map(\.category),
-                     global: deduplicatedCategories.filter(\.isGlobal).map(\.category))
+        let result = CustomCategories(contextual: deduplicatedCategories.filter { !$0.isGlobal }.map(\.category),
+                                      global: deduplicatedCategories.filter(\.isGlobal).map(\.category))
+        performance.setData(result.all.count, key: "nitro.emoji.pack_count")
+        performance.setData(result.all.reduce(0) { $0 + $1.emojis.count }, key: "nitro.emoji.custom_count")
+        performance.finish(Task.isCancelled ? .cancelled : lastCustomEmojiLoadFailed ? .failure : .success)
+        return result
     }
     
     private func globalPackSources() async -> [PackSource] {

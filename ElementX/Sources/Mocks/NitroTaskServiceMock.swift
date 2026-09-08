@@ -22,6 +22,9 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
     var loadTasksReturnValue: Result<NitroTaskList, NitroTaskServiceError> = .success(.init(tasks: [], unavailableRoomCount: 0))
     var loadTasksClosure: (() async -> Result<NitroTaskList, NitroTaskServiceError>)?
     private(set) var loadTasksCallsCount = 0
+    var refreshKnownTasksReturnValue: Result<NitroTaskList, NitroTaskServiceError>?
+    var refreshKnownTasksClosure: (() async -> Result<NitroTaskList, NitroTaskServiceError>)?
+    private(set) var refreshKnownTasksCallsCount = 0
     var refreshTasksReturnValue: Result<NitroTaskList, NitroTaskServiceError> = .success(.init(tasks: [], unavailableRoomCount: 0))
     var refreshTasksClosure: ((Set<String>) async -> Result<NitroTaskList, NitroTaskServiceError>)?
     private(set) var refreshTasksReceivedRoomIDs = [Set<String>]()
@@ -76,6 +79,11 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
     func loadTasks() async -> Result<NitroTaskList, NitroTaskServiceError> {
         loadTasksCallsCount += 1
         return await loadTasksClosure?() ?? loadTasksReturnValue
+    }
+    
+    func refreshKnownTasks() async -> Result<NitroTaskList, NitroTaskServiceError> {
+        refreshKnownTasksCallsCount += 1
+        return await refreshKnownTasksClosure?() ?? refreshKnownTasksReturnValue ?? loadTasksReturnValue
     }
     
     func refreshTasks(in roomIDs: Set<String>) async -> Result<NitroTaskList, NitroTaskServiceError> {

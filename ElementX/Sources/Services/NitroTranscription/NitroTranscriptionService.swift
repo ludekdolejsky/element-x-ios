@@ -25,6 +25,10 @@ nonisolated struct NitroTranscriptionService: NitroTranscriptionServiceProtocol 
                          contentType: String,
                          homeserverURL: URL,
                          openIDToken: NitroOpenIDToken) async -> Result<String, NitroTranscriptionError> {
+        let performance = NitroPerformance.start(name: "Nitro audio transcription",
+                                                 operation: "nitro.transcription")
+        var performanceOutcome = NitroPerformance.Outcome.failure
+        defer { performance.finish(performanceOutcome) }
         var request = URLRequest(url: baseURL.appending(path: "api/transcribe"))
         request.httpMethod = "POST"
         request.timeoutInterval = 120
@@ -48,8 +52,11 @@ nonisolated struct NitroTranscriptionService: NitroTranscriptionServiceProtocol 
             }
             
             let transcript = response.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return transcript.isEmpty ? .failure(.emptyTranscript) : .success(transcript)
+            guard !transcript.isEmpty else { return .failure(.emptyTranscript) }
+            performanceOutcome = .success
+            return .success(transcript)
         } catch is CancellationError {
+            performanceOutcome = .cancelled
             return .failure(.cancelled)
         } catch {
             return .failure(.transport)

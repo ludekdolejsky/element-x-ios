@@ -27,6 +27,7 @@ enum NitroRoomWidgetsScreenViewAction {
     case webViewReady(NitroRoomWidgetDocumentID, NitroRoomWidgetJavaScriptEvaluator)
     case webViewStopped(NitroRoomWidgetDocumentID)
     case webViewFailed(NitroRoomWidgetDocumentID?)
+    case widgetReadinessTimedOut(NitroRoomWidgetDocumentID)
     case widgetMessage(String, documentID: NitroRoomWidgetDocumentID, javaScriptEvaluator: NitroRoomWidgetJavaScriptEvaluator)
 }
 

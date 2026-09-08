@@ -203,7 +203,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
         ])
         #expect(driver.restartCallCount == 1)
     }
-
+    
     @Test
     func restartsWidgetAPIHandshakeForANewWebViewDocument() async throws {
         let widget = try widget(id: "cockpit")
@@ -217,10 +217,10 @@ struct NitroRoomWidgetsScreenViewModelTests {
             return true
         }
         var evaluatedScripts = [String]()
-
+        
         viewModel.context.send(viewAction: .appeared)
         try await destination.fulfill()
-
+        
         let firstDocumentID = NitroRoomWidgetDocumentID()
         viewModel.context.send(viewAction: .webViewStarted(firstDocumentID))
         await waitForConfirmation(timeout: .seconds(1)) { firstHandshake in
@@ -229,7 +229,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
                 firstHandshake()
             })
         }
-
+        
         let secondDocumentID = NitroRoomWidgetDocumentID()
         viewModel.context.send(viewAction: .webViewStarted(secondDocumentID))
         await waitForConfirmation(timeout: .seconds(1)) { secondHandshake in
@@ -238,14 +238,14 @@ struct NitroRoomWidgetsScreenViewModelTests {
                 secondHandshake()
             })
         }
-
+        
         #expect(driver.restartCallCount == 1)
         #expect(evaluatedScripts == [
             "window.postMessage(\(handshake), \"https://pub-artifacts.nitrovery.com\")",
             "window.postMessage(\(handshake), \"https://pub-artifacts.nitrovery.com\")"
         ])
     }
-
+    
     @Test
     func ignoresLifecycleCallbacksFromAnOldWebViewDocument() async throws {
         let widget = try widget(id: "cockpit")
@@ -263,14 +263,14 @@ struct NitroRoomWidgetsScreenViewModelTests {
         viewModel.context.send(viewAction: .webViewStarted(oldDocumentID))
         viewModel.context.send(viewAction: .webViewStarted(activeDocumentID))
         let stopCallCount = driver.stopCallCount
-
+        
         viewModel.context.send(viewAction: .webViewStopped(oldDocumentID))
         viewModel.context.send(viewAction: .webViewFailed(oldDocumentID))
-
+        
         #expect(viewModel.context.viewState.destination == .widget(widget, expectedURL))
         #expect(driver.stopCallCount == stopCallCount)
     }
-
+    
     @Test
     func resetsNavigationCapabilityForANewWebViewDocument() async throws {
         let widget = try widget(id: "cockpit")
@@ -310,7 +310,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
             driver.emit(notification)
         }
         #expect(evaluatedScripts.last?.contains(NitroRoomWidgetNavigationBridge.capability) == true)
-
+        
         driver.messagesToEmitOnStart = [notification]
         let secondDocumentID = NitroRoomWidgetDocumentID()
         viewModel.context.send(viewAction: .webViewStarted(secondDocumentID))
@@ -321,7 +321,7 @@ struct NitroRoomWidgetsScreenViewModelTests {
             }
             viewModel.context.send(viewAction: .webViewReady(secondDocumentID, javaScriptEvaluator))
         }
-
+        
         #expect(evaluatedScripts.last?.contains(NitroRoomWidgetNavigationBridge.capability) == false)
     }
     
@@ -344,6 +344,27 @@ struct NitroRoomWidgetsScreenViewModelTests {
         
         #expect(viewModel.context.viewState.destination == .error(widget))
         #expect(driver.stopCallCount >= 1)
+    }
+    
+    @Test
+    func readinessTimeoutKeepsLateWidgetRecoveryAvailable() async throws {
+        let widget = try widget(id: "cockpit")
+        let driver = NitroRoomWidgetDriverMock()
+        let viewModel = NitroRoomWidgetsScreenViewModel(widgets: [widget], colorScheme: .dark) { driver }
+        defer { viewModel.stop() }
+        let expectedURL = try #require(URL(string: "https://pub-artifacts.nitrovery.com/open"))
+        let destination = deferFulfillment(viewModel.context.observe(\.viewState.destination)) {
+            $0 == .widget(widget, expectedURL)
+        }
+        
+        viewModel.context.send(viewAction: .appeared)
+        try await destination.fulfill()
+        let documentID = NitroRoomWidgetDocumentID()
+        viewModel.context.send(viewAction: .webViewStarted(documentID))
+        viewModel.context.send(viewAction: .widgetReadinessTimedOut(documentID))
+        
+        #expect(viewModel.context.viewState.destination == .widget(widget, expectedURL))
+        #expect(driver.stopCallCount == 0)
     }
     
     @Test
@@ -596,7 +617,7 @@ private final class NitroRoomWidgetDriverMock: NitroRoomWidgetDriverProtocol {
         messagesToEmitOnStart.forEach(messageSubject.send)
         return .success(())
     }
-
+    
     func stop() {
         stopCallCount += 1
     }

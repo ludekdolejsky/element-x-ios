@@ -15,6 +15,7 @@ protocol NitroTaskServiceProtocol {
     func stopDirectory()
     func loadCachedTasks() async -> NitroTaskList?
     func currentTaskIndexRevision() async -> String?
+    func refreshKnownTasks() async -> Result<NitroTaskList, NitroTaskServiceError>
     func loadTasks() async -> Result<NitroTaskList, NitroTaskServiceError>
     func refreshTasks(in roomIDs: Set<String>) async -> Result<NitroTaskList, NitroTaskServiceError>
     func startPendingTaskRecovery()

@@ -80,6 +80,11 @@ nonisolated struct NitroTaskDirectoryClient: NitroTaskDirectoryClientProtocol, S
             throw NitroTaskDirectoryError.invalidRequest
         }
         guard !keys.isEmpty else { return [:] }
+        let performance = NitroPerformance.start(name: "Nitro Task Directory resolve",
+                                                 operation: "nitro.task_directory.resolve")
+        performance.setData(keys.count, key: "nitro.task_directory.request_count")
+        var performanceOutcome = NitroPerformance.Outcome.failure
+        defer { performance.finish(Task.isCancelled ? .cancelled : performanceOutcome) }
         let response: ResolveResponse = try await send(path: "api/task-directory/resolve",
                                                        body: ResolveRequest(homeserverURL: authentication.homeserverURL,
                                                                             openIDToken: .init(authentication.openIDToken),
@@ -90,6 +95,8 @@ nonisolated struct NitroTaskDirectoryClient: NitroTaskDirectoryClientProtocol, S
             guard result[hint.key] == nil else { throw NitroTaskDirectoryError.invalidResponse }
             result[hint.key] = hint
         }
+        performance.setData(result.count, key: "nitro.task_directory.hint_count")
+        performanceOutcome = .success
         return result
     }
     
@@ -98,6 +105,11 @@ nonisolated struct NitroTaskDirectoryClient: NitroTaskDirectoryClientProtocol, S
         guard !entries.isEmpty, entries.count <= Self.maximumEntryCount, entries.allSatisfy(\.isValid) else {
             throw NitroTaskDirectoryError.invalidRequest
         }
+        let performance = NitroPerformance.start(name: "Nitro Task Directory update",
+                                                 operation: "nitro.task_directory.update")
+        performance.setData(entries.count, key: "nitro.task_directory.update_count")
+        var performanceOutcome = NitroPerformance.Outcome.failure
+        defer { performance.finish(Task.isCancelled ? .cancelled : performanceOutcome) }
         let response: UpdateResponse = try await send(path: "api/task-directory/update",
                                                       body: UpdateRequest(homeserverURL: authentication.homeserverURL,
                                                                           openIDToken: .init(authentication.openIDToken),
@@ -108,6 +120,7 @@ nonisolated struct NitroTaskDirectoryClient: NitroTaskDirectoryClientProtocol, S
               }) else {
             throw NitroTaskDirectoryError.invalidResponse
         }
+        performanceOutcome = .success
         return response.entries
     }
     

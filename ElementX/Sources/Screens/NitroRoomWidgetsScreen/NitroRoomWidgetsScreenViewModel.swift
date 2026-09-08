@@ -18,7 +18,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
         let navigationURL: URL?
         let documentID: NitroRoomWidgetDocumentID?
     }
-
+    
     private struct PendingWidgetMessage {
         let body: String
         let documentID: NitroRoomWidgetDocumentID
@@ -36,6 +36,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
     private var activeDocumentID: NitroRoomWidgetDocumentID?
     private var hasStartedWebViewDocument = false
     private var navigationCapabilityRequested = false
+    private var readinessPerformance: NitroPerformance.Transaction?
     
     @CancellableTask private var startTask: Task<Void, Never>?
     @CancellableTask private var driverMessageTask: Task<Void, Never>?
@@ -95,8 +96,12 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
             guard activeDocumentID == documentID else { return }
             guard let driverSessionID else { return }
             failCurrentWidget(sessionID: driverSessionID)
+        case .widgetReadinessTimedOut(let documentID):
+            guard activeDocumentID == documentID else { return }
+            finishReadinessPerformance(.failure)
         case .widgetMessage(let message, let documentID, let javaScriptEvaluator):
             guard activeDocumentID == documentID else { return }
+            finishReadinessPerformance(.success)
             state.bindings.javaScriptEvaluator = javaScriptEvaluator
             startDriverMessagePumpIfNeeded()
             handleWidgetMessage(message, documentID: documentID)
@@ -104,6 +109,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
     }
     
     func stop() {
+        finishReadinessPerformance(.cancelled)
         startTask = nil
         driverMessageCancellable = nil
         driverMessagePumpID = nil
@@ -121,9 +127,12 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
     
     private func start(_ widget: NitroRoomWidget) {
         stop()
+        readinessPerformance = NitroPerformance.start(name: "Nitro room widget readiness",
+                                                      operation: "nitro.widget.ready")
         state.destination = .loading(widget)
         
         guard let driver = driverFactory() else {
+            finishReadinessPerformance(.failure)
             state.destination = .error(widget)
             return
         }
@@ -148,6 +157,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
             case .success(let url):
                 state.destination = .widget(widget, url)
             case .failure:
+                finishReadinessPerformance(.failure)
                 state.destination = .error(widget)
             }
             startTask = nil
@@ -273,7 +283,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
         driverMessageTask = nil
         widgetMessageTask = nil
         pendingWidgetMessages.removeAll()
-
+        
         if shouldRestartDriver {
             pendingDriverMessages.removeAll()
             restartDriver()
@@ -283,7 +293,7 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
             }
         }
     }
-
+    
     private func restartDriver() {
         guard let driver else { return }
         driverMessageCancellable = nil
@@ -295,13 +305,13 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
             return
         }
     }
-
+    
     private func subscribeToDriver(_ driver: NitroRoomWidgetDriverProtocol, sessionID: UUID) {
         driverMessageCancellable = driver.messagePublisher.sink { [weak self] message in
             self?.enqueueDriverMessage(message, sessionID: sessionID)
         }
     }
-
+    
     private func failCurrentWidget(sessionID: UUID) {
         guard driverSessionID == sessionID else { return }
         let widget: NitroRoomWidget
@@ -312,8 +322,14 @@ final class NitroRoomWidgetsScreenViewModel: NitroRoomWidgetsScreenViewModelType
             return
         }
         
+        finishReadinessPerformance(.failure)
         stop()
         state.destination = .error(widget)
+    }
+    
+    private func finishReadinessPerformance(_ outcome: NitroPerformance.Outcome) {
+        readinessPerformance?.finish(outcome)
+        readinessPerformance = nil
     }
     
     private func postToWidget(_ message: String, using javaScriptEvaluator: NitroRoomWidgetJavaScriptEvaluator) async -> Bool {

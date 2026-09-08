@@ -17,12 +17,13 @@ struct NitroTasksScreenCacheTests {
         let service = NitroTaskServiceMock()
         service.loadCachedTasksReturnValue = .init(tasks: [cachedTask], unavailableRoomCount: 1)
         let (networkResults, networkContinuation) = AsyncStream.makeStream(of: Result<NitroTaskList, NitroTaskServiceError>.self)
-        service.loadTasksClosure = {
+        service.refreshKnownTasksClosure = {
             for await result in networkResults {
                 return result
             }
             return .failure(.cancelled)
         }
+        service.loadTasksReturnValue = .success(.init(tasks: [refreshedTask], unavailableRoomCount: 0))
         let viewModel = NitroTasksScreenViewModel(taskService: service)
         let hydrated = deferFulfillment(viewModel.context.observe(\.viewState.tasks)) { $0 == [cachedTask] }
         
@@ -40,6 +41,44 @@ struct NitroTasksScreenCacheTests {
         networkContinuation.finish()
         try await refreshed.fulfill()
         #expect(!viewModel.context.viewState.isLoading)
+        #expect(service.refreshKnownTasksCallsCount == 1)
+    }
+    
+    @Test
+    func finishesVisibleRefreshBeforeBackgroundDiscovery() async throws {
+        let cachedTask = makeTask()
+        let refreshedTask = makeTask(id: "$fresh:example.org")
+        let discoveredTask = makeTask(id: "$discovered:example.org")
+        let service = NitroTaskServiceMock()
+        service.cachedTaskList = .init(tasks: [cachedTask], unavailableRoomCount: 0)
+        service.refreshKnownTasksReturnValue = .success(.init(tasks: [refreshedTask], unavailableRoomCount: 0))
+        let (discoveryResults, discoveryContinuation) = AsyncStream.makeStream(of: Result<NitroTaskList, NitroTaskServiceError>.self)
+        let (discoveryStarts, discoveryStartContinuation) = AsyncStream.makeStream(of: Void.self)
+        service.loadTasksClosure = {
+            discoveryStartContinuation.yield()
+            for await result in discoveryResults {
+                return result
+            }
+            return .failure(.cancelled)
+        }
+        let viewModel = NitroTasksScreenViewModel(taskService: service)
+        let refreshed = deferFulfillment(viewModel.context.observe(\.viewState.tasks)) { $0 == [refreshedTask] }
+        
+        viewModel.context.send(viewAction: .load)
+        try await refreshed.fulfill()
+        for await _ in discoveryStarts {
+            break
+        }
+        
+        #expect(!viewModel.context.viewState.isLoading)
+        #expect(service.refreshKnownTasksCallsCount == 1)
+        #expect(service.loadTasksCallsCount == 1)
+        
+        let discovered = deferFulfillment(viewModel.context.observe(\.viewState.tasks)) { $0 == [discoveredTask] }
+        discoveryContinuation.yield(.success(.init(tasks: [discoveredTask], unavailableRoomCount: 0)))
+        discoveryContinuation.finish()
+        discoveryStartContinuation.finish()
+        try await discovered.fulfill()
     }
     
     @Test

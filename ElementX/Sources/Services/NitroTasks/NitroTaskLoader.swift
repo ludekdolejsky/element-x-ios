@@ -41,9 +41,21 @@ struct NitroTaskLoader {
         } else {
             client.rooms()
         }
+        let preparationPerformance = NitroPerformance.start(name: "Nitro Tasks room preparation",
+                                                            operation: "nitro.tasks.prepare_rooms")
+        preparationPerformance.setData(rooms.count, key: "nitro.tasks.room_count")
+        preparationPerformance.setData(indexedKeys.count, key: "nitro.tasks.indexed_count")
         async let taskPreparation = Self.prepareTaskRooms(in: rooms, index: index)
         async let initialDirectoryResolution = resolveDirectory(indexedKeys)
-        let preparedTaskRooms = try await taskPreparation
+        let preparedTaskRooms: NitroTaskService.PreparedTaskRooms
+        do {
+            preparedTaskRooms = try await taskPreparation
+            preparationPerformance.setData(preparedTaskRooms.preparedRooms.count, key: "nitro.tasks.prepared_room_count")
+            preparationPerformance.finish(.success)
+        } catch {
+            preparationPerformance.finish(Task.isCancelled ? .cancelled : .failure)
+            throw error
+        }
         var directoryResolution = await initialDirectoryResolution
         let preparedKeys = Set(preparedTaskRooms.preparedRooms.flatMap { room in
             room.taskEvents.map { NitroTaskDirectoryKey(roomID: room.roomID, taskEventID: $0.eventID) }
@@ -52,11 +64,22 @@ struct NitroTaskLoader {
         if allKeys != indexedKeys {
             directoryResolution = await resolveDirectory(allKeys)
         }
-        return try await load(preparedTaskRooms,
-                              ownUserID: ownUserID,
-                              session: session,
-                              index: index,
-                              directoryResolution: directoryResolution)
+        let hydrationPerformance = NitroPerformance.start(name: "Nitro Tasks hydration",
+                                                          operation: "nitro.tasks.hydrate")
+        hydrationPerformance.setData(allKeys.count, key: "nitro.tasks.task_count")
+        do {
+            let result = try await load(preparedTaskRooms,
+                                        ownUserID: ownUserID,
+                                        session: session,
+                                        index: index,
+                                        directoryResolution: directoryResolution)
+            hydrationPerformance.setData(result.list.tasks.count, key: "nitro.tasks.loaded_count")
+            hydrationPerformance.finish(.success)
+            return result
+        } catch {
+            hydrationPerformance.finish(Task.isCancelled ? .cancelled : .failure)
+            throw error
+        }
     }
     
     private func resolveDirectory(_ keys: Set<NitroTaskDirectoryKey>) async -> NitroTaskDirectoryResolution {

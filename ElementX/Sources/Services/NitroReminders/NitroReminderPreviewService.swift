@@ -62,7 +62,12 @@ final class NitroReminderPreviewService: NitroReminderPreviewServiceProtocol {
     func loadPreviews(for reminders: [NitroReminder],
                       forceRefresh: Bool,
                       update: @escaping @MainActor @Sendable (NitroReminderPreviewUpdate) -> Void) async {
+        let performance = NitroPerformance.start(name: "Nitro Reminder previews",
+                                                 operation: "nitro.reminders.previews")
+        performance.setData(reminders.count, key: "nitro.reminders.count")
+        performance.setData(forceRefresh, key: "nitro.cache_bypassed")
         await producePreviewUpdates(for: reminders, forceRefresh: forceRefresh, update: update)
+        performance.finish(Task.isCancelled ? .cancelled : .success)
     }
     
     private func store(_ preview: NitroReminderMessagePreview, for target: Target) {

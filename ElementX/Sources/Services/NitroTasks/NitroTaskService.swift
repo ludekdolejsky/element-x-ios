@@ -169,6 +169,12 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         }
     }
     
+    private enum LoadScope {
+        case all
+        case known
+        case rooms(Set<String>)
+    }
+    
     private nonisolated struct TaskIndexWriteState: Sendable {
         let index: NitroTaskIndex
         let pendingMutations: [NitroTaskIndex.Mutation]
@@ -187,7 +193,6 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     private let updatesSubject = PassthroughSubject<NitroTaskServiceUpdate, Never>()
     private(set) var cachedTaskList: NitroTaskList?
     private var hasLoadedSnapshot = false
-    private var hasCompletedFullLoad = false
     private var unavailableRoomIDs = Set<String>()
     private var loadRequestID: UUID?
     private var recoveryCandidates = [RecoveryCandidate]()
@@ -256,20 +261,22 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     }
     
     func loadTasks() async -> Result<NitroTaskList, NitroTaskServiceError> {
-        await loadTasks(in: nil)
+        await loadTasks(scope: .all)
+    }
+    
+    func refreshKnownTasks() async -> Result<NitroTaskList, NitroTaskServiceError> {
+        await loadTasks(scope: .known)
     }
     
     func refreshTasks(in roomIDs: Set<String>) async -> Result<NitroTaskList, NitroTaskServiceError> {
         guard !roomIDs.isEmpty else {
             return .success(cachedTaskList ?? .init(tasks: [], unavailableRoomCount: 0))
         }
-        guard hasCompletedFullLoad else {
-            return await loadTasks()
-        }
-        return await loadTasks(in: roomIDs)
+        return await loadTasks(scope: .rooms(roomIDs))
     }
     
-    private func loadTasks(in roomIDs: Set<String>?) async -> Result<NitroTaskList, NitroTaskServiceError> {
+    private func loadTasks(scope: LoadScope) async -> Result<NitroTaskList, NitroTaskServiceError> {
+        guard !Task.isCancelled else { return .failure(.cancelled) }
         stopRecovery()
         let requestID = UUID()
         loadRequestID = requestID
@@ -279,10 +286,22 @@ final class NitroTaskService: NitroTaskServiceProtocol {
             }
         }
         
+        let initialIndex = await loadTaskIndexOrEmpty()
+        guard !Task.isCancelled, loadRequestID == requestID else { return .failure(.cancelled) }
+        let roomIDs: Set<String>? = switch scope {
+        case .all:
+            nil
+        case .known:
+            Set(initialIndex.tasks.map(\.roomID))
+                .union(cachedTaskList?.tasks.map(\.roomID) ?? [])
+        case .rooms(let roomIDs):
+            roomIDs
+        }
+        if let roomIDs, roomIDs.isEmpty {
+            return .success(cachedTaskList ?? .init(tasks: [], unavailableRoomCount: 0))
+        }
+        
         do {
-            let initialIndex = await loadTaskIndex() ?? .init(migrationComplete: false,
-                                                              tasks: [],
-                                                              roomPinRevisions: [:])
             let loadedTasks = try await taskLoader.load(index: initialIndex, roomIDs: roomIDs)
             guard !Task.isCancelled, loadRequestID == requestID else { return .failure(.cancelled) }
             let taskList: NitroTaskList
@@ -303,7 +322,6 @@ final class NitroTaskService: NitroTaskServiceProtocol {
                 guard !Task.isCancelled, loadRequestID == requestID else { return .failure(.cancelled) }
                 recoveryCandidates = loadedTasks.recoveryCandidates
                 unavailableRoomIDs = loadedTasks.unavailableRoomIDs
-                hasCompletedFullLoad = true
                 taskList = NitroTaskCacheMerger.merge(cachedTaskList: cachedTaskList,
                                                       loadedTaskList: loadedTasks.list,
                                                       refreshedRoomIDs: nil,
@@ -319,6 +337,12 @@ final class NitroTaskService: NitroTaskServiceProtocol {
             MXLog.error("Failed loading Nitro tasks with error: \(error)")
             return .failure(.requestFailed)
         }
+    }
+    
+    private func loadTaskIndexOrEmpty() async -> NitroTaskIndex {
+        await loadTaskIndex() ?? .init(migrationComplete: false,
+                                       tasks: [],
+                                       roomPinRevisions: [:])
     }
     
     func startPendingTaskRecovery() {

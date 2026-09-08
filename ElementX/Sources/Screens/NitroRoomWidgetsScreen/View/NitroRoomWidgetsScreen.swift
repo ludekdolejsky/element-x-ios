@@ -225,18 +225,18 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                 case widget
                 case diagnostic
             }
-
+            
             let documentID: NitroRoomWidgetDocumentID
             let kind: Kind
             let body: String?
-
+            
             enum CodingKeys: String, CodingKey {
                 case documentID = "document_id"
                 case kind
                 case body
             }
         }
-
+        
         private static let handlerName = "widgetAction"
         private static let diagnosticsHandlerName = "widgetDiagnostics"
         private let context: NitroRoomWidgetsScreenViewModel.Context
@@ -447,7 +447,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
             diagnostics.recordNavigationFailure(phase: "navigation_failed", error: error)
             context.send(viewAction: .webViewFailed(documentID))
         }
-
+        
         private func startDocument(_ documentID: NitroRoomWidgetDocumentID) {
             guard !retiredDocumentIDs.contains(documentID), self.documentID != documentID else { return }
             if let currentDocumentID = self.documentID {
@@ -460,7 +460,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
             }
             context.send(viewAction: .webViewStarted(documentID))
         }
-
+        
         private func documentID(for navigation: WKNavigation) -> NitroRoomWidgetDocumentID? {
             documentIDsByNavigation[ObjectIdentifier(navigation)]
         }
@@ -475,7 +475,9 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                 }
                 guard !Task.isCancelled else { return }
                 guard let self else { return }
+                guard let documentID else { return }
                 diagnostics.recordNativeWidgetAPITimeout(bridgeState: bridgeState)
+                context.send(viewAction: .widgetReadinessTimedOut(documentID))
             }
         }
         
@@ -490,7 +492,7 @@ private struct NitroRoomWidgetWebView: UIViewRepresentable {
                 try await evaluateJavaScript(script, documentID: documentID)
             }
         }
-
+        
         private func evaluateJavaScript(_ script: String, documentID: NitroRoomWidgetDocumentID) async throws {
             guard self.documentID == documentID else { throw CancellationError() }
             driverScriptsStarted += 1

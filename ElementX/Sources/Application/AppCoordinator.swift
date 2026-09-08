@@ -1065,7 +1065,9 @@ class AppCoordinator: AppCoordinatorProtocol, AuthenticationFlowCoordinatorDeleg
         // remove them and start over, otherwise the app will crash if finishTransaction is used.
         analytics.signpost.resetTransactions()
         
-        SentrySDK.start(options: options) // Swift
+        NitroPerformance.reconfigureSentry {
+            SentrySDK.start(options: options) // Swift
+        }
         enableSentryLogging(enabled: options.enabled) // Rust
         
         MXLog.info("Sentry configured (enabled: \(options.enabled))")

@@ -135,6 +135,14 @@ final class NitroRecentEmojiStore: NitroRecentEmojiStoreProtocol {
     }
     
     private func perform(_ operation: Operation) async {
+        let performance = NitroPerformance.start(name: "Nitro recent emoji sync",
+                                                 operation: "nitro.emoji.recents")
+        switch operation {
+        case .load:
+            performance.setTag("load", key: "nitro.emoji.action")
+        case .recordUsage:
+            performance.setTag("record", key: "nitro.emoji.action")
+        }
         let loadedEntries = await loadEntries()
         switch operation {
         case .load:
@@ -144,6 +152,9 @@ final class NitroRecentEmojiStore: NitroRecentEmojiStoreProtocol {
             cachedEntries = entriesApplyingPendingUsage(to: baseEntries)
         }
         await flushPendingUsage(canPersist: loadedEntries.canPersist)
+        performance.setData(loadedEntries.entries.count, key: "nitro.emoji.recent_count")
+        performance.setData(loadedEntries.canPersist, key: "nitro.emoji.can_persist")
+        performance.finish(Task.isCancelled ? .cancelled : .success)
     }
     
     private func flushPendingUsage(canPersist: Bool) async {

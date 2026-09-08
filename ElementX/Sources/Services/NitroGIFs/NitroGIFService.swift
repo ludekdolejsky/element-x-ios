@@ -56,13 +56,13 @@ nonisolated struct NitroGIFService: NitroGIFServiceProtocol {
         static let downloadDirectoryName = "NitroGiphy"
         static let downloadLifetime: TimeInterval = 24 * 60 * 60
     }
-
+    
     private let configuration: NitroGIFConfiguration
     private let apiBaseURL: URL
     private let urlSession: URLSession
     private let downloadDirectory: URL
     private let now: @Sendable () -> Date
-
+    
     init(configuration: NitroGIFConfiguration,
          apiBaseURL: URL = Constants.apiBaseURL,
          urlSession: URLSession = .shared,
@@ -74,10 +74,16 @@ nonisolated struct NitroGIFService: NitroGIFServiceProtocol {
         self.downloadDirectory = downloadDirectory.appending(path: Constants.downloadDirectoryName, directoryHint: .isDirectory)
         self.now = now
     }
-
+    
     func search(query: String, offset: Int = 0) async -> Result<NitroGIFSearchPage, NitroGIFServiceError> {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let endpoint = trimmedQuery.isEmpty ? "trending" : "search"
+        let performance = NitroPerformance.start(name: "Nitro Giphy search",
+                                                 operation: "nitro.giphy.search")
+        performance.setTag(endpoint, key: "nitro.giphy.mode")
+        performance.setData(offset > 0, key: "nitro.giphy.pagination")
+        var performanceOutcome = NitroPerformance.Outcome.failure
+        defer { performance.finish(performanceOutcome) }
         let limit = min(Constants.maximumResultLimit, max(1, configuration.resultLimit))
         var components = URLComponents(url: apiBaseURL.appending(path: endpoint), resolvingAgainstBaseURL: false)
         components?.queryItems = [
@@ -89,24 +95,28 @@ nonisolated struct NitroGIFService: NitroGIFServiceProtocol {
         if !trimmedQuery.isEmpty {
             components?.queryItems?.append(.init(name: "q", value: trimmedQuery))
         }
-
+        
         guard let url = components?.url else { return .failure(.invalidResponse) }
-
+        
         do {
             let (data, response) = try await urlSession.data(from: url)
             guard let response = response as? HTTPURLResponse else { return .failure(.invalidResponse) }
             guard 200..<300 ~= response.statusCode else { return .failure(.httpError(statusCode: response.statusCode)) }
-
+            
             let payload = try JSONDecoder().decode(GIPHYResponse.self, from: data)
             let results = payload.data.compactMap(NitroGIFResult.init)
             let pagination = payload.pagination
             let nextOffset = pagination.count > 0 && pagination.offset + pagination.count < pagination.totalCount
                 ? pagination.offset + pagination.count
                 : nil
+            performance.setData(results.count, key: "nitro.giphy.result_count")
+            performanceOutcome = .success
             return .success(.init(results: results, nextOffset: nextOffset))
         } catch is CancellationError {
+            performanceOutcome = .cancelled
             return .failure(.cancelled)
         } catch let error as URLError where error.code == .cancelled {
+            performanceOutcome = .cancelled
             return .failure(.cancelled)
         } catch is DecodingError {
             return .failure(.invalidResponse)
@@ -114,8 +124,12 @@ nonisolated struct NitroGIFService: NitroGIFServiceProtocol {
             return .failure(.network)
         }
     }
-
+    
     func download(_ result: NitroGIFResult) async -> Result<URL, NitroGIFServiceError> {
+        let performance = NitroPerformance.start(name: "Nitro Giphy download",
+                                                 operation: "nitro.giphy.download")
+        var performanceOutcome = NitroPerformance.Outcome.failure
+        defer { performance.finish(performanceOutcome) }
         do {
             let (temporaryURL, response) = try await urlSession.download(from: result.downloadURL)
             guard let response = response as? HTTPURLResponse else { return .failure(.invalidResponse) }
@@ -124,25 +138,28 @@ nonisolated struct NitroGIFService: NitroGIFServiceProtocol {
             if response.expectedContentLength > Constants.maximumGIFSize {
                 return .failure(.tooLarge)
             }
-
+            
             let fileSize = try temporaryURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
             guard fileSize <= Constants.maximumGIFSize else { return .failure(.tooLarge) }
-
+            
             try prepareDownloadDirectory()
             let destinationURL = downloadDirectory
                 .appending(path: "\(UUID().uuidString)-\(safeFilenameStem(for: result))", directoryHint: .notDirectory)
                 .appendingPathExtension("gif")
             try FileManager.default.moveItem(at: temporaryURL, to: destinationURL)
+            performanceOutcome = .success
             return .success(destinationURL)
         } catch is CancellationError {
+            performanceOutcome = .cancelled
             return .failure(.cancelled)
         } catch let error as URLError where error.code == .cancelled {
+            performanceOutcome = .cancelled
             return .failure(.cancelled)
         } catch {
             return .failure(.network)
         }
     }
-
+    
     private func prepareDownloadDirectory() throws {
         try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true)
         let cutoff = now().addingTimeInterval(-Constants.downloadLifetime)
@@ -153,7 +170,7 @@ nonisolated struct NitroGIFService: NitroGIFServiceProtocol {
             try? FileManager.default.removeItem(at: file)
         }
     }
-
+    
     private func safeFilenameStem(for result: NitroGIFResult) -> String {
         let foldedTitle = result.title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
         let components = foldedTitle.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
@@ -174,7 +191,7 @@ private nonisolated extension NitroGIFResult {
               let downloadURL = result.images.downsized?.url else {
             return nil
         }
-
+        
         let title = result.title?.nonEmpty ?? "GIF"
         self.init(id: id,
                   title: title,
@@ -196,19 +213,19 @@ private nonisolated extension NitroGIFService {
         let data: [GIPHYResult]
         let pagination: GIPHYPagination
     }
-
+    
     struct GIPHYResult: Decodable {
         let id: String?
         let title: String?
         let altText: String?
         let images: GIPHYImages
-
+        
         enum CodingKeys: String, CodingKey {
             case id, title, images
             case altText = "alt_text"
         }
     }
-
+    
     struct GIPHYImages: Decodable {
         let fixedWidthSmallStill: GIPHYImage?
         let fixedWidthStill: GIPHYImage?
@@ -216,7 +233,7 @@ private nonisolated extension NitroGIFService {
         let fixedWidthSmall: GIPHYImage?
         let fixedWidth: GIPHYImage?
         let downsized: GIPHYImage?
-
+        
         enum CodingKeys: String, CodingKey {
             case fixedWidthSmallStill = "fixed_width_small_still"
             case fixedWidthStill = "fixed_width_still"
@@ -226,26 +243,26 @@ private nonisolated extension NitroGIFService {
             case downsized
         }
     }
-
+    
     struct GIPHYImage: Decodable {
         let url: URL?
-
+        
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             let value = try container.decodeIfPresent(String.self, forKey: .url)
             url = value.flatMap(URL.init(string:))
         }
-
+        
         private enum CodingKeys: CodingKey {
             case url
         }
     }
-
+    
     struct GIPHYPagination: Decodable {
         let offset: Int
         let count: Int
         let totalCount: Int
-
+        
         enum CodingKeys: String, CodingKey {
             case offset, count
             case totalCount = "total_count"

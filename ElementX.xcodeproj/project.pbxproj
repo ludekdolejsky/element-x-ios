@@ -958,6 +958,7 @@
 		8D24671992A1C1753B211221 /* EncryptionResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89BB11A792EF6F70B95B467E /* EncryptionResetTests.swift */; };
 		8D3E1FADD78E72504DE0E402 /* UserAgentBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB3B237387B8288A5A938F1B /* UserAgentBuilderTests.swift */; };
 		8D71E5E53F372202379BECCE /* BugReportScreenViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303FCADE77DF1F3670C086ED /* BugReportScreenViewModel.swift */; };
+		8D8A323A847F9C9BA8191F83 /* NitroTaskServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C0579ED8F918A2B9C75CF0E /* NitroTaskServiceTests.swift */; };
 		8DC176CC5ABA24138EB443DD /* RoomMemberDetails.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55679AF67545EF8087E47BE /* RoomMemberDetails.swift */; };
 		8DCA1F05C3BA6ED826F1599D /* RoomSelectionScreenViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83B4E3F1265581683E4997B8 /* RoomSelectionScreenViewModel.swift */; };
 		8DCD9CC5361FF22A5B2C20F1 /* AppLockSetupSettingsScreenCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D9FCE4D1E3A81AC1CC5CB91 /* AppLockSetupSettingsScreenCoordinator.swift */; };
@@ -1158,6 +1159,7 @@
 		AAF0BBED840DF4A53EE85E77 /* MatrixRustSDK in Frameworks */ = {isa = PBXBuildFile; productRef = C2C69B8BA5A9702E7A8BC08F /* MatrixRustSDK */; };
 		ABD29E06DD1224812E750AF8 /* ReadReceiptCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D75941CBD7D336F831924EC /* ReadReceiptCell.swift */; };
 		AC1DB27A4134470846BE49F6 /* UserProfileScreenViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BD116096CAA9139B95EEA9C /* UserProfileScreenViewModel.swift */; };
+		AC1F0E0CF390C9CABFF68B44 /* NitroPerformance.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1FC148DFF35C83A985B181 /* NitroPerformance.swift */; };
 		AC3C3D6D4AD31F13EE987390 /* TraceLogPack.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7149BDDE47F8AD104E644E2 /* TraceLogPack.swift */; };
 		AC69B6DF15FC451AB2945036 /* UserSessionStoreProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEBA759D1347CFFB3D84ED1F /* UserSessionStoreProtocol.swift */; };
 		AC6B9112EADFFAE998EB4223 /* NitroRoomWidgetsScreenModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7921CDCEEF1F922C2D5B450 /* NitroRoomWidgetsScreenModels.swift */; };
@@ -2815,6 +2817,7 @@
 		9B67DF223EEB8DCAF178A1D4 /* AnalyticsPromptScreenCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsPromptScreenCoordinator.swift; sourceTree = "<group>"; };
 		9B7B9E70029438A765275F7F /* TimelineItemProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineItemProviderTests.swift; sourceTree = "<group>"; };
 		9B7D8D3638864B7482E148CC /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		9C0579ED8F918A2B9C75CF0E /* NitroTaskServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitroTaskServiceTests.swift; sourceTree = "<group>"; };
 		9C5639C7D679F094E7AB6B04 /* test_apple_image.heic */ = {isa = PBXFileReference; path = test_apple_image.heic; sourceTree = "<group>"; };
 		9C5E81214D27A6B898FC397D /* ElementX.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ElementX.entitlements; sourceTree = "<group>"; };
 		9C6624240FFD32B7F0834229 /* IdentityConfirmedScreenViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityConfirmedScreenViewModel.swift; sourceTree = "<group>"; };
@@ -3223,6 +3226,7 @@
 		DADECBBB672497BCD4822468 /* Result.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Result.swift; sourceTree = "<group>"; };
 		DB06F22CFA34885B40976061 /* RoomDetailsEditScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomDetailsEditScreen.swift; sourceTree = "<group>"; };
 		DB08D1F7C27A8C24EF81073C /* MapURLs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapURLs.swift; sourceTree = "<group>"; };
+		DB1FC148DFF35C83A985B181 /* NitroPerformance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitroPerformance.swift; sourceTree = "<group>"; };
 		DB67A042079F7B250A62C8FB /* vi */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = vi; path = vi.lproj/SAS.strings; sourceTree = "<group>"; };
 		DB6F137B69DCB59353E37B80 /* TimelineItemKeyForwarder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineItemKeyForwarder.swift; sourceTree = "<group>"; };
 		DB9292E3516E65DED7130684 /* HomeserverHistoryManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeserverHistoryManagerTests.swift; sourceTree = "<group>"; };
@@ -3752,6 +3756,7 @@
 				432656D5E3E1F59CC14BEFBE /* Nitro */,
 				9CF03934467728EC619DDC81 /* NitroCatchUp */,
 				01EA7D4484BA22211ECDCDB8 /* NitroGIFs */,
+				7B6C9E52A3A3A90987B8FB7A /* NitroPerformance */,
 				5FB6DF1FD913BBDCAD6E4CE2 /* NitroReminders */,
 				030653EDC2D854567BEB128D /* NitroRoomWidgets */,
 				13664C8056C68028666D88C1 /* NitroTaskDirectory */,
@@ -5642,6 +5647,7 @@
 				F81657024083910627322421 /* NitroTaskDirectoryStoreTests.swift */,
 				C83D0EDFD399651BCE800547 /* NitroTaskEventParserTests.swift */,
 				FC9FF3DDED77A30CBA792829 /* NitroTaskIndexTests.swift */,
+				9C0579ED8F918A2B9C75CF0E /* NitroTaskServiceTests.swift */,
 				E8384D503426285C796281C3 /* NitroTaskSnapshotStoreTests.swift */,
 				3DB7FC709BE69740CF4F76ED /* NitroTasksScreenCacheTests.swift */,
 				D117E843B355308E9AFE92EA /* NitroTasksScreenViewModelTests.swift */,
@@ -5891,6 +5897,14 @@
 				88410BD213FDF9B28E8B671F /* UserDetailsEditScreen.swift */,
 			);
 			path = View;
+			sourceTree = "<group>";
+		};
+		7B6C9E52A3A3A90987B8FB7A /* NitroPerformance */ = {
+			isa = PBXGroup;
+			children = (
+				DB1FC148DFF35C83A985B181 /* NitroPerformance.swift */,
+			);
+			path = NitroPerformance;
 			sourceTree = "<group>";
 		};
 		7B890CCD20B037760BFDF957 /* RoomRolesAndPermissionsScreen */ = {
@@ -8845,6 +8859,7 @@
 				023E1026F188F97E6030E483 /* NitroTaskDirectoryStoreTests.swift in Sources */,
 				0B6128B39B891910691018E3 /* NitroTaskEventParserTests.swift in Sources */,
 				2F855A601A5E5E7A4245367E /* NitroTaskIndexTests.swift in Sources */,
+				8D8A323A847F9C9BA8191F83 /* NitroTaskServiceTests.swift in Sources */,
 				45B968B1BF8E9E536DD0A9F4 /* NitroTaskSnapshotStoreTests.swift in Sources */,
 				8543A14A960BD72EE0A4D6B3 /* NitroTasksScreenCacheTests.swift in Sources */,
 				4DBCEE420ABA79FB70FA14B0 /* NitroTasksScreenViewModelTests.swift in Sources */,
@@ -9570,6 +9585,7 @@
 				40E7B34754CF94330295B6F4 /* NitroGIFRecentStore.swift in Sources */,
 				B09B0FF8BD649B9B4C9296CC /* NitroGIFService.swift in Sources */,
 				15CE75D257991AD547354E1D /* NitroMessageCopyFormatter.swift in Sources */,
+				AC1F0E0CF390C9CABFF68B44 /* NitroPerformance.swift in Sources */,
 				904F38747B091F11A3A25E29 /* NitroRecentEmojiStore.swift in Sources */,
 				00B4F5A18DAE0341409B023A /* NitroReminderCreateScreen.swift in Sources */,
 				D27AFF7F134BC88F6680FDCC /* NitroReminderCreateScreenCoordinator.swift in Sources */,
