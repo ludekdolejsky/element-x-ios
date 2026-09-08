@@ -18,6 +18,8 @@ nonisolated enum NitroTaskEventParser {
     
     struct TaskEvent: Equatable, Sendable {
         let eventID: String
+        let contentEventID: String
+        let contentOriginTimestamp: UInt64
         let senderID: String?
         let metadata: NitroTaskMetadata
     }
@@ -25,6 +27,12 @@ nonisolated enum NitroTaskEventParser {
     struct StateUpdate: Equatable, Sendable {
         let state: NitroTaskState
         let updatedDate: Date?
+        let originTimestamp: UInt64?
+    }
+    
+    enum DirectoryPointer: Equatable, Sendable {
+        case content(taskEventID: String, eventID: String, originTimestamp: UInt64)
+        case state(taskEventID: String, eventID: String, originTimestamp: UInt64)
     }
     
     static func taskEvent(from json: String, eventIDOverride: String? = nil) -> TaskEvent? {
@@ -38,6 +46,8 @@ nonisolated enum NitroTaskEventParser {
         }
         
         return TaskEvent(eventID: eventID,
+                         contentEventID: nonEmptyString(event["event_id"]) ?? eventID,
+                         contentOriginTimestamp: unsignedInteger(event["origin_server_ts"]) ?? 0,
                          senderID: nonEmptyString(event["sender"]),
                          metadata: metadata)
     }
@@ -63,12 +73,42 @@ nonisolated enum NitroTaskEventParser {
         }
         
         return TaskEvent(eventID: originalEvent.eventID,
+                         contentEventID: editedEvent.contentEventID,
+                         contentOriginTimestamp: editedEvent.contentOriginTimestamp,
                          senderID: originalEvent.senderID,
                          metadata: editedEvent.metadata)
     }
     
-    static func stateUpdate(from json: String, taskEventID: String) -> StateUpdate? {
+    static func replacementTaskEvent(from json: String,
+                                     replacing taskEvent: TaskEvent,
+                                     roomID: String,
+                                     eventID: String) -> TaskEvent? {
         guard let event = dictionary(from: json),
+              nonEmptyString(event["event_id"]) == eventID,
+              nonEmptyString(event["room_id"]).map({ $0 == roomID }) ?? true,
+              event["type"] as? String == "m.room.message",
+              nonEmptyString(event["sender"]) == taskEvent.senderID,
+              let content = event["content"] as? [String: Any],
+              content["m.new_content"] is [String: Any],
+              let relation = content["m.relates_to"] as? [String: Any],
+              relation["rel_type"] as? String == "m.replace",
+              relation["event_id"] as? String == taskEvent.eventID,
+              let replacement = Self.taskEvent(from: json, eventIDOverride: taskEvent.eventID),
+              hasSameIdentity(taskEvent.metadata, replacement.metadata) else {
+            return nil
+        }
+        return replacement
+    }
+    
+    static func stateUpdate(from json: String,
+                            taskEventID: String,
+                            roomID: String? = nil,
+                            eventID: String? = nil) -> StateUpdate? {
+        guard let event = dictionary(from: json),
+              eventID.map({ nonEmptyString(event["event_id"]) == $0 }) ?? true,
+              roomID.map({ expectedRoomID in
+                  nonEmptyString(event["room_id"]).map { $0 == expectedRoomID } ?? true
+              }) ?? true,
               event["type"] as? String == "m.room.message",
               let content = event["content"] as? [String: Any],
               let relation = content["m.relates_to"] as? [String: Any],
@@ -80,9 +120,10 @@ nonisolated enum NitroTaskEventParser {
             return nil
         }
         
-        let updatedDate = finiteDouble(event["origin_server_ts"])
-            .map { Date(timeIntervalSince1970: $0 / 1000) }
-        return StateUpdate(state: state, updatedDate: updatedDate)
+        let originTimestamp = unsignedInteger(event["origin_server_ts"])
+        return StateUpdate(state: state,
+                           updatedDate: originTimestamp.map { Date(timeIntervalSince1970: Double($0) / 1000) },
+                           originTimestamp: originTimestamp)
     }
     
     static func stateUpdate(originalJSON: String?, latestJSON: String?, taskEventID: String) -> StateUpdate? {
@@ -92,6 +133,46 @@ nonisolated enum NitroTaskEventParser {
     
     static func isRoomMessageEvent(_ json: String) -> Bool {
         dictionary(from: json)?["type"] as? String == "m.room.message"
+    }
+    
+    static func isEncryptedEnvelope(_ json: String) -> Bool {
+        dictionary(from: json)?["type"] as? String == "m.room.encrypted"
+    }
+    
+    static func directoryPointer(from json: String) -> DirectoryPointer? {
+        guard let event = dictionary(from: json),
+              event["type"] as? String == "m.room.message",
+              let eventID = nonEmptyString(event["event_id"]),
+              let originTimestamp = unsignedInteger(event["origin_server_ts"]),
+              let content = event["content"] as? [String: Any] else {
+            return nil
+        }
+        if let relation = content["m.relates_to"] as? [String: Any],
+           let taskEventID = nonEmptyString(relation["event_id"]) {
+            if relation["rel_type"] as? String == "m.replace",
+               let newContent = content["m.new_content"] as? [String: Any],
+               let metadata = newContent[taskContentKey] as? [String: Any],
+               taskMetadata(from: metadata) != nil {
+                return .content(taskEventID: taskEventID,
+                                eventID: eventID,
+                                originTimestamp: originTimestamp)
+            }
+            if relation["rel_type"] as? String == "m.reference",
+               let update = content[taskUpdateContentKey] as? [String: Any],
+               update["version"] as? Int == 1,
+               taskState(from: update) != nil {
+                return .state(taskEventID: taskEventID,
+                              eventID: eventID,
+                              originTimestamp: originTimestamp)
+            }
+        }
+        guard let metadata = content[taskContentKey] as? [String: Any],
+              taskMetadata(from: metadata) != nil else {
+            return nil
+        }
+        return .content(taskEventID: eventID,
+                        eventID: eventID,
+                        originTimestamp: originTimestamp)
     }
     
     static func mentionedUserIDs(from json: String?) -> [String] {
@@ -228,5 +309,14 @@ nonisolated enum NitroTaskEventParser {
         guard let number = value as? NSNumber else { return nil }
         let result = number.doubleValue
         return result.isFinite ? result : nil
+    }
+    
+    private static func unsignedInteger(_ value: Any?) -> UInt64? {
+        guard let number = value as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        let result = number.doubleValue
+        guard result.isFinite, result >= 0, result <= 10_000_000_000_000,
+              result.rounded(.towardZero) == result else { return nil }
+        return UInt64(result)
     }
 }

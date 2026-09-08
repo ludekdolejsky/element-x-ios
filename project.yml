@@ -73,7 +73,7 @@ include:
 packages:
   # Element/Matrix dependencies
   MatrixRustSDK:
-    # Nitro SDK: ludekdolejsky/matrix-rust-sdk-nitro@f6c73d5a22bb902e1b46218a3e6d248f1b33a8cb
+    # Nitro SDK: ludekdolejsky/matrix-rust-sdk-nitro@b9208ebd3ed29523cdc1a9c35816e463074d2f00
     path: ../matrix-rust-sdk
   Compound:
     path: compound-ios

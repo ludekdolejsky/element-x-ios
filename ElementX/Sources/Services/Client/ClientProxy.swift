@@ -20,8 +20,11 @@ class ClientProxy: ClientProxyProtocol {
     private let analyticsService: AnalyticsServiceProtocol
     private lazy var nitroClientAPI = NitroClientAPI(client: client)
     private let nitroTaskSnapshotStore: (any NitroTaskSnapshotStoreProtocol)?
+    private let nitroTaskDirectoryStore: (any NitroTaskDirectoryStoreProtocol)?
     private(set) lazy var nitroTaskService: NitroTaskServiceProtocol = NitroTaskService(client: client,
-                                                                                        snapshotStore: nitroTaskSnapshotStore)
+                                                                                        snapshotStore: nitroTaskSnapshotStore,
+                                                                                        directoryStore: nitroTaskDirectoryStore,
+                                                                                        roomListService: roomListService)
     private(set) lazy var nitroCatchUpService: NitroCatchUpServiceProtocol = {
         guard let baseURL = NitroConfiguration.catchUpBaseURL else {
             fatalError("Catch me up is only available in Nitro builds")
@@ -217,12 +220,14 @@ class ClientProxy: ClientProxyProtocol {
          networkMonitor: NetworkMonitorProtocol,
          appSettings: AppSettings,
          analyticsService: AnalyticsServiceProtocol,
-         nitroTaskSnapshotStore: (any NitroTaskSnapshotStoreProtocol)? = nil) async throws {
+         nitroTaskSnapshotStore: (any NitroTaskSnapshotStoreProtocol)? = nil,
+         nitroTaskDirectoryStore: (any NitroTaskDirectoryStoreProtocol)? = nil) async throws {
         self.client = client
         self.networkMonitor = networkMonitor
         self.appSettings = appSettings
         self.analyticsService = analyticsService
         self.nitroTaskSnapshotStore = nitroTaskSnapshotStore
+        self.nitroTaskDirectoryStore = nitroTaskDirectoryStore
         
         userProfileSubject = .init(UserProfile(userID: (try? client.userId()) ?? ""))
         

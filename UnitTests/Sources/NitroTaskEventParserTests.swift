@@ -7,6 +7,8 @@
 
 @testable import ElementX
 import Foundation
+import MatrixRustSDK
+import MatrixRustSDKMocks
 import Testing
 
 struct NitroTaskEventParserTests {
@@ -52,6 +54,52 @@ struct NitroTaskEventParserTests {
         #expect(event.metadata.description == nil)
         #expect(event.metadata.batchID == "batch-1")
         #expect(event.metadata.initialState == .init(status: .inProgress, assignee: "@bob:example.org"))
+        #expect(event.contentEventID == "$edit:example.org")
+    }
+    
+    @Test
+    func rejectsDirectoryReplacementFromAnotherRoom() throws {
+        let task = try #require(NitroTaskEventParser.taskEvent(from: Self.taskEventJSON))
+        let edit = Self.editedTaskEventJSON(title: "Forged")
+            .replacingOccurrences(of: "\"event_id\": \"$edit:example.org\",",
+                                  with: "\"event_id\": \"$edit:example.org\", \"room_id\": \"!other:example.org\",")
+        
+        #expect(NitroTaskEventParser.replacementTaskEvent(from: edit,
+                                                          replacing: task,
+                                                          roomID: "!room:example.org",
+                                                          eventID: "$edit:example.org") == nil)
+    }
+    
+    @Test
+    func requiresExactDirectoryStateEventAndRelation() {
+        let json = Self.stateUpdateJSON(status: "done")
+        
+        #expect(NitroTaskEventParser.stateUpdate(from: json,
+                                                 taskEventID: "$task:example.org",
+                                                 eventID: "$other:example.org") == nil)
+        #expect(NitroTaskEventParser.stateUpdate(from: json,
+                                                 taskEventID: "$other:example.org") == nil)
+    }
+    
+    @Test
+    func extractsOnlyOpaqueDirectoryPointer() throws {
+        let pointer = try #require(NitroTaskEventParser.directoryPointer(from: Self.editedTaskEventJSON(title: "Secret title")))
+        
+        #expect(pointer == .content(taskEventID: "$task:example.org",
+                                    eventID: "$edit:example.org",
+                                    originTimestamp: 1_800_000_120_000))
+    }
+    
+    @Test
+    func ignoresEncryptedEnvelopeUntilTheEventIsLocallyDecrypted() {
+        let encrypted = #"{"type":"m.room.encrypted","event_id":"$encrypted:example.org","origin_server_ts":1800000120000,"content":{"ciphertext":"secret"}}"#
+        
+        #expect(NitroTaskEventParser.directoryPointer(from: encrypted) == nil)
+        #expect(NitroTaskDirectoryService.requiresRoomVerification(.init(events: [encrypted], limited: false, lagged: false)))
+        #expect(NitroTaskEventParser.directoryPointer(from: Self.stateUpdateJSON(status: "done")) ==
+            .state(taskEventID: "$task:example.org",
+                   eventID: "$update:example.org",
+                   originTimestamp: 1_800_000_060_000))
     }
     
     @Test
@@ -80,6 +128,7 @@ struct NitroTaskEventParserTests {
         let update = try #require(NitroTaskEventParser.stateUpdate(from: """
         {
           "type": "m.room.message",
+          "event_id": "$update:example.org",
           "origin_server_ts": 1800000060000,
           "content": {
             "m.relates_to": {
@@ -97,6 +146,7 @@ struct NitroTaskEventParserTests {
         
         #expect(update.state == .init(status: .done, assignee: nil))
         #expect(update.updatedDate == Date(timeIntervalSince1970: 1_800_000_060))
+        #expect(update.originTimestamp == 1_800_000_060_000)
     }
     
     @Test
@@ -176,6 +226,7 @@ struct NitroTaskEventParserTests {
         """
         {
           "type": "m.room.message",
+          "event_id": "$update:example.org",
           "origin_server_ts": 1800000060000,
           "content": {
             "m.relates_to": {
@@ -197,6 +248,7 @@ struct NitroTaskEventParserTests {
         {
           "type": "m.room.message",
           "event_id": "$edit:example.org",
+          "origin_server_ts": 1800000120000,
           "sender": "@alice:example.org",
           "content": {
             "msgtype": "m.text",
@@ -227,4 +279,70 @@ struct NitroTaskEventParserTests {
         }
         """
     }
+}
+
+struct NitroTaskDirectoryConsistencyTests {
+    @Test
+    func repeatedlyStaleDirectoryLoadIsDiscarded() async throws {
+        let directoryService = DirectoryLoadRaceServiceMock(currentResults: [true, false, true, false])
+        let loader = NitroTaskLoader(client: ClientSDKMock(.init()),
+                                     urlSession: .shared,
+                                     directoryService: directoryService)
+        let resolution = NitroTaskDirectoryResolution(hints: [:],
+                                                      verificationRequired: [],
+                                                      storeMutationTokens: [:])
+        var loadCount = 0
+        
+        await #expect(throws: CancellationError.self) {
+            _ = try await loader.loadWithConsistentDirectory(initialResolution: resolution) { _ in
+                loadCount += 1
+                return Self.emptyLoadedTasks
+            }
+        }
+        #expect(loadCount == 2)
+        #expect(directoryService.fallbackCount == 1)
+    }
+    
+    private static var emptyLoadedTasks: NitroTaskService.LoadedTasks {
+        .init(list: .init(tasks: [], unavailableRoomCount: 0),
+              recoveryCandidates: [],
+              reconciliations: [],
+              unavailableRoomIDs: [],
+              directoryUpdates: [],
+              verifiedDirectoryKeys: [])
+    }
+}
+
+private final class DirectoryLoadRaceServiceMock: NitroTaskDirectoryServiceProtocol {
+    private var currentResults: [Bool]
+    private(set) var fallbackCount = 0
+    
+    init(currentResults: [Bool]) {
+        self.currentResults = currentResults
+    }
+    
+    func start() { }
+    
+    func stop() { }
+    
+    func resolve(_ keys: Set<NitroTaskDirectoryKey>) async -> NitroTaskDirectoryResolution {
+        .init(hints: [:], verificationRequired: [], storeMutationTokens: [:])
+    }
+    
+    func authoritativeFallbackResolution(_ resolution: NitroTaskDirectoryResolution) async -> NitroTaskDirectoryResolution {
+        fallbackCount += 1
+        return resolution
+    }
+    
+    func isCurrent(_ resolution: NitroTaskDirectoryResolution) async -> Bool {
+        currentResults.removeFirst()
+    }
+    
+    func publish(_ updates: [NitroTaskDirectoryStoreUpdate],
+                 clearingVerificationRequired keys: Set<NitroTaskDirectoryKey>,
+                 expectedMutationTokens: [NitroTaskDirectoryKey: UInt64]) async -> Bool {
+        false
+    }
+    
+    func markVerificationRequired(_ keys: Set<NitroTaskDirectoryKey>) async { }
 }

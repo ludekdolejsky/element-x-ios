@@ -97,6 +97,7 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
         setupRemindersObservers()
         setupCatchUpObserver()
         setupRestoreObserver()
+        clientProxy.nitroTaskService.startDirectory()
         clientProxy.nitroCatchUpService.restore()
     }
     
@@ -112,6 +113,7 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
         reminderPresentationTask?.cancel()
         reminderPresentationTask = nil
         cancellables.removeAll()
+        clientProxy.nitroTaskService.stopDirectory()
         clientProxy.nitroCatchUpService.stop()
         navigationStackCoordinator.stop()
         remindersNavigationStackCoordinator?.stop()

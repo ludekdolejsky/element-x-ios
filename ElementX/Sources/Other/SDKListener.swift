@@ -226,6 +226,12 @@ nonisolated extension SDKListener: RoomUpdateListener where T == Void {
     }
 }
 
+nonisolated extension SDKListener: RoomTimelineUpdateListener where T == RoomTimelineUpdate {
+    func call(update: RoomTimelineUpdate) {
+        onUpdateClosure(update)
+    }
+}
+
 nonisolated extension SDKListener: CallDeclineListener where T == String {
     func call(declinerUserId: String) {
         onUpdateClosure(declinerUserId)

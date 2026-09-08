@@ -14,6 +14,8 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
     }
     
     var cachedTaskList: NitroTaskList?
+    private(set) var startDirectoryCallsCount = 0
+    private(set) var stopDirectoryCallsCount = 0
     var loadCachedTasksReturnValue: NitroTaskList?
     private(set) var loadCachedTasksCallsCount = 0
     
@@ -52,6 +54,14 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
     var archiveTaskReturnValue: Result<Void, NitroTaskServiceError> = .success(())
     var archiveTaskClosure: ((NitroTask) async -> Result<Void, NitroTaskServiceError>)?
     private(set) var archiveTaskReceivedTasks = [NitroTask]()
+    
+    func startDirectory() {
+        startDirectoryCallsCount += 1
+    }
+    
+    func stopDirectory() {
+        stopDirectoryCallsCount += 1
+    }
     
     func loadCachedTasks() async -> NitroTaskList? {
         loadCachedTasksCallsCount += 1

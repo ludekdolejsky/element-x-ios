@@ -176,11 +176,15 @@ class UserSessionStore: UserSessionStoreProtocol {
             let nitroTaskSnapshotStore = NitroConfiguration.isEnabled
                 ? NitroTaskSnapshotStore(cacheDirectory: sessionDirectories.cacheDirectory, passphrase: passphrase)
                 : nil
+            let nitroTaskDirectoryStore = NitroConfiguration.isEnabled
+                ? NitroTaskDirectoryStore(storageDirectory: sessionDirectories.dataDirectory, passphrase: passphrase)
+                : nil
             return try await ClientProxy(client: client,
                                          networkMonitor: networkMonitor,
                                          appSettings: appSettings,
                                          analyticsService: analyticsService,
-                                         nitroTaskSnapshotStore: nitroTaskSnapshotStore)
+                                         nitroTaskSnapshotStore: nitroTaskSnapshotStore,
+                                         nitroTaskDirectoryStore: nitroTaskDirectoryStore)
         } catch {
             throw UserSessionStoreError.failedSettingUpClientProxy(error)
         }
