@@ -415,19 +415,19 @@ struct NitroRoomWidgetsScreenViewModelTests {
 
 struct NitroRoomWidgetPanelControllerTests {
     @Test
-    func presentsAtRegularHeightAndDismisses() {
+    func presentsFullHeightAndDismisses() {
         let context = context()
         let controller = NitroRoomWidgetPanelController()
         
         controller.present(context: context)
         
         #expect(controller.context === context)
-        #expect(controller.layout == .regular)
+        #expect(controller.layout == .full)
         
         controller.dismiss()
         
         #expect(controller.context == nil)
-        #expect(controller.layout == .regular)
+        #expect(controller.layout == .full)
     }
     
     @Test
@@ -436,16 +436,12 @@ struct NitroRoomWidgetPanelControllerTests {
         let controller = NitroRoomWidgetPanelController()
         controller.present(context: context)
         
+        controller.collapse()
+        #expect(controller.layout == .half)
+        #expect(controller.context === context)
+        
         controller.expand()
-        #expect(controller.layout == .expanded)
-        #expect(controller.context === context)
-        
-        controller.collapse()
-        #expect(controller.layout == .regular)
-        #expect(controller.context === context)
-        
-        controller.collapse()
-        #expect(controller.layout == .compact)
+        #expect(controller.layout == .full)
         #expect(controller.context === context)
     }
     
@@ -454,67 +450,31 @@ struct NitroRoomWidgetPanelControllerTests {
         let context = context()
         let controller = NitroRoomWidgetPanelController()
         
-        controller.present(context: context, layout: .expanded)
+        controller.present(context: context, layout: .half)
         
         #expect(controller.context === context)
-        #expect(controller.layout == .expanded)
+        #expect(controller.layout == .half)
         #expect(controller.isPresented)
     }
     
     @Test
-    func settlesDragAtTheNearestLayout() {
+    func usesFullAndHalfAvailableHeight() {
         let controller = NitroRoomWidgetPanelController()
         let availableHeight: CGFloat = 700
         
-        controller.settle(translation: -178, predictedTranslation: -178, availableHeight: availableHeight)
-        #expect(controller.layout == .compact)
-        
-        controller.settle(translation: 198, predictedTranslation: 198, availableHeight: availableHeight)
-        #expect(controller.layout == .regular)
-        
-        controller.settle(translation: 350, predictedTranslation: 350, availableHeight: availableHeight)
-        #expect(controller.layout == .expanded)
-    }
-    
-    @Test
-    func keepsTheCurrentLayoutForASmallDrag() {
-        let controller = NitroRoomWidgetPanelController()
-        
-        controller.settle(translation: 20, predictedTranslation: 24, availableHeight: 700)
-        
-        #expect(controller.layout == .regular)
-    }
-    
-    @Test
-    func advancesOneLayoutForADecisiveDrag() {
-        let controller = NitroRoomWidgetPanelController()
-        
-        controller.settle(translation: 50, predictedTranslation: 54, availableHeight: 700)
-        
-        #expect(controller.layout == .expanded)
-    }
-    
-    @Test
-    func usesThePredictedTranslationForAFlick() {
-        let controller = NitroRoomWidgetPanelController()
-        controller.expand()
-        
-        controller.settle(translation: -12, predictedTranslation: -100, availableHeight: 700)
-        
-        #expect(controller.layout == .regular)
-    }
-    
-    @Test
-    func keepsEveryLayoutWithinTheAvailableHeight() {
-        let controller = NitroRoomWidgetPanelController()
-        let availableHeight: CGFloat = 240
-        
-        #expect(controller.height(availableHeight: availableHeight) <= availableHeight)
-        controller.expand()
-        #expect(controller.height(availableHeight: availableHeight) <= availableHeight)
+        #expect(controller.height(availableHeight: availableHeight) == availableHeight)
         controller.collapse()
+        #expect(controller.height(availableHeight: availableHeight) == availableHeight * 0.5)
+    }
+    
+    @Test
+    func keepsTheHalfLayoutUsableOnSmallScreens() {
+        let controller = NitroRoomWidgetPanelController()
         controller.collapse()
-        #expect(controller.height(availableHeight: availableHeight) <= availableHeight)
+        
+        #expect(controller.height(availableHeight: 60) == 44)
+        #expect(controller.height(availableHeight: 30) == 30)
+        #expect(controller.height(availableHeight: -1) == 0)
     }
     
     private func context() -> NitroRoomWidgetsScreenViewModel.Context {
@@ -527,8 +487,8 @@ struct NitroRoomWidgetSessionStoreTests {
     @Test
     func keepsSessionsScopedByRoomAndRemovesExplicitlyClosedOnes() throws {
         let store = NitroRoomWidgetSessionStore()
-        let firstSession = NitroRoomWidgetSession(widgetID: "cockpit", layout: .expanded)
-        let secondSession = NitroRoomWidgetSession(widgetID: nil, layout: .compact)
+        let firstSession = NitroRoomWidgetSession(widgetID: "cockpit", layout: .full)
+        let secondSession = NitroRoomWidgetSession(widgetID: nil, layout: .half)
         
         store.setSession(firstSession, for: "!first:example.org")
         store.setSession(secondSession, for: "!second:example.org")
@@ -540,7 +500,20 @@ struct NitroRoomWidgetSessionStoreTests {
         
         #expect(store.session(for: "!first:example.org") == nil)
         #expect(store.session(for: "!second:example.org") == secondSession)
+        #expect(store.preferredLayout(for: "!first:example.org") == .full)
+        #expect(store.preferredLayout(for: "!second:example.org") == .half)
         #expect(try store.primaryWidgetID(in: [widget(id: "cockpit"), widget(id: "catch-up")], for: "!first:example.org") == "cockpit")
+    }
+    
+    @Test
+    func remembersLayoutWithoutRestoringItsPanel() {
+        let store = NitroRoomWidgetSessionStore()
+        
+        store.setPreferredLayout(.half, for: "!room:example.org")
+        
+        #expect(store.session(for: "!room:example.org") == nil)
+        #expect(store.preferredLayout(for: "!room:example.org") == .half)
+        #expect(store.preferredLayout(for: "!other:example.org") == nil)
     }
     
     @Test

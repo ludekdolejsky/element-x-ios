@@ -49,56 +49,29 @@ struct NitroRoomWidgetsScreenViewStateBindings {
 }
 
 final class NitroRoomWidgetPanelController: ObservableObject {
-    private static let decisiveDragThreshold: CGFloat = 44
-    
     @Published private(set) var context: NitroRoomWidgetsScreenViewModel.Context?
-    @Published private(set) var layout = NitroRoomWidgetPanelLayout.regular
+    @Published private(set) var layout = NitroRoomWidgetPanelLayout.full
     
     var isPresented: Bool {
         context != nil
     }
     
-    func present(context: NitroRoomWidgetsScreenViewModel.Context, layout: NitroRoomWidgetPanelLayout = .regular) {
+    func present(context: NitroRoomWidgetsScreenViewModel.Context, layout: NitroRoomWidgetPanelLayout = .full) {
         self.context = context
         self.layout = layout
     }
     
     func dismiss() {
         context = nil
-        layout = .regular
+        layout = .full
     }
     
     func expand() {
-        switch layout {
-        case .compact:
-            layout = .regular
-        case .regular, .expanded:
-            layout = .expanded
-        }
+        layout = .full
     }
     
     func collapse() {
-        switch layout {
-        case .compact, .regular:
-            layout = .compact
-        case .expanded:
-            layout = .regular
-        }
-    }
-    
-    func settle(translation: CGFloat, predictedTranslation: CGFloat, availableHeight: CGFloat) {
-        let intendedTranslation = abs(predictedTranslation) > abs(translation) ? predictedTranslation : translation
-        let proposedHeight = height(availableHeight: availableHeight) + intendedTranslation
-        let nearestLayout = NitroRoomWidgetPanelLayout.allCases.min {
-            abs(height(for: $0, availableHeight: availableHeight) - proposedHeight)
-                < abs(height(for: $1, availableHeight: availableHeight) - proposedHeight)
-        } ?? layout
-        
-        if nearestLayout == layout, abs(intendedTranslation) >= Self.decisiveDragThreshold {
-            layout = adjacentLayout(in: intendedTranslation)
-        } else {
-            layout = nearestLayout
-        }
+        layout = .half
     }
     
     func height(availableHeight: CGFloat) -> CGFloat {
@@ -106,32 +79,13 @@ final class NitroRoomWidgetPanelController: ObservableObject {
     }
     
     private func height(for layout: NitroRoomWidgetPanelLayout, availableHeight: CGFloat) -> CGFloat {
-        let compactHeight: CGFloat = 52
-        let usableHeight = max(availableHeight, compactHeight)
-        let regularHeight = min(max(usableHeight * 0.34, 180), min(320, usableHeight * 0.48))
+        let usableHeight = max(availableHeight, 0)
         
         switch layout {
-        case .compact:
-            return compactHeight
-        case .regular:
-            return regularHeight
-        case .expanded:
-            return max(regularHeight, usableHeight * 0.78)
-        }
-    }
-    
-    private func adjacentLayout(in translation: CGFloat) -> NitroRoomWidgetPanelLayout {
-        switch (layout, translation.sign) {
-        case (.compact, .plus):
-            .regular
-        case (.regular, .plus):
-            .expanded
-        case (.expanded, .minus):
-            .regular
-        case (.regular, .minus):
-            .compact
-        default:
-            layout
+        case .half:
+            return max(usableHeight * 0.5, min(44, usableHeight))
+        case .full:
+            return usableHeight
         }
     }
 }

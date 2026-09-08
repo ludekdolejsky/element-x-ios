@@ -27,6 +27,7 @@ struct RoomScreen: View {
     /// Set when the user long-presses one of the scroll buttons; the pill anchors to that button.
     @State private var markAsReadSource: MarkAsReadSource?
     @State private var isRoomToolsMenuPresented = false
+    @State private var roomFooterHeight: CGFloat = 0
     
     init(context: RoomScreenViewModelType.Context,
          timelineContext: TimelineViewModelType.Context,
@@ -112,7 +113,7 @@ struct RoomScreen: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 NitroRoomWidgetPanel(controller: nitroRoomWidgetPanelController,
-                                     availableHeight: availableHeight) {
+                                     availableHeight: max(availableHeight - roomFooterHeight, 0)) {
                     if composerToolbar.context.composerFocused {
                         composerToolbar.context.composerFocused = false
                     }
@@ -133,6 +134,7 @@ struct RoomScreen: View {
                         // Make sure the reply header honours the hideTimelineMedia setting too.
                         .environment(\.shouldAutomaticallyLoadImages, !timelineContext.viewState.hideTimelineMedia)
                 }
+                .readHeight($roomFooterHeight)
             }
             .toolbarRole(RoomHeaderView.toolbarRole)
             .navigationTitle(L10n.screenRoomTitle) // Hidden but used for back button text.

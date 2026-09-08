@@ -37,25 +37,18 @@ struct NitroRoomWidgetsScreen: View {
 struct NitroRoomWidgetPanel: View {
     @ObservedObject var controller: NitroRoomWidgetPanelController
     let availableHeight: CGFloat
-    let onResizeStarted: () -> Void
-    
-    @GestureState private var resizeGestureState = ResizeGestureState()
+    let onLayoutChange: () -> Void
     
     init(controller: NitroRoomWidgetPanelController,
          availableHeight: CGFloat,
-         onResizeStarted: @escaping () -> Void = { }) {
+         onLayoutChange: @escaping () -> Void = { }) {
         self.controller = controller
         self.availableHeight = availableHeight
-        self.onResizeStarted = onResizeStarted
+        self.onLayoutChange = onLayoutChange
     }
     
     var body: some View {
         if let context = controller.context {
-            let baseHeight = controller.height(availableHeight: availableHeight)
-            let resizeBaseHeight = resizeGestureState.baseHeight ?? baseHeight
-            let resizeAvailableHeight = resizeGestureState.availableHeight ?? availableHeight
-            let panelHeight = min(max(resizeBaseHeight + resizeGestureState.translation, 52), resizeAvailableHeight)
-            
             VStack(spacing: 0) {
                 header(context: context)
                 Divider()
@@ -63,11 +56,8 @@ struct NitroRoomWidgetPanel: View {
                     .id(ObjectIdentifier(context))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(height: panelHeight)
+            .frame(height: controller.height(availableHeight: availableHeight))
             .background(Color.compound.bgCanvasDefault)
-            .overlay(alignment: .bottom) {
-                resizeHandle(baseHeight: baseHeight)
-            }
             .clipped()
             .animation(.elementDefault, value: controller.layout)
             .task(id: ObjectIdentifier(context)) { context.send(viewAction: .appeared) }
@@ -82,8 +72,9 @@ struct NitroRoomWidgetPanel: View {
                 .lineLimit(1)
             Spacer(minLength: 8)
             
-            if controller.layout != .compact {
+            if controller.layout == .full {
                 Button {
+                    onLayoutChange()
                     controller.collapse()
                 } label: {
                     CompoundIcon(\.chevronUp, size: .small, relativeTo: .compound.bodyLG)
@@ -93,8 +84,9 @@ struct NitroRoomWidgetPanel: View {
                 .buttonStyle(.compound(.tertiary, size: .toolbarIcon))
             }
             
-            if controller.layout != .expanded {
+            if controller.layout == .half {
                 Button {
+                    onLayoutChange()
                     controller.expand()
                 } label: {
                     CompoundIcon(\.chevronDown, size: .small, relativeTo: .compound.bodyLG)
@@ -116,40 +108,6 @@ struct NitroRoomWidgetPanel: View {
         .padding(.horizontal, 12)
         .frame(height: 44)
     }
-    
-    private func resizeHandle(baseHeight: CGFloat) -> some View {
-        Color.clear
-            .frame(width: 96, height: 32)
-            .contentShape(Rectangle())
-            .overlay {
-                Capsule()
-                    .fill(Color.compound.borderInteractiveSecondary)
-                    .frame(width: 36, height: 4)
-            }
-            .gesture(DragGesture(minimumDistance: 4)
-                .updating($resizeGestureState) { value, state, _ in
-                    if state.baseHeight == nil {
-                        state.baseHeight = baseHeight
-                        state.availableHeight = availableHeight
-                    }
-                    state.translation = value.translation.height
-                }
-                .onChanged { _ in
-                    onResizeStarted()
-                }
-                .onEnded { value in
-                    controller.settle(translation: value.translation.height,
-                                      predictedTranslation: value.predictedEndTranslation.height,
-                                      availableHeight: resizeGestureState.availableHeight ?? availableHeight)
-                })
-            .accessibilityHidden(true)
-    }
-}
-
-private struct ResizeGestureState {
-    var baseHeight: CGFloat?
-    var availableHeight: CGFloat?
-    var translation: CGFloat = 0
 }
 
 private struct NitroRoomWidgetContent: View {
@@ -654,12 +612,10 @@ struct NitroRoomWidgetsScreen_Previews: PreviewProvider, TestablePreview {
                 .previewDisplayName("Widget")
             NitroRoomWidgetsScreen(context: context(destination: .error(widgets[0])))
                 .previewDisplayName("Error")
-            panelPreview(layout: .compact)
-                .previewDisplayName("Panel - Compact")
-            panelPreview(layout: .regular)
-                .previewDisplayName("Panel - Regular")
-            panelPreview(layout: .expanded)
-                .previewDisplayName("Panel - Expanded")
+            panelPreview(layout: .half)
+                .previewDisplayName("Panel - Half")
+            panelPreview(layout: .full)
+                .previewDisplayName("Panel - Full")
         }
     }
     
@@ -672,15 +628,7 @@ struct NitroRoomWidgetsScreen_Previews: PreviewProvider, TestablePreview {
     
     private static func panelController(layout: NitroRoomWidgetPanelLayout) -> NitroRoomWidgetPanelController {
         let controller = NitroRoomWidgetPanelController()
-        controller.present(context: context(destination: .list))
-        switch layout {
-        case .compact:
-            controller.collapse()
-        case .regular:
-            break
-        case .expanded:
-            controller.expand()
-        }
+        controller.present(context: context(destination: .list), layout: layout)
         return controller
     }
     

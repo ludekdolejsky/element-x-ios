@@ -276,13 +276,17 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
     
     func presentNitroRoomWidgets(_ widgets: [NitroRoomWidget],
                                  colorScheme: ColorScheme,
+                                 initialWidgetID: String? = nil,
                                  restoring session: NitroRoomWidgetSession? = nil,
                                  driverFactory: @escaping () -> NitroRoomWidgetDriverProtocol?) {
         guard !widgets.isEmpty else { return }
         
+        if nitroRoomWidgetPanelController.isPresented {
+            nitroRoomWidgetSessionStore.setPreferredLayout(nitroRoomWidgetPanelController.layout, for: roomID)
+        }
         tearDownNitroRoomWidgets()
         let coordinator = NitroRoomWidgetsScreenCoordinator(parameters: .init(widgets: widgets,
-                                                                              initialWidgetID: session?.widgetID,
+                                                                              initialWidgetID: session?.widgetID ?? initialWidgetID,
                                                                               colorScheme: colorScheme,
                                                                               driverFactory: driverFactory))
         nitroRoomWidgetsCoordinator = coordinator
@@ -298,7 +302,7 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
                 }
             }
         coordinator.start()
-        let layout = session?.layout ?? .regular
+        let layout = session?.layout ?? nitroRoomWidgetSessionStore.preferredLayout(for: roomID) ?? .full
         nitroRoomWidgetPanelController.present(context: coordinator.context, layout: layout)
         nitroRoomWidgetSessionStore.setSession(.init(widgetID: coordinator.context.viewState.destination.widgetID,
                                                      layout: layout),
@@ -313,6 +317,7 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
     }
     
     private func dismissNitroRoomWidgets() {
+        nitroRoomWidgetSessionStore.setPreferredLayout(nitroRoomWidgetPanelController.layout, for: roomID)
         if let widgetID = nitroRoomWidgetsCoordinator?.context.viewState.destination.widgetID {
             nitroRoomWidgetSessionStore.setPreferredWidgetID(widgetID, for: roomID)
         }

@@ -764,8 +764,7 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                 case .presentNitroCatchUp(let roomID, let roomName):
                     presentNitroCatchUp(roomID: roomID, roomName: roomName)
                 case .presentNitroRoomWidgets(let widgets, let initialWidgetID):
-                    let session = initialWidgetID.map { NitroRoomWidgetSession(widgetID: $0, layout: .regular) }
-                    presentNitroRoomWidgets(widgets, restoring: session)
+                    presentNitroRoomWidgets(widgets, initialWidgetID: initialWidgetID)
                 case .navigateFromNitroRoomWidget(let url):
                     guard let route = AppRouteURLParser(appSettings: flowParameters.appSettings).route(from: url) else { return }
                     handleNitroRoomWidgetRoute(route)
@@ -852,7 +851,9 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
         navigationStackCoordinator.setSheetCoordinator(coordinator)
     }
     
-    private func presentNitroRoomWidgets(_ widgets: [NitroRoomWidget], restoring session: NitroRoomWidgetSession? = nil) {
+    private func presentNitroRoomWidgets(_ widgets: [NitroRoomWidget],
+                                         initialWidgetID: String? = nil,
+                                         restoring session: NitroRoomWidgetSession? = nil) {
         guard !widgets.isEmpty,
               let roomWidgetProxy = roomProxy as? NitroRoomWidgetRoomProxyProtocol,
               let roomScreenCoordinator else {
@@ -860,7 +861,10 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
         }
         
         let colorScheme: ColorScheme = flowParameters.windowManager.mainWindow.traitCollection.userInterfaceStyle == .light ? .light : .dark
-        roomScreenCoordinator.presentNitroRoomWidgets(widgets, colorScheme: colorScheme, restoring: session) { [roomWidgetProxy] in
+        roomScreenCoordinator.presentNitroRoomWidgets(widgets,
+                                                      colorScheme: colorScheme,
+                                                      initialWidgetID: initialWidgetID,
+                                                      restoring: session) { [roomWidgetProxy] in
             roomWidgetProxy.nitroRoomWidgetDriver()
         }
     }
