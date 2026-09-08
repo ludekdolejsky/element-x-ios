@@ -5,6 +5,7 @@
 // Please see LICENSE files in the repository root for full details.
 //
 
+import Combine
 @testable import ElementX
 import Foundation
 import MatrixRustSDK
@@ -179,8 +180,70 @@ struct NitroTaskDirectoryServiceTests {
                                                                  currentOriginTimestamp: 2))
     }
     
+    @Test
+    func ordinaryMessageDoesNotPublishATaskChange() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let service = NitroTaskDirectoryService(client: makeClient(),
+                                                api: NitroTaskDirectoryAPIMock(),
+                                                store: NitroTaskDirectoryStore(storageDirectory: directory, passphrase: "session-key"))
+        let recorder = ChangedRoomIDsRecorder(targetRoomID: "!task:example.org")
+        service.start()
+        defer { service.stop() }
+        
+        await waitForConfirmation("Wait for the task update", timeout: .seconds(2)) { confirmation in
+            recorder.cancellable = service.changedRoomIDsPublisher.sink { roomIDs in
+                recorder.record(roomIDs, confirmation: confirmation)
+            }
+            service.receiveTimelineUpdate(.init(events: [Self.messageEventJSON], limited: false, lagged: false),
+                                          roomID: "!message:example.org")
+            service.receiveTimelineUpdate(.init(events: [Self.taskStateEventJSON(eventID: "$state-one:example.org")],
+                                                limited: false,
+                                                lagged: false),
+                                          roomID: "!task:example.org")
+        }
+        
+        #expect(recorder.values == [["!task:example.org"]])
+    }
+    
+    @Test
+    func replayedTaskEventDoesNotPublishAnotherChange() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let service = NitroTaskDirectoryService(client: makeClient(),
+                                                api: NitroTaskDirectoryAPIMock(),
+                                                store: NitroTaskDirectoryStore(storageDirectory: directory, passphrase: "session-key"))
+        let firstUpdate = RoomTimelineUpdate(events: [Self.taskStateEventJSON(eventID: "$state-one:example.org")],
+                                             limited: false,
+                                             lagged: false)
+        let recorder = ChangedRoomIDsRecorder(targetRoomID: "!second:example.org")
+        service.start()
+        defer { service.stop() }
+        
+        await waitForConfirmation("Wait for the distinct task update", timeout: .seconds(2)) { confirmation in
+            recorder.cancellable = service.changedRoomIDsPublisher.sink { roomIDs in
+                recorder.record(roomIDs, confirmation: confirmation)
+            }
+            service.receiveTimelineUpdate(firstUpdate, roomID: "!first:example.org")
+            service.receiveTimelineUpdate(firstUpdate, roomID: "!first:example.org")
+            service.receiveTimelineUpdate(.init(events: [Self.taskStateEventJSON(eventID: "$state-two:example.org")],
+                                                limited: false,
+                                                lagged: false),
+                                          roomID: "!second:example.org")
+        }
+        
+        #expect(recorder.values == [["!first:example.org"], ["!second:example.org"]])
+    }
+    
     private func makeClient() -> ClientSDKMock {
         let client = ClientSDKMock(.init())
+        client.sessionReturnValue = .init(accessToken: "token",
+                                          refreshToken: nil,
+                                          userId: "@user:example.org",
+                                          deviceId: "DEVICE",
+                                          homeserverUrl: "https://example.org",
+                                          oauthData: nil,
+                                          slidingSyncVersion: .native)
         client.requestOpenidTokenReturnValue = OpenIdToken(accessToken: "token",
                                                            tokenType: "Bearer",
                                                            matrixServerName: "example.org",
@@ -205,6 +268,56 @@ struct NitroTaskDirectoryServiceTests {
             "fresh": true
         ])
         return try JSONDecoder().decode(NitroTaskDirectoryHint.self, from: data)
+    }
+    
+    private static let messageEventJSON = """
+    {
+      "type": "m.room.message",
+      "event_id": "$message:example.org",
+      "origin_server_ts": 1800000000000,
+      "content": {
+        "msgtype": "m.text",
+        "body": "Hello"
+      }
+    }
+    """
+    
+    private static func taskStateEventJSON(eventID: String) -> String {
+        """
+        {
+          "type": "m.room.message",
+          "event_id": "\(eventID)",
+          "origin_server_ts": 1800000060000,
+          "content": {
+            "m.relates_to": {
+              "rel_type": "m.reference",
+              "event_id": "$task:example.org"
+            },
+            "com.nitrovery.todo.update": {
+              "version": 1,
+              "status": "done",
+              "assignee": null
+            }
+          }
+        }
+        """
+    }
+}
+
+private final class ChangedRoomIDsRecorder {
+    let targetRoomID: String
+    private(set) var values = [Set<String>]()
+    var cancellable: AnyCancellable?
+    
+    init(targetRoomID: String) {
+        self.targetRoomID = targetRoomID
+    }
+    
+    func record(_ roomIDs: Set<String>, confirmation: WaitingConfirmation) {
+        values.append(roomIDs)
+        if roomIDs.contains(targetRoomID) {
+            confirmation()
+        }
     }
 }
 

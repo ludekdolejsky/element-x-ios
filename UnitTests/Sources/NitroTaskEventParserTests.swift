@@ -5,6 +5,7 @@
 // Please see LICENSE files in the repository root for full details.
 //
 
+import Combine
 @testable import ElementX
 import Foundation
 import MatrixRustSDK
@@ -316,6 +317,10 @@ struct NitroTaskDirectoryConsistencyTests {
 private final class DirectoryLoadRaceServiceMock: NitroTaskDirectoryServiceProtocol {
     private var currentResults: [Bool]
     private(set) var fallbackCount = 0
+    
+    var changedRoomIDsPublisher: AnyPublisher<Set<String>, Never> {
+        Empty().eraseToAnyPublisher()
+    }
     
     init(currentResults: [Bool]) {
         self.currentResults = currentResults

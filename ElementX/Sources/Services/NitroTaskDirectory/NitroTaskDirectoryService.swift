@@ -5,6 +5,7 @@
 // Please see LICENSE files in the repository root for full details.
 //
 
+import Combine
 import Foundation
 import MatrixRustSDK
 
@@ -15,6 +16,8 @@ nonisolated struct NitroTaskDirectoryResolution: Sendable {
 }
 
 protocol NitroTaskDirectoryServiceProtocol: AnyObject {
+    var changedRoomIDsPublisher: AnyPublisher<Set<String>, Never> { get }
+    
     func start()
     func stop()
     func resolve(_ keys: Set<NitroTaskDirectoryKey>) async -> NitroTaskDirectoryResolution
@@ -49,6 +52,7 @@ final class NitroTaskDirectoryService: NitroTaskDirectoryServiceProtocol {
     private let api: any NitroTaskDirectoryClientProtocol
     private let store: any NitroTaskDirectoryStoreProtocol
     private let roomListService: RoomListService?
+    private let changedRoomIDsSubject = PassthroughSubject<Set<String>, Never>()
     private var runID: UUID?
     private var flushTask: Task<Void, Never>?
     private var flushRequested = false
@@ -61,6 +65,10 @@ final class NitroTaskDirectoryService: NitroTaskDirectoryServiceProtocol {
     private var subscribedRoomIDs = Set<String>()
     private var retryDelay = initialRetryDelay
     private var runToken: NitroTaskDirectoryRunToken?
+    
+    var changedRoomIDsPublisher: AnyPublisher<Set<String>, Never> {
+        changedRoomIDsSubject.eraseToAnyPublisher()
+    }
     
     init(client: ClientProtocol,
          api: any NitroTaskDirectoryClientProtocol,
@@ -174,6 +182,11 @@ final class NitroTaskDirectoryService: NitroTaskDirectoryServiceProtocol {
     func markVerificationRequired(_ keys: Set<NitroTaskDirectoryKey>) async {
         guard let runToken else { return }
         await store.markVerificationRequired(keys, runToken: runToken)
+    }
+    
+    func receiveTimelineUpdate(_ update: RoomTimelineUpdate, roomID: String) {
+        guard let runID else { return }
+        handle(update, roomID: roomID, runID: runID)
     }
     
     private func scheduleFlush(after delay: Duration) {
@@ -313,10 +326,26 @@ final class NitroTaskDirectoryService: NitroTaskDirectoryServiceProtocol {
                 .init(update: .init(key: $0, invalidates: true), dimension: .invalidate)
             })
         }
-        await updates.append(contentsOf: Self.storeUpdates(from: write.update.events, roomID: write.roomID))
+        let eventUpdates = await Self.storeUpdates(from: write.update.events, roomID: write.roomID)
+        let eventKeys = Set(eventUpdates.map(\.update.key))
+        let mutationTokensBeforeUpdate = if eventKeys.isEmpty {
+            [NitroTaskDirectoryKey: UInt64]()
+        } else {
+            await store.verificationSnapshot(for: eventKeys).mutationTokens
+        }
+        updates.append(contentsOf: eventUpdates)
         guard runID == write.runID, !Task.isCancelled, !updates.isEmpty || !verificationRequired.isEmpty else { return }
         await store.apply(updates, verificationRequired: verificationRequired, runToken: runToken)
         guard runID == write.runID, !Task.isCancelled else { return }
+        guard !eventKeys.isEmpty else {
+            scheduleFlush(after: .milliseconds(250))
+            return
+        }
+        let mutationTokensAfterUpdate = await store.verificationSnapshot(for: eventKeys).mutationTokens
+        guard runID == write.runID, !Task.isCancelled else { return }
+        if eventKeys.contains(where: { mutationTokensBeforeUpdate[$0] != mutationTokensAfterUpdate[$0] }) {
+            changedRoomIDsSubject.send([write.roomID])
+        }
         scheduleFlush(after: .milliseconds(250))
     }
     

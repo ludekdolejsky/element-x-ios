@@ -195,7 +195,7 @@ final class NitroTasksScreenViewModel: NitroTasksScreenViewModelType, NitroTasks
                                                  operation: "nitro.tasks.foreground")
         performance.setTag(roomIDs == nil ? "all" : "rooms", key: "nitro.tasks.scope")
         var performanceOutcome = NitroPerformance.Outcome.cancelled
-        state.isLoading = true
+        state.isLoading = roomIDs == nil
         defer {
             performance.setData(state.tasks.count, key: "nitro.tasks.count")
             performance.finish(performanceOutcome)

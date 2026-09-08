@@ -206,6 +206,10 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         updatesSubject.eraseToAnyPublisher()
     }
     
+    var changedRoomIDsPublisher: AnyPublisher<Set<String>, Never> {
+        taskDirectoryService?.changedRoomIDsPublisher ?? Empty().eraseToAnyPublisher()
+    }
+    
     init(client: ClientProtocol,
          urlSession: URLSession = .shared,
          snapshotStore: (any NitroTaskSnapshotStoreProtocol)? = nil,

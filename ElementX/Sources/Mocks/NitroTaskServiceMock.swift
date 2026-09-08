@@ -13,6 +13,11 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
         updatesSubject.eraseToAnyPublisher()
     }
     
+    let changedRoomIDsSubject = PassthroughSubject<Set<String>, Never>()
+    var changedRoomIDsPublisher: AnyPublisher<Set<String>, Never> {
+        changedRoomIDsSubject.eraseToAnyPublisher()
+    }
+    
     var cachedTaskList: NitroTaskList?
     private(set) var startDirectoryCallsCount = 0
     private(set) var stopDirectoryCallsCount = 0

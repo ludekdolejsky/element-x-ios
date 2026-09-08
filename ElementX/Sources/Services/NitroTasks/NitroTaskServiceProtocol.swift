@@ -9,6 +9,7 @@ import Combine
 
 protocol NitroTaskServiceProtocol {
     var updatesPublisher: AnyPublisher<NitroTaskServiceUpdate, Never> { get }
+    var changedRoomIDsPublisher: AnyPublisher<Set<String>, Never> { get }
     var cachedTaskList: NitroTaskList? { get }
     
     func startDirectory()

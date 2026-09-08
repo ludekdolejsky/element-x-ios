@@ -23,7 +23,6 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
     
     private struct TasksExternalChangeSnapshot: Equatable {
         let indexRevision: String?
-        let taskRoomActivity: [String: Date]
     }
     
     private static let tasksExternalChangeDebounceSeconds = 1
@@ -160,20 +159,37 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
         
         let selectedTabs = parameters.navigationTabCoordinator.observe(\.selectedTab)
         tabObservationTask = Task(name: "Observe Nitro tasks tab") { [weak tasksScreenCoordinator] in
+            var wasTasksSelected = parameters.navigationTabCoordinator.selectedTab == .tasks
             for await selectedTab in selectedTabs {
                 guard !Task.isCancelled else { return }
-                guard selectedTab == .tasks else { continue }
+                let isTasksSelected = selectedTab == .tasks
+                defer { wasTasksSelected = isTasksSelected }
+                guard isTasksSelected, !wasTasksSelected else { continue }
                 tasksScreenCoordinator?.refresh()
             }
         }
+        
+        clientProxy.nitroTaskService.changedRoomIDsPublisher
+            .collect(.byTimeOrCount(DispatchQueue.main,
+                                    .seconds(Self.tasksExternalChangeDebounceSeconds),
+                                    100))
+            .map { changes in
+                changes.reduce(into: Set<String>()) { $0.formUnion($1) }
+            }
+            .filter { !$0.isEmpty }
+            .sink { [weak self] roomIDs in
+                guard let self, parameters.navigationTabCoordinator.selectedTab == .tasks else { return }
+                tasksScreenCoordinator.refresh(roomIDs: roomIDs)
+            }
+            .store(in: &cancellables)
         
         parameters.userSession.clientProxy.staticRoomSummaryProvider.roomListPublisher
             .dropFirst()
             .debounce(for: .seconds(Self.tasksExternalChangeDebounceSeconds), scheduler: DispatchQueue.main)
             .throttle(for: .seconds(Self.tasksExternalChangeCheckIntervalSeconds), scheduler: DispatchQueue.main, latest: true)
-            .sink { [weak self] rooms in
+            .sink { [weak self] _ in
                 guard let self, parameters.navigationTabCoordinator.selectedTab == .tasks else { return }
-                checkForExternalTaskChanges(in: rooms)
+                checkForExternalTaskIndexChange()
             }
             .store(in: &cancellables)
     }
@@ -217,30 +233,16 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
             .store(in: &cancellables)
     }
     
-    private func checkForExternalTaskChanges(in rooms: [RoomSummary]) {
+    private func checkForExternalTaskIndexChange() {
         let taskService = clientProxy.nitroTaskService
-        let taskRoomIDs = Set(taskService.cachedTaskList?.tasks.map(\.roomID) ?? [])
-        let taskRoomActivity = rooms.reduce(into: [String: Date]()) { result, room in
-            guard taskRoomIDs.contains(room.id) else { return }
-            result[room.id] = room.lastMessageDate ?? .distantPast
-        }
-        
         externalChangeCheckTask?.cancel()
         externalChangeCheckTask = Task(name: "Check external Nitro task changes") { [weak self] in
-            let snapshot = await TasksExternalChangeSnapshot(indexRevision: taskService.currentTaskIndexRevision(),
-                                                             taskRoomActivity: taskRoomActivity)
+            let snapshot = await TasksExternalChangeSnapshot(indexRevision: taskService.currentTaskIndexRevision())
             guard !Task.isCancelled, let self else { return }
             let previousSnapshot = externalChangeSnapshot
             externalChangeSnapshot = snapshot
             guard let previousSnapshot, previousSnapshot != snapshot else { return }
-            guard previousSnapshot.indexRevision == snapshot.indexRevision else {
-                tasksScreenCoordinator.refresh()
-                return
-            }
-            let roomIDs = Set(previousSnapshot.taskRoomActivity.keys)
-                .union(snapshot.taskRoomActivity.keys)
-                .filter { previousSnapshot.taskRoomActivity[$0] != snapshot.taskRoomActivity[$0] }
-            tasksScreenCoordinator.refresh(roomIDs: Set(roomIDs))
+            tasksScreenCoordinator.refresh()
         }
     }
     
