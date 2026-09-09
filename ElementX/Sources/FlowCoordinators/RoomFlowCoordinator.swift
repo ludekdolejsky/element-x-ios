@@ -14,6 +14,7 @@ import UserNotifications
 enum RoomFlowCoordinatorAction: Equatable {
     case presentCallScreen(roomProxy: JoinedRoomProxyProtocol, isVoiceCall: Bool)
     case presentNitroTasks(roomID: String, roomName: String)
+    case presentNitroReminders(roomID: String, roomName: String)
     case verifyUser(userID: String)
     /// The requested room was actually a space. The room flow has been dismissed
     /// and a space flow should be started to continue.
@@ -25,6 +26,8 @@ enum RoomFlowCoordinatorAction: Equatable {
         case (.presentCallScreen(let lhsRoomProxy, let lhsIsVoiceCall), .presentCallScreen(let rhsRoomProxy, let rhsIsVoiceCall)):
             lhsRoomProxy.id == rhsRoomProxy.id && lhsIsVoiceCall == rhsIsVoiceCall
         case (.presentNitroTasks(let lhsRoomID, let lhsRoomName), .presentNitroTasks(let rhsRoomID, let rhsRoomName)):
+            lhsRoomID == rhsRoomID && lhsRoomName == rhsRoomName
+        case (.presentNitroReminders(let lhsRoomID, let lhsRoomName), .presentNitroReminders(let rhsRoomID, let rhsRoomName)):
             lhsRoomID == rhsRoomID && lhsRoomName == rhsRoomName
         case (.finished, .finished):
             true
@@ -761,6 +764,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                     stateMachine.tryEvent(.presentThreadList, userInfo: EventUserInfo(animated: animated))
                 case .presentNitroTasks(let roomID, let roomName):
                     actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
+                case .presentNitroReminders(let roomID, let roomName):
+                    actionsSubject.send(.presentNitroReminders(roomID: roomID, roomName: roomName))
                 case .presentNitroCatchUp(let roomID, let roomName):
                     presentNitroCatchUp(roomID: roomID, roomName: roomName)
                 case .presentNitroRoomWidgets(let widgets, let initialWidgetID):
@@ -1706,6 +1711,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                 actionsSubject.send(.presentCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
             case .presentNitroTasks(let roomID, let roomName):
                 actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
+            case .presentNitroReminders(let roomID, let roomName):
+                actionsSubject.send(.presentNitroReminders(roomID: roomID, roomName: roomName))
             case .verifyUser(let userID):
                 actionsSubject.send(.verifyUser(userID: userID))
             case .continueWithSpaceFlow(let spaceRoomListProxy):
@@ -1818,6 +1825,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                     actionsSubject.send(.presentCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
                 case .presentNitroTasks(let roomID, let roomName):
                     actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
+                case .presentNitroReminders(let roomID, let roomName):
+                    actionsSubject.send(.presentNitroReminders(roomID: roomID, roomName: roomName))
                 case .verifyUser(let userID):
                     actionsSubject.send(.verifyUser(userID: userID))
                 case .finished:
@@ -1846,6 +1855,8 @@ class RoomFlowCoordinator: FlowCoordinatorProtocol {
                 actionsSubject.send(.presentCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
             case .presentNitroTasks(let roomID, let roomName):
                 actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
+            case .presentNitroReminders(let roomID, let roomName):
+                actionsSubject.send(.presentNitroReminders(roomID: roomID, roomName: roomName))
             case .verifyUser(let userID):
                 actionsSubject.send(.verifyUser(userID: userID))
             }

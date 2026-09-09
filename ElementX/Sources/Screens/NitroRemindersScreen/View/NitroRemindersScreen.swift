@@ -32,6 +32,12 @@ struct NitroRemindersScreen: View {
         .navigationTitle(UntranslatedL10n.screenNitroRemindersTitleIos)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
+                RoomFilterMenu(rooms: context.viewState.rooms,
+                               selectedRoomID: context.selectedRoomID) { roomID in
+                    context.send(viewAction: .selectRoom(roomID))
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     context.send(viewAction: .refresh)
                 } label: {
@@ -56,12 +62,12 @@ struct NitroRemindersScreen: View {
             Spacer()
             ProgressView()
             Spacer()
-        } else if context.viewState.reminders.isEmpty {
+        } else if context.viewState.filteredReminders.isEmpty {
             Spacer()
             emptyState
             Spacer()
         } else {
-            List(context.viewState.reminders) { reminder in
+            List(context.viewState.filteredReminders) { reminder in
                 reminderRow(reminder)
             }
             .compoundList()
@@ -88,7 +94,7 @@ struct NitroRemindersScreen: View {
     
     private func reminderRow(_ reminder: NitroReminder) -> some View {
         let presentation = NitroReminderRowPresentation(reminder: reminder, serverNow: context.viewState.serverNow)
-        return HStack(spacing: 12) {
+        return HStack(alignment: .top, spacing: 4) {
             Button {
                 context.send(viewAction: .open(reminder))
             } label: {
@@ -99,34 +105,32 @@ struct NitroRemindersScreen: View {
                             .foregroundStyle(.compound.textPrimary)
                             .lineLimit(1)
                             .layoutPriority(1)
-                        if let badge = presentation.badge {
-                            Text(badge)
-                                .font(.compound.bodyXS)
-                                .foregroundStyle(.compound.textOnSolidPrimary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.compound.bgActionPrimaryRest, in: Capsule())
-                        }
-                        Spacer()
                         Text(presentation.status)
                             .font(.compound.bodyXS)
                             .foregroundStyle(.compound.textSecondary)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    if let badge = presentation.badge {
+                        Text(badge)
+                            .font(.compound.bodyXS)
+                            .foregroundStyle(.compound.textOnSolidPrimary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.compound.bgActionPrimaryRest, in: Capsule())
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     reminderPreview(reminder, presentation: presentation)
-                    if let recurrence = presentation.recurrence {
-                        Text(recurrence)
-                            .font(.compound.bodyXS)
-                            .foregroundStyle(.compound.textSecondary)
-                            .lineLimit(1)
-                    }
-                    Text(UntranslatedL10n.screenNitroRemindersMetaIos(formatted(reminder.createdDate), formatted(reminder.dueDate)))
+                    Text(presentation.metadata)
                         .font(.compound.bodyXS)
                         .foregroundStyle(.compound.textSecondary)
-                        .lineLimit(2)
+                        .lineLimit(3)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
             
             if context.viewState.busyReminderID == reminder.id {
                 ProgressView()
@@ -291,9 +295,72 @@ struct NitroRemindersScreen: View {
         case .done: UntranslatedL10n.screenNitroRemindersEmptyDoneMessageIos
         }
     }
-    
-    private func formatted(_ date: Date) -> String {
-        date.formatted(date: .abbreviated, time: .shortened)
+
+    private struct RoomFilterMenu: View {
+        @Environment(\.isInSidebar) private var isInSidebar
+
+        let rooms: [NitroReminderRoom]
+        let selectedRoomID: String?
+        let action: (String?) -> Void
+
+        var body: some View {
+            if #available(iOS 26, *), !isInSidebar {
+                if selectedRoomID != nil {
+                    content
+                        .backportButtonStyleGlassProminent()
+                        .tint(.compound.bgActionPrimaryRest)
+                } else {
+                    content
+                }
+            } else if selectedRoomID != nil {
+                content
+                    .buttonStyle(.compound(.primary, size: .toolbarIcon))
+            } else {
+                content
+                    .buttonStyle(.compound(.tertiary, size: .toolbarIcon))
+            }
+        }
+
+        private var content: some View {
+            Menu {
+                filterButton(title: UntranslatedL10n.screenNitroRemindersAllRoomsIos, roomID: nil)
+                if !rooms.isEmpty {
+                    Divider()
+                }
+                ForEach(rooms) { room in
+                    filterButton(title: room.name, roomID: room.id)
+                }
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    CompoundIcon(\.filter)
+                    if selectedRoomID != nil {
+                        Circle()
+                            .fill(Color.compound.iconAccentPrimary)
+                            .frame(width: 8, height: 8)
+                            .overlay {
+                                Circle()
+                                    .stroke(Color.compound.bgCanvasDefault, lineWidth: 1.5)
+                            }
+                            .offset(x: 3, y: -3)
+                    }
+                }
+            }
+            .disabled(rooms.isEmpty)
+            .accessibilityLabel(UntranslatedL10n.screenNitroRemindersFilterRoomIos)
+            .accessibilityAddTraits(selectedRoomID == nil ? [] : .isSelected)
+        }
+
+        private func filterButton(title: String, roomID: String?) -> some View {
+            Button {
+                action(roomID)
+            } label: {
+                if selectedRoomID == roomID {
+                    Label(title, icon: \.check)
+                } else {
+                    Text(title)
+                }
+            }
+        }
     }
 }
 

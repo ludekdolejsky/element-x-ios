@@ -11,6 +11,11 @@ enum NitroRemindersScreenViewModelAction {
     case openReminder(roomID: String, eventID: String?, threadRootID: String?)
 }
 
+struct NitroReminderRoom: Equatable, Identifiable {
+    let id: String
+    let name: String
+}
+
 enum NitroRemindersScreenAlertID: Hashable {
     case invalidTime
     case requestFailed
@@ -18,16 +23,39 @@ enum NitroRemindersScreenAlertID: Hashable {
 
 struct NitroRemindersScreenViewState: BindableState {
     var reminders: [NitroReminder] = []
+    var knownRooms: [NitroReminderRoom] = []
     var previews = [String: NitroReminderMessagePreview]()
     var isLoading = false
     var hasLoaded = false
     var busyReminderID: String?
     var serverNow = Date()
+    var filterRoomContext: NitroReminderRoom?
     var bindings: NitroRemindersScreenViewStateBindings
+
+    var rooms: [NitroReminderRoom] {
+        var roomsByID = [String: NitroReminderRoom]()
+        for room in knownRooms {
+            roomsByID[room.id] = room
+        }
+        for reminder in reminders {
+            roomsByID[reminder.roomID] = .init(id: reminder.roomID,
+                                               name: reminder.roomName ?? reminder.roomID)
+        }
+        if let filterRoomContext {
+            roomsByID[filterRoomContext.id] = filterRoomContext
+        }
+        return roomsByID.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    var filteredReminders: [NitroReminder] {
+        guard let selectedRoomID = bindings.selectedRoomID else { return reminders }
+        return reminders.filter { $0.roomID == selectedRoomID }
+    }
 }
 
 struct NitroRemindersScreenViewStateBindings {
     var filter = NitroReminderFilter.due
+    var selectedRoomID: String?
     var editingReminder: NitroReminder?
     var editDate = Date()
     var alertInfo: AlertInfo<NitroRemindersScreenAlertID>?
@@ -37,6 +65,7 @@ enum NitroRemindersScreenViewAction {
     case load
     case refresh
     case selectFilter(NitroReminderFilter)
+    case selectRoom(String?)
     case open(NitroReminder)
     case markDone(NitroReminder)
     case snooze(NitroReminder, TimeInterval)
@@ -49,7 +78,7 @@ enum NitroRemindersScreenViewAction {
 struct NitroReminderRowPresentation: Equatable {
     let badge: String?
     let prompt: String?
-    let recurrence: String?
+    let metadata: String
     let status: String
     let openAction: String
     
@@ -58,11 +87,11 @@ struct NitroReminderRowPresentation: Equatable {
             badge = UntranslatedL10n.screenNitroRemindersRunsCodexIos
             let prompt = reminder.prompt?.trimmingCharacters(in: .whitespacesAndNewlines)
             self.prompt = prompt?.isEmpty == false ? prompt : UntranslatedL10n.screenNitroRemindersCodexPromptUnavailableIos
-            recurrence = Self.recurrenceDescription(reminder.recurrence)
+            metadata = Self.codexMetadata(reminder)
         } else {
             badge = nil
             prompt = nil
-            recurrence = nil
+            metadata = UntranslatedL10n.screenNitroRemindersMetaIos(Self.formatted(reminder.createdDate), Self.formatted(reminder.dueDate))
         }
         
         status = Self.statusDescription(reminder: reminder, serverNow: serverNow)
@@ -70,7 +99,23 @@ struct NitroReminderRowPresentation: Equatable {
             ? UntranslatedL10n.actionOpenReminderRoomIos
             : UntranslatedL10n.actionOpenReminderMessageIos
     }
-    
+
+    private static func codexMetadata(_ reminder: NitroReminder) -> String {
+        var parts = [String]()
+        if let recurrence = recurrenceDescription(reminder.recurrence) {
+            parts.append(recurrence)
+        }
+        if let lastFiredDate = reminder.lastFiredDate {
+            parts.append(UntranslatedL10n.screenNitroRemindersLastRunIos(formatted(lastFiredDate)))
+        }
+        if reminder.status == .pending {
+            parts.append(UntranslatedL10n.screenNitroRemindersNextRunIos(formatted(reminder.dueDate)))
+        } else if parts.isEmpty {
+            parts.append(UntranslatedL10n.screenNitroRemindersMetaIos(formatted(reminder.createdDate), formatted(reminder.dueDate)))
+        }
+        return parts.joined(separator: " · ")
+    }
+
     private static func recurrenceDescription(_ recurrence: NitroReminderRecurrence?) -> String? {
         guard let recurrence else { return nil }
         let time = String(format: "%02d:%02d", recurrence.hour, recurrence.minute)
@@ -100,5 +145,9 @@ struct NitroReminderRowPresentation: Equatable {
             return UntranslatedL10n.screenNitroRemindersDueNowIos
         }
         return UntranslatedL10n.screenNitroRemindersUpcomingIos
+    }
+
+    private static func formatted(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .shortened)
     }
 }

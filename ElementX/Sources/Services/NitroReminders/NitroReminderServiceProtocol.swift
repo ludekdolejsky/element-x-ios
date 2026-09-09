@@ -230,6 +230,7 @@ nonisolated protocol NitroReminderServiceProtocol: Sendable {
     func createReminder(_ schedule: NitroReminderSchedule,
                         authentication: NitroReminderAuthentication) async -> Result<NitroReminderCreation, NitroReminderError>
     func reminders(filter: NitroReminderFilter,
+                   roomID: String?,
                    authentication: NitroReminderAuthentication) async -> Result<NitroReminderList, NitroReminderError>
     func markDone(reminderID: String,
                   authentication: NitroReminderAuthentication) async -> Result<NitroReminder, NitroReminderError>

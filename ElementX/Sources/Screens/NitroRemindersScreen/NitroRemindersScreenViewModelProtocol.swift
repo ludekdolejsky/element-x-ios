@@ -11,5 +11,6 @@ protocol NitroRemindersScreenViewModelProtocol {
     var actionsPublisher: AnyPublisher<NitroRemindersScreenViewModelAction, Never> { get }
     var context: NitroRemindersScreenViewModel.Context { get }
     func refresh()
+    func show(room: NitroReminderRoom)
     func stop()
 }

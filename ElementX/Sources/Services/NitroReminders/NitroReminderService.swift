@@ -100,17 +100,20 @@ nonisolated struct NitroReminderService: NitroReminderServiceProtocol {
         let homeserverURL: String
         let openIDToken: OpenIDTokenPayload
         let status: String
+        let roomID: String?
         
-        init(filter: NitroReminderFilter, authentication: NitroReminderAuthentication) {
+        init(filter: NitroReminderFilter, roomID: String?, authentication: NitroReminderAuthentication) {
             homeserverURL = authentication.homeserverURL.absoluteString
             openIDToken = .init(token: authentication.openIDToken)
             status = filter.rawValue
+            self.roomID = roomID
         }
         
         private enum CodingKeys: String, CodingKey {
             case homeserverURL = "homeserver_url"
             case openIDToken = "openid_token"
             case status
+            case roomID = "room_id"
         }
     }
     
@@ -172,9 +175,12 @@ nonisolated struct NitroReminderService: NitroReminderServiceProtocol {
     }
     
     func reminders(filter: NitroReminderFilter,
+                   roomID: String?,
                    authentication: NitroReminderAuthentication) async -> Result<NitroReminderList, NitroReminderError> {
         let result: Result<ListResponse, NitroReminderError> = await post(path: "api/reminders/list",
-                                                                          body: ListRequest(filter: filter, authentication: authentication),
+                                                                          body: ListRequest(filter: filter,
+                                                                                            roomID: roomID,
+                                                                                            authentication: authentication),
                                                                           action: "list")
         return result.map { .init(reminders: $0.reminders, now: Date(timeIntervalSince1970: TimeInterval($0.nowTimestamp))) }
     }

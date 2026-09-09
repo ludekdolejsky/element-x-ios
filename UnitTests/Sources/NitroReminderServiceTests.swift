@@ -77,7 +77,7 @@ struct NitroReminderServiceTests {
         defer { fixture.remove() }
         let service = NitroReminderService(baseURL: fixture.baseURL, urlSession: makeURLSession())
         
-        let result = try await service.reminders(filter: .upcoming, authentication: authentication).get()
+        let result = try await service.reminders(filter: .upcoming, roomID: nil, authentication: authentication).get()
         
         #expect(result.now == Date(timeIntervalSince1970: 1_700_000_100))
         let reminder = try #require(result.reminders.first)
@@ -96,6 +96,24 @@ struct NitroReminderServiceTests {
         let body = try #require(request.httpBody)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(json["status"] as? String == "upcoming")
+        #expect(json["room_id"] == nil)
+    }
+
+    @Test
+    func listsRemindersForRoom() async throws {
+        let fixture = try MockNitroReminderURLProtocol.makeFixture(statusCode: 200,
+                                                                   data: Data(#"{"ok":true,"now_ts":1700000100,"reminders":[]}"#.utf8))
+        defer { fixture.remove() }
+        let service = NitroReminderService(baseURL: fixture.baseURL, urlSession: makeURLSession())
+
+        _ = try await service.reminders(filter: .due,
+                                        roomID: "!room:example.org",
+                                        authentication: authentication).get()
+
+        let body = try #require(fixture.lastRequest?.httpBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["status"] as? String == "due")
+        #expect(json["room_id"] as? String == "!room:example.org")
     }
     
     @Test
@@ -137,7 +155,7 @@ struct NitroReminderServiceTests {
         defer { fixture.remove() }
         let service = NitroReminderService(baseURL: fixture.baseURL, urlSession: makeURLSession())
         
-        let result = try await service.reminders(filter: .upcoming, authentication: authentication).get()
+        let result = try await service.reminders(filter: .upcoming, roomID: nil, authentication: authentication).get()
         let reminder = try #require(result.reminders.first)
         
         #expect(reminder.actionKind == .runCodex)
@@ -179,7 +197,7 @@ struct NitroReminderServiceTests {
         defer { fixture.remove() }
         let service = NitroReminderService(baseURL: fixture.baseURL, urlSession: makeURLSession())
 
-        let result = try await service.reminders(filter: .upcoming, authentication: authentication).get()
+        let result = try await service.reminders(filter: .upcoming, roomID: nil, authentication: authentication).get()
         let reminder = try #require(result.reminders.first)
 
         #expect(reminder.actionKind == .notify)

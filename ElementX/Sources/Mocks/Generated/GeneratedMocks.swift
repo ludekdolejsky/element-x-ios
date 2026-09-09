@@ -8299,44 +8299,44 @@ nonisolated class NitroReminderServiceMock: NitroReminderServiceProtocol, @unche
     }
     //MARK: - reminders
 
-    private let remindersFilterAuthenticationCallsCountLock = NSLock()
-    private nonisolated(unsafe) var remindersFilterAuthenticationUnderlyingCallsCount = 0
-    var remindersFilterAuthenticationCallsCount: Int {
-        get { remindersFilterAuthenticationCallsCountLock.withLock { remindersFilterAuthenticationUnderlyingCallsCount } }
-        set { remindersFilterAuthenticationCallsCountLock.withLock { remindersFilterAuthenticationUnderlyingCallsCount = newValue } }
+    private let remindersFilterRoomIDAuthenticationCallsCountLock = NSLock()
+    private nonisolated(unsafe) var remindersFilterRoomIDAuthenticationUnderlyingCallsCount = 0
+    var remindersFilterRoomIDAuthenticationCallsCount: Int {
+        get { remindersFilterRoomIDAuthenticationCallsCountLock.withLock { remindersFilterRoomIDAuthenticationUnderlyingCallsCount } }
+        set { remindersFilterRoomIDAuthenticationCallsCountLock.withLock { remindersFilterRoomIDAuthenticationUnderlyingCallsCount = newValue } }
     }
-    var remindersFilterAuthenticationCalled: Bool {
-        return remindersFilterAuthenticationCallsCount > 0
+    var remindersFilterRoomIDAuthenticationCalled: Bool {
+        return remindersFilterRoomIDAuthenticationCallsCount > 0
     }
-    private let remindersFilterAuthenticationReceivedArgumentsLock = NSLock()
-    private nonisolated(unsafe) var remindersFilterAuthenticationUnderlyingReceivedArguments: (filter: NitroReminderFilter, authentication: NitroReminderAuthentication)?
-    var remindersFilterAuthenticationReceivedArguments: (filter: NitroReminderFilter, authentication: NitroReminderAuthentication)? {
-        get { remindersFilterAuthenticationReceivedArgumentsLock.withLock { remindersFilterAuthenticationUnderlyingReceivedArguments } }
-        set { remindersFilterAuthenticationReceivedArgumentsLock.withLock { remindersFilterAuthenticationUnderlyingReceivedArguments = newValue } }
+    private let remindersFilterRoomIDAuthenticationReceivedArgumentsLock = NSLock()
+    private nonisolated(unsafe) var remindersFilterRoomIDAuthenticationUnderlyingReceivedArguments: (filter: NitroReminderFilter, roomID: String?, authentication: NitroReminderAuthentication)?
+    var remindersFilterRoomIDAuthenticationReceivedArguments: (filter: NitroReminderFilter, roomID: String?, authentication: NitroReminderAuthentication)? {
+        get { remindersFilterRoomIDAuthenticationReceivedArgumentsLock.withLock { remindersFilterRoomIDAuthenticationUnderlyingReceivedArguments } }
+        set { remindersFilterRoomIDAuthenticationReceivedArgumentsLock.withLock { remindersFilterRoomIDAuthenticationUnderlyingReceivedArguments = newValue } }
     }
-    private let remindersFilterAuthenticationReceivedInvocationsLock = NSLock()
-    private nonisolated(unsafe) var remindersFilterAuthenticationUnderlyingReceivedInvocations: [(filter: NitroReminderFilter, authentication: NitroReminderAuthentication)] = []
-    var remindersFilterAuthenticationReceivedInvocations: [(filter: NitroReminderFilter, authentication: NitroReminderAuthentication)] {
-        get { remindersFilterAuthenticationReceivedInvocationsLock.withLock { remindersFilterAuthenticationUnderlyingReceivedInvocations } }
-        set { remindersFilterAuthenticationReceivedInvocationsLock.withLock { remindersFilterAuthenticationUnderlyingReceivedInvocations = newValue } }
+    private let remindersFilterRoomIDAuthenticationReceivedInvocationsLock = NSLock()
+    private nonisolated(unsafe) var remindersFilterRoomIDAuthenticationUnderlyingReceivedInvocations: [(filter: NitroReminderFilter, roomID: String?, authentication: NitroReminderAuthentication)] = []
+    var remindersFilterRoomIDAuthenticationReceivedInvocations: [(filter: NitroReminderFilter, roomID: String?, authentication: NitroReminderAuthentication)] {
+        get { remindersFilterRoomIDAuthenticationReceivedInvocationsLock.withLock { remindersFilterRoomIDAuthenticationUnderlyingReceivedInvocations } }
+        set { remindersFilterRoomIDAuthenticationReceivedInvocationsLock.withLock { remindersFilterRoomIDAuthenticationUnderlyingReceivedInvocations = newValue } }
     }
 
-    private let remindersFilterAuthenticationReturnValueLock = NSLock()
-    private nonisolated(unsafe) var remindersFilterAuthenticationUnderlyingReturnValue: Result<NitroReminderList, NitroReminderError>!
-    var remindersFilterAuthenticationReturnValue: Result<NitroReminderList, NitroReminderError>! {
-        get { remindersFilterAuthenticationReturnValueLock.withLock { remindersFilterAuthenticationUnderlyingReturnValue } }
-        set { remindersFilterAuthenticationReturnValueLock.withLock { remindersFilterAuthenticationUnderlyingReturnValue = newValue } }
+    private let remindersFilterRoomIDAuthenticationReturnValueLock = NSLock()
+    private nonisolated(unsafe) var remindersFilterRoomIDAuthenticationUnderlyingReturnValue: Result<NitroReminderList, NitroReminderError>!
+    var remindersFilterRoomIDAuthenticationReturnValue: Result<NitroReminderList, NitroReminderError>! {
+        get { remindersFilterRoomIDAuthenticationReturnValueLock.withLock { remindersFilterRoomIDAuthenticationUnderlyingReturnValue } }
+        set { remindersFilterRoomIDAuthenticationReturnValueLock.withLock { remindersFilterRoomIDAuthenticationUnderlyingReturnValue = newValue } }
     }
-    nonisolated(unsafe) var remindersFilterAuthenticationClosure: ((NitroReminderFilter, NitroReminderAuthentication) async -> Result<NitroReminderList, NitroReminderError>)?
+    nonisolated(unsafe) var remindersFilterRoomIDAuthenticationClosure: ((NitroReminderFilter, String?, NitroReminderAuthentication) async -> Result<NitroReminderList, NitroReminderError>)?
 
-    @concurrent func reminders(filter: NitroReminderFilter, authentication: NitroReminderAuthentication) async -> Result<NitroReminderList, NitroReminderError> {
-        remindersFilterAuthenticationCallsCountLock.withLock { remindersFilterAuthenticationUnderlyingCallsCount += 1 }
-        remindersFilterAuthenticationReceivedArguments = (filter: filter, authentication: authentication)
-        remindersFilterAuthenticationReceivedInvocationsLock.withLock { remindersFilterAuthenticationUnderlyingReceivedInvocations.append((filter: filter, authentication: authentication)) }
-        if let remindersFilterAuthenticationClosure = remindersFilterAuthenticationClosure {
-            return await remindersFilterAuthenticationClosure(filter, authentication)
+    @concurrent func reminders(filter: NitroReminderFilter, roomID: String?, authentication: NitroReminderAuthentication) async -> Result<NitroReminderList, NitroReminderError> {
+        remindersFilterRoomIDAuthenticationCallsCountLock.withLock { remindersFilterRoomIDAuthenticationUnderlyingCallsCount += 1 }
+        remindersFilterRoomIDAuthenticationReceivedArguments = (filter: filter, roomID: roomID, authentication: authentication)
+        remindersFilterRoomIDAuthenticationReceivedInvocationsLock.withLock { remindersFilterRoomIDAuthenticationUnderlyingReceivedInvocations.append((filter: filter, roomID: roomID, authentication: authentication)) }
+        if let remindersFilterRoomIDAuthenticationClosure = remindersFilterRoomIDAuthenticationClosure {
+            return await remindersFilterRoomIDAuthenticationClosure(filter, roomID, authentication)
         } else {
-            return remindersFilterAuthenticationReturnValue
+            return remindersFilterRoomIDAuthenticationReturnValue
         }
     }
     //MARK: - markDone

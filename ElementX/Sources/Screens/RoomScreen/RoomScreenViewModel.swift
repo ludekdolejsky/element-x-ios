@@ -72,6 +72,7 @@ class RoomScreenViewModel: RoomScreenViewModelType, RoomScreenViewModelProtocol 
                                             hasOngoingCall: roomProxy.infoPublisher.value.hasRoomCall,
                                             isDM: roomProxy.infoPublisher.value.isDM,
                                             nitroTasksEnabled: NitroConfiguration.isEnabled && userSession.clientProxy is NitroClientProxyProtocol,
+                                            nitroRemindersEnabled: appSettings.nitroReminderBaseURL != nil && userSession.clientProxy is NitroClientProxyProtocol,
                                             hasSuccessor: roomProxy.infoPublisher.value.successor != nil,
                                             roomHistorySharingState: roomProxy.infoPublisher.value.historySharingState)
         super.init(initialViewState: appHooks.roomScreenHook.update(viewState),
@@ -126,6 +127,8 @@ class RoomScreenViewModel: RoomScreenViewModelType, RoomScreenViewModelProtocol 
             actionsSubject.send(.displayThreadList)
         case .displayNitroTasks:
             actionsSubject.send(.displayNitroTasks(roomID: roomProxy.id, roomName: state.roomTitle))
+        case .displayNitroReminders:
+            actionsSubject.send(.displayNitroReminders(roomID: roomProxy.id, roomName: state.roomTitle))
         case .displayNitroCatchUp:
             actionsSubject.send(.displayNitroCatchUp(roomID: roomProxy.id, roomName: state.roomTitle))
         case .displayNitroRoomWidgets:

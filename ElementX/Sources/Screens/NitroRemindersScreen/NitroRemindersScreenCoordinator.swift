@@ -59,6 +59,10 @@ final class NitroRemindersScreenCoordinator: CoordinatorProtocol {
     func refresh() {
         viewModel.refresh()
     }
+
+    func show(room: NitroReminderRoom) {
+        viewModel.show(room: room)
+    }
     
     func toPresentable() -> AnyView {
         AnyView(NitroRemindersScreen(context: viewModel.context))

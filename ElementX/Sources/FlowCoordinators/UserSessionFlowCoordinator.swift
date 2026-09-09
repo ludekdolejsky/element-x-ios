@@ -243,41 +243,13 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
     private func setupObservers() {
         chatsTabFlowCoordinator.actionsPublisher
             .sink { [weak self] action in
-                guard let self else { return }
-                switch action {
-                case .switchToChatsTab:
-                    navigationTabCoordinator.selectedTab = .chats
-                case .showSettings:
-                    handleAppRoute(.settings, animated: true)
-                case .showChatBackupSettings:
-                    handleAppRoute(.chatBackupSettings, animated: true)
-                case .sessionVerification(let flow):
-                    presentSessionVerificationScreen(flow: flow)
-                case .showCallScreen(let roomProxy, let isVoiceCall):
-                    presentCallScreen(roomProxy: roomProxy, voiceOnly: isVoiceCall)
-                case .showNitroTasks(let roomID, let roomName):
-                    showNitroTasks(roomID: roomID, roomName: roomName)
-                case .hideCallScreenOverlay:
-                    hideCallScreenOverlay()
-                case .logout:
-                    Task { await self.runLogoutFlow() }
-                }
+                self?.handleChatsTabAction(action)
             }
             .store(in: &cancellables)
         
         spacesTabFlowCoordinator.actionsPublisher
             .sink { [weak self] action in
-                guard let self else { return }
-                switch action {
-                case .presentCallScreen(let roomProxy, let isVoiceCall):
-                    presentCallScreen(roomProxy: roomProxy, voiceOnly: isVoiceCall)
-                case .showNitroTasks(let roomID, let roomName):
-                    showNitroTasks(roomID: roomID, roomName: roomName)
-                case .verifyUser(let userID):
-                    presentSessionVerificationScreen(flow: .userInitiator(userID: userID))
-                case .showSettings:
-                    stateMachine.tryEvent(.showSettingsScreen)
-                }
+                self?.handleSpacesTabAction(action)
             }
             .store(in: &cancellables)
         
@@ -350,6 +322,44 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
             .store(in: &cancellables)
     }
     
+    private func handleChatsTabAction(_ action: ChatsTabFlowCoordinatorAction) {
+        switch action {
+        case .switchToChatsTab:
+            navigationTabCoordinator.selectedTab = .chats
+        case .showSettings:
+            handleAppRoute(.settings, animated: true)
+        case .showChatBackupSettings:
+            handleAppRoute(.chatBackupSettings, animated: true)
+        case .sessionVerification(let flow):
+            presentSessionVerificationScreen(flow: flow)
+        case .showCallScreen(let roomProxy, let isVoiceCall):
+            presentCallScreen(roomProxy: roomProxy, voiceOnly: isVoiceCall)
+        case .showNitroTasks(let roomID, let roomName):
+            showNitroTasks(roomID: roomID, roomName: roomName)
+        case .showNitroReminders(let roomID, let roomName):
+            showNitroReminders(roomID: roomID, roomName: roomName)
+        case .hideCallScreenOverlay:
+            hideCallScreenOverlay()
+        case .logout:
+            Task { await runLogoutFlow() }
+        }
+    }
+
+    private func handleSpacesTabAction(_ action: SpacesTabFlowCoordinatorAction) {
+        switch action {
+        case .presentCallScreen(let roomProxy, let isVoiceCall):
+            presentCallScreen(roomProxy: roomProxy, voiceOnly: isVoiceCall)
+        case .showNitroTasks(let roomID, let roomName):
+            showNitroTasks(roomID: roomID, roomName: roomName)
+        case .showNitroReminders(let roomID, let roomName):
+            showNitroReminders(roomID: roomID, roomName: roomName)
+        case .verifyUser(let userID):
+            presentSessionVerificationScreen(flow: .userInitiator(userID: userID))
+        case .showSettings:
+            stateMachine.tryEvent(.showSettingsScreen)
+        }
+    }
+
     private func setupReachabilityObserver() {
         let reachabilityNotificationID = "io.element.elementx.reachability.notification"
         userSession.clientProxy.homeserverReachabilityPublisher.removeDuplicates()
@@ -378,6 +388,10 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
     
     private func showNitroTasks(roomID: String, roomName: String) {
         nitroFeatureCoordinator?.showTasks(roomID: roomID, roomName: roomName)
+    }
+
+    private func showNitroReminders(roomID: String, roomName: String) {
+        nitroFeatureCoordinator?.showReminders(roomID: roomID, roomName: roomName)
     }
     
     // MARK: - Onboarding

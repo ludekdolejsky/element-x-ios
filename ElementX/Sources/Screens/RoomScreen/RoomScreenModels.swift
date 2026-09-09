@@ -13,6 +13,7 @@ enum RoomScreenViewModelAction: Equatable {
     case focusEvent(eventID: String)
     case displayThreadList
     case displayNitroTasks(roomID: String, roomName: String)
+    case displayNitroReminders(roomID: String, roomName: String)
     case displayNitroCatchUp(roomID: String, roomName: String)
     case displayNitroRoomWidgets([NitroRoomWidget])
     case displayPrimaryNitroRoomWidget([NitroRoomWidget])
@@ -40,6 +41,7 @@ enum RoomScreenViewAction {
     case displaySuccessorRoom
     case displayThreadList
     case displayNitroTasks
+    case displayNitroReminders
     case displayNitroCatchUp
     case displayNitroRoomWidgets
     case displayPrimaryNitroRoomWidget
@@ -82,6 +84,7 @@ struct RoomScreenViewState: BindableState {
     
     var roomThreadListEnabled = false
     var nitroTasksEnabled = false
+    var nitroRemindersEnabled = false
     var nitroRoomWidgets = [NitroRoomWidget]()
     var isKnockableRoom = false
     var canAcceptKnocks = false
@@ -96,8 +99,16 @@ struct RoomScreenViewState: BindableState {
         nitroTasksEnabled && !hasSuccessor
     }
 
+    var shouldShowNitroRemindersButton: Bool {
+        nitroRemindersEnabled && !hasSuccessor
+    }
+
+    var shouldShowNitroRoomToolsMenu: Bool {
+        shouldShowNitroTasksButton || shouldShowNitroRemindersButton || !nitroRoomWidgets.isEmpty
+    }
+
     var shouldShowRoomToolsMenu: Bool {
-        shouldShowNitroTasksButton || roomThreadListEnabled || !nitroRoomWidgets.isEmpty
+        shouldShowNitroRoomToolsMenu || roomThreadListEnabled
     }
 
     var displayedKnockRequests: [KnockRequestInfo] {

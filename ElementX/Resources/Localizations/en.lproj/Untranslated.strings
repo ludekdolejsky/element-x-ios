@@ -34,6 +34,8 @@
 "screen_nitro_reminder_monday_nine_ios" = "Monday at 09:00";
 "screen_nitro_reminder_in_one_week_ios" = "In 1 week";
 "screen_nitro_reminders_title_ios" = "Reminders";
+"screen_nitro_reminders_all_rooms_ios" = "All rooms";
+"screen_nitro_reminders_filter_room_ios" = "Filter by room";
 "screen_nitro_reminders_due_ios" = "Due";
 "screen_nitro_reminders_upcoming_ios" = "Upcoming";
 "screen_nitro_reminders_done_ios" = "Done";
@@ -52,6 +54,10 @@
 "screen_nitro_reminders_codex_prompt_unavailable_ios" = "Codex prompt unavailable";
 /* Localazy: change %1$@ -> %1$s and %2$@ -> %2$s */
 "screen_nitro_reminders_daily_recurrence_ios" = "Daily at %1$@ · %2$@";
+/* Localazy: change %1$@ -> %1$s */
+"screen_nitro_reminders_last_run_ios" = "Last run %1$@";
+/* Localazy: change %1$@ -> %1$s */
+"screen_nitro_reminders_next_run_ios" = "Next %1$@";
 "screen_nitro_reminders_execution_scheduled_ios" = "Scheduled";
 "screen_nitro_reminders_execution_starting_ios" = "Starting";
 "screen_nitro_reminders_execution_waking_ios" = "Waking";

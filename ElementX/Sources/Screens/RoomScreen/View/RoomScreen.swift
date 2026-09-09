@@ -337,45 +337,18 @@ struct RoomScreen: View {
             }
         }
         
-        if context.viewState.shouldShowNitroTasksButton || !context.viewState.nitroRoomWidgets.isEmpty {
+        if context.viewState.shouldShowNitroRoomToolsMenu {
             ToolbarItem(placement: .primaryAction) {
                 NitroRoomToolsMenuButton(isMenuPresented: $isRoomToolsMenuPresented,
                                          longPressAction: context.viewState.nitroRoomWidgets.isEmpty ? nil : {
                                              context.send(viewAction: .displayPrimaryNitroRoomWidget)
                                          })
-                                         .confirmationDialog(UntranslatedL10n.a11yRoomActionsIos,
-                                                             isPresented: $isRoomToolsMenuPresented,
-                                                             titleVisibility: .hidden) {
-                                             if context.viewState.roomThreadListEnabled {
-                                                 Button {
-                                                     context.send(viewAction: .displayThreadList)
-                                                 } label: {
-                                                     Label(L10n.commonThreads, icon: \.threads)
-                                                 }
-                                             }
-                                             
-                                             if context.viewState.shouldShowNitroTasksButton {
-                                                 Button {
-                                                     context.send(viewAction: .displayNitroTasks)
-                                                 } label: {
-                                                     Label(UntranslatedL10n.screenNitroTasksTitleIos, icon: \.checkCircle)
-                                                 }
-                                                 
-                                                 Button {
-                                                     context.send(viewAction: .displayNitroCatchUp)
-                                                 } label: {
-                                                     Label(UntranslatedL10n.screenNitroCatchUpTitleIos, icon: \.history)
-                                                 }
-                                             }
-                                             
-                                             if !context.viewState.nitroRoomWidgets.isEmpty {
-                                                 Button {
-                                                     context.send(viewAction: .displayNitroRoomWidgets)
-                                                 } label: {
-                                                     Label(UntranslatedL10n.screenNitroRoomWidgetsTitleIos, icon: \.code)
-                                                 }
-                                             }
-                                         }
+                    .popover(isPresented: $isRoomToolsMenuPresented,
+                             attachmentAnchor: .rect(.bounds),
+                             arrowEdge: .top) {
+                        roomToolsMenu
+                            .presentationCompactAdaptation(.popover)
+                    }
             }
         } else if context.viewState.roomThreadListEnabled {
             ToolbarItem(placement: .primaryAction) {
@@ -386,6 +359,64 @@ struct RoomScreen: View {
                 }
             }
         }
+    }
+
+    private var roomToolsMenu: some View {
+        VStack(spacing: 2) {
+            if context.viewState.roomThreadListEnabled {
+                roomToolsMenuButton(title: L10n.commonThreads, icon: \.threads) {
+                    context.send(viewAction: .displayThreadList)
+                }
+            }
+
+            if context.viewState.shouldShowNitroTasksButton {
+                roomToolsMenuButton(title: UntranslatedL10n.screenNitroTasksTitleIos, icon: \.checkCircle) {
+                    context.send(viewAction: .displayNitroTasks)
+                }
+            }
+
+            if context.viewState.shouldShowNitroRemindersButton {
+                roomToolsMenuButton(title: UntranslatedL10n.screenNitroRemindersTitleIos, icon: \.notifications) {
+                    context.send(viewAction: .displayNitroReminders)
+                }
+            }
+
+            if context.viewState.shouldShowNitroTasksButton {
+                roomToolsMenuButton(title: UntranslatedL10n.screenNitroCatchUpTitleIos, icon: \.history) {
+                    context.send(viewAction: .displayNitroCatchUp)
+                }
+            }
+
+            if !context.viewState.nitroRoomWidgets.isEmpty {
+                roomToolsMenuButton(title: UntranslatedL10n.screenNitroRoomWidgetsTitleIos, icon: \.code) {
+                    context.send(viewAction: .displayNitroRoomWidgets)
+                }
+            }
+        }
+        .padding(8)
+        .frame(minWidth: 220)
+        .presentationBackground(.regularMaterial)
+    }
+
+    private func roomToolsMenuButton(title: String,
+                                     icon: KeyPath<CompoundIcons, Image>,
+                                     action: @escaping () -> Void) -> some View {
+        Button {
+            isRoomToolsMenuPresented = false
+            action()
+        } label: {
+            HStack(spacing: 12) {
+                CompoundIcon(icon, size: .small, relativeTo: .compound.bodyLG)
+                Text(title)
+                    .font(.compound.bodyLG)
+                Spacer(minLength: 16)
+            }
+            .foregroundStyle(.compound.textPrimary)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

@@ -58,7 +58,20 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
         case .refresh:
             startLoad(forcePreviewRefresh: true)
         case .selectFilter(let filter):
+            state.knownRooms = state.rooms
             state.bindings.filter = filter
+            state.reminders = []
+            state.hasLoaded = false
+            startLoad(forcePreviewRefresh: false)
+        case .selectRoom(let roomID):
+            guard roomID == nil || state.rooms.contains(where: { $0.id == roomID }) else { return }
+            state.knownRooms = state.rooms
+            state.bindings.selectedRoomID = roomID
+            if let roomID, let room = state.rooms.first(where: { $0.id == roomID }) {
+                state.filterRoomContext = room
+            } else {
+                state.filterRoomContext = nil
+            }
             state.reminders = []
             state.hasLoaded = false
             startLoad(forcePreviewRefresh: false)
@@ -91,6 +104,12 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
     func refresh() {
         startLoad(forcePreviewRefresh: false)
     }
+
+    func show(room: NitroReminderRoom) {
+        state.filterRoomContext = room
+        state.bindings.selectedRoomID = room.id
+        startPreviewLoad(for: state.filteredReminders, forceRefresh: false)
+    }
     
     func stop() {
         loadTask?.cancel()
@@ -111,12 +130,13 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
         let taskID = UUID()
         loadTaskID = taskID
         let filter = state.bindings.filter
+        let roomID = state.bindings.selectedRoomID
         loadTask = Task { [weak self] in
-            await self?.load(filter: filter, forcePreviewRefresh: forcePreviewRefresh, taskID: taskID)
+            await self?.load(filter: filter, roomID: roomID, forcePreviewRefresh: forcePreviewRefresh, taskID: taskID)
         }
     }
     
-    private func load(filter: NitroReminderFilter, forcePreviewRefresh: Bool, taskID: UUID) async {
+    private func load(filter: NitroReminderFilter, roomID: String?, forcePreviewRefresh: Bool, taskID: UUID) async {
         state.isLoading = true
         defer {
             if loadTaskID == taskID {
@@ -135,19 +155,21 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
             return
         }
         
-        switch await reminderService.reminders(filter: filter, authentication: authentication) {
+        switch await reminderService.reminders(filter: filter, roomID: roomID, authentication: authentication) {
         case .success(let result):
             guard !Task.isCancelled,
                   loadTaskID == taskID,
-                  state.bindings.filter == filter else { return }
+                  state.bindings.filter == filter,
+                  state.bindings.selectedRoomID == roomID else { return }
             state.reminders = result.reminders
+            state.knownRooms = state.rooms
             let previewReminderIDs = Set(result.reminders.filter(\.usesMessagePreview).map(\.id))
             state.previews = state.previews.filter { preview in
                 previewReminderIDs.contains(preview.key)
             }
             state.serverNow = result.now
             state.hasLoaded = true
-            startPreviewLoad(for: result.reminders, forceRefresh: forcePreviewRefresh)
+            startPreviewLoad(for: state.filteredReminders, forceRefresh: forcePreviewRefresh)
         case .failure(.cancelled):
             break
         case .failure:

@@ -13,6 +13,7 @@ enum RoomMembersFlowCoordinatorAction {
     case finished
     case presentCallScreen(roomProxy: JoinedRoomProxyProtocol, isVoiceCall: Bool)
     case presentNitroTasks(roomID: String, roomName: String)
+    case presentNitroReminders(roomID: String, roomName: String)
     case verifyUser(userID: String)
 }
 
@@ -331,6 +332,8 @@ final class RoomMembersFlowCoordinator: FlowCoordinatorProtocol {
                     actionsSubject.send(.presentCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
                 case .presentNitroTasks(let roomID, let roomName):
                     actionsSubject.send(.presentNitroTasks(roomID: roomID, roomName: roomName))
+                case .presentNitroReminders(let roomID, let roomName):
+                    actionsSubject.send(.presentNitroReminders(roomID: roomID, roomName: roomName))
                 case .verifyUser(let userID):
                     actionsSubject.send(.verifyUser(userID: userID))
                 case .continueWithSpaceFlow:

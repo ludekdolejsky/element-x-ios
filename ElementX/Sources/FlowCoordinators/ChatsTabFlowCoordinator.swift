@@ -18,6 +18,7 @@ enum ChatsTabFlowCoordinatorAction {
     case sessionVerification(SessionVerificationScreenFlow)
     case showCallScreen(roomProxy: JoinedRoomProxyProtocol, isVoiceCall: Bool)
     case showNitroTasks(roomID: String, roomName: String)
+    case showNitroReminders(roomID: String, roomName: String)
     case hideCallScreenOverlay
     case logout
 }
@@ -536,6 +537,8 @@ class ChatsTabFlowCoordinator: FlowCoordinatorProtocol {
                 actionsSubject.send(.showCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
             case .presentNitroTasks(let roomID, let roomName):
                 actionsSubject.send(.showNitroTasks(roomID: roomID, roomName: roomName))
+            case .presentNitroReminders(let roomID, let roomName):
+                actionsSubject.send(.showNitroReminders(roomID: roomID, roomName: roomName))
             case .verifyUser(let userID):
                 actionsSubject.send(.sessionVerification(.userInitiator(userID: userID)))
             case .continueWithSpaceFlow(let spaceRoomListProxy):
@@ -600,6 +603,8 @@ class ChatsTabFlowCoordinator: FlowCoordinatorProtocol {
                     actionsSubject.send(.showCallScreen(roomProxy: roomProxy, isVoiceCall: isVoiceCall))
                 case .presentNitroTasks(let roomID, let roomName):
                     actionsSubject.send(.showNitroTasks(roomID: roomID, roomName: roomName))
+                case .presentNitroReminders(let roomID, let roomName):
+                    actionsSubject.send(.showNitroReminders(roomID: roomID, roomName: roomName))
                 case .verifyUser(let userID):
                     actionsSubject.send(.sessionVerification(.userInitiator(userID: userID)))
                 case .finished:

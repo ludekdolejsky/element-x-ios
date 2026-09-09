@@ -20,7 +20,7 @@ struct NitroRemindersScreenViewModelTests {
                                                   isEdited: true,
                                                   isAvailable: true)
         previewService.loadPreviewsForForceRefreshReturnValue = [.init(reminderID: reminder.id, preview: preview)]
-        reminderService.remindersFilterAuthenticationReturnValue = .success(.init(reminders: [reminder],
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [reminder],
                                                                                   now: Date(timeIntervalSince1970: 1_700_000_100)))
         let viewModel = NitroRemindersScreenViewModel(clientProxy: makeClientProxy(),
                                                       reminderService: reminderService,
@@ -31,7 +31,8 @@ struct NitroRemindersScreenViewModelTests {
         try await deferred.fulfill()
         
         #expect(viewModel.context.viewState.reminders == [reminder])
-        #expect(reminderService.remindersFilterAuthenticationReceivedArguments?.filter == .due)
+        #expect(reminderService.remindersFilterRoomIDAuthenticationReceivedArguments?.filter == .due)
+        #expect(reminderService.remindersFilterRoomIDAuthenticationReceivedArguments?.roomID == nil)
         #expect(previewService.loadPreviewsForForceRefreshReceivedArguments?.reminders == [reminder])
         #expect(previewService.loadPreviewsForForceRefreshReceivedArguments?.forceRefresh == false)
     }
@@ -42,9 +43,10 @@ struct NitroRemindersScreenViewModelTests {
                                     actionKind: .runCodex,
                                     prompt: "Summarise overnight activity",
                                     recurrence: .init(kind: .daily, hour: 9, minute: 5, timeZone: "Europe/Prague"),
-                                    executionStatus: .queued)
+                                    executionStatus: .queued,
+                                    lastFiredTimestamp: 1_699_999_000)
         let reminderService = NitroReminderServiceMock()
-        reminderService.remindersFilterAuthenticationReturnValue = .success(.init(reminders: [reminder], now: .now))
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [reminder], now: .now))
         let previewService = NitroReminderPreviewServiceMock()
         let viewModel = NitroRemindersScreenViewModel(clientProxy: makeClientProxy(),
                                                       reminderService: reminderService,
@@ -60,9 +62,90 @@ struct NitroRemindersScreenViewModelTests {
                                                         serverNow: viewModel.context.viewState.serverNow)
         #expect(presentation.badge == "Runs Codex")
         #expect(presentation.prompt == "Summarise overnight activity")
-        #expect(presentation.recurrence == "Daily at 09:05 · Europe/Prague")
+        let lastRun = Date(timeIntervalSince1970: 1_699_999_000).formatted(date: .abbreviated, time: .shortened)
+        let nextRun = Date(timeIntervalSince1970: 1_700_000_200).formatted(date: .abbreviated, time: .shortened)
+        #expect(presentation.metadata == "Daily at 09:05 · Europe/Prague · Last run \(lastRun) · Next \(nextRun)")
         #expect(presentation.status == "Queued")
         #expect(presentation.openAction == "Open room")
+    }
+
+    @Test
+    func roomScopeFiltersRemindersAndMessagePreviews() async throws {
+        let selectedReminder = makeReminder(id: "selected",
+                                            roomID: "!selected:example.org",
+                                            roomName: "Selected room")
+        let otherReminder = makeReminder(id: "other",
+                                         eventID: "$other:example.org",
+                                         roomID: "!other:example.org",
+                                         roomName: "Other room")
+        let reminderService = NitroReminderServiceMock()
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [selectedReminder, otherReminder], now: .now))
+        let previewService = NitroReminderPreviewServiceMock()
+        let selectedPreview = NitroReminderMessagePreview(text: "Selected message",
+                                                           sender: "Alice",
+                                                           isEdited: false,
+                                                           isAvailable: true)
+        previewService.loadPreviewsForForceRefreshReturnValue = [.init(reminderID: selectedReminder.id, preview: selectedPreview)]
+        let viewModel = NitroRemindersScreenViewModel(clientProxy: makeClientProxy(),
+                                                      reminderService: reminderService,
+                                                      previewService: previewService)
+        viewModel.show(room: .init(id: selectedReminder.roomID, name: "Selected room"))
+        let loaded = deferFulfillment(viewModel.context.observe(\.viewState.previews)) { $0[selectedReminder.id] == selectedPreview }
+
+        viewModel.context.send(viewAction: .load)
+        try await loaded.fulfill()
+
+        #expect(viewModel.context.viewState.filteredReminders == [selectedReminder])
+        #expect(viewModel.context.viewState.rooms == [
+            .init(id: otherReminder.roomID, name: "Other room"),
+            .init(id: selectedReminder.roomID, name: "Selected room")
+        ])
+        #expect(reminderService.remindersFilterRoomIDAuthenticationReceivedArguments?.roomID == selectedReminder.roomID)
+        #expect(previewService.loadPreviewsForForceRefreshReceivedArguments?.reminders == [selectedReminder])
+    }
+
+    @Test
+    func selectingRoomUpdatesContextAndReloadsFromBackend() async throws {
+        let firstReminder = makeReminder(id: "first")
+        let secondReminder = makeReminder(id: "second", roomID: "!other:example.org", roomName: "Other room")
+        let reminderService = NitroReminderServiceMock()
+        reminderService.remindersFilterRoomIDAuthenticationClosure = { _, roomID, _ in
+            .success(.init(reminders: roomID == nil ? [firstReminder, secondReminder] : [secondReminder], now: .now))
+        }
+        let previewService = NitroReminderPreviewServiceMock()
+        previewService.loadPreviewsForForceRefreshReturnValue = []
+        let viewModel = NitroRemindersScreenViewModel(clientProxy: makeClientProxy(),
+                                                      reminderService: reminderService,
+                                                      previewService: previewService)
+        let loaded = deferFulfillment(viewModel.context.observe(\.viewState.hasLoaded)) { $0 }
+        viewModel.context.send(viewAction: .load)
+        try await loaded.fulfill()
+        let roomLoaded = deferFulfillment(viewModel.context.observe(\.viewState.reminders)) { $0 == [secondReminder] }
+
+        viewModel.context.send(viewAction: .selectRoom(secondReminder.roomID))
+        try await roomLoaded.fulfill()
+
+        #expect(viewModel.context.viewState.filterRoomContext == .init(id: secondReminder.roomID, name: "Other room"))
+        #expect(viewModel.context.viewState.bindings.selectedRoomID == secondReminder.roomID)
+        #expect(viewModel.context.viewState.rooms == [
+            .init(id: firstReminder.roomID, name: "Nitro team"),
+            .init(id: secondReminder.roomID, name: "Other room")
+        ])
+        #expect(reminderService.remindersFilterRoomIDAuthenticationReceivedArguments?.roomID == secondReminder.roomID)
+    }
+
+    @Test
+    func clearingRoomScopeShowsAllLoadedReminders() {
+        let firstReminder = makeReminder(id: "first")
+        let secondReminder = makeReminder(id: "second", roomID: "!other:example.org", roomName: "Other room")
+        var state = NitroRemindersScreenViewState(reminders: [firstReminder, secondReminder],
+                                                  bindings: .init(selectedRoomID: firstReminder.roomID))
+
+        #expect(state.filteredReminders == [firstReminder])
+
+        state.bindings.selectedRoomID = nil
+
+        #expect(state.filteredReminders == [firstReminder, secondReminder])
     }
     
     @Test
@@ -80,6 +163,18 @@ struct NitroRemindersScreenViewModelTests {
             #expect(NitroReminderRowPresentation(reminder: reminder, serverNow: .now).status == expected)
         }
     }
+
+    @Test
+    func completedOneShotCodexReminderHasNoNextRun() {
+        let reminder = makeReminder(actionKind: .runCodex,
+                                    executionStatus: .done,
+                                    lastFiredTimestamp: 1_699_999_000,
+                                    status: .done)
+        let presentation = NitroReminderRowPresentation(reminder: reminder, serverNow: .now)
+        let lastRun = Date(timeIntervalSince1970: 1_699_999_000).formatted(date: .abbreviated, time: .shortened)
+
+        #expect(presentation.metadata == "Last run \(lastRun)")
+    }
     
     @Test
     func preservesOtherMessagePreviewsAfterMutation() async throws {
@@ -96,7 +191,7 @@ struct NitroRemindersScreenViewModelTests {
                   preview: .init(text: "Complete this", sender: "Bob", isEdited: false, isAvailable: true)),
             .init(reminderID: secondReminder.id, preview: secondPreview)
         ]
-        reminderService.remindersFilterAuthenticationReturnValue = .success(.init(reminders: [firstReminder, secondReminder], now: .now))
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [firstReminder, secondReminder], now: .now))
         reminderService.markDoneReminderIDAuthenticationReturnValue = .success(firstReminder)
         let viewModel = NitroRemindersScreenViewModel(clientProxy: makeClientProxy(),
                                                       reminderService: reminderService,
@@ -106,7 +201,7 @@ struct NitroRemindersScreenViewModelTests {
         try await loaded.fulfill()
         
         previewService.loadPreviewsForForceRefreshReturnValue = []
-        reminderService.remindersFilterAuthenticationReturnValue = .success(.init(reminders: [secondReminder], now: .now))
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [secondReminder], now: .now))
         let mutationFinished = deferFulfillment(viewModel.context.observe(\.viewState.reminders)) { $0 == [secondReminder] }
         viewModel.context.send(viewAction: .markDone(firstReminder))
         try await mutationFinished.fulfill()
@@ -119,7 +214,7 @@ struct NitroRemindersScreenViewModelTests {
     func stopCancelsPreviewLoadingAndIgnoresLaterUpdates() async {
         let reminder = makeReminder()
         let reminderService = NitroReminderServiceMock()
-        reminderService.remindersFilterAuthenticationReturnValue = .success(.init(reminders: [reminder], now: .now))
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [reminder], now: .now))
         let previewService = NitroReminderPreviewServiceMock()
         let (updates, updatesContinuation) = AsyncStream.makeStream(of: NitroReminderPreviewUpdate.self)
         let (started, startedContinuation) = AsyncStream.makeStream(of: Void.self)
@@ -183,7 +278,7 @@ struct NitroRemindersScreenViewModelTests {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let reminder = makeReminder(actionKind: .runCodex)
         let reminderService = NitroReminderServiceMock()
-        reminderService.remindersFilterAuthenticationReturnValue = .success(.init(reminders: [reminder], now: now))
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [reminder], now: now))
         reminderService.snoozeReminderIDUntilAuthenticationReturnValue = .success(reminder)
         let viewModel = NitroRemindersScreenViewModel(clientProxy: makeClientProxy(),
                                                       reminderService: reminderService,
@@ -192,7 +287,7 @@ struct NitroRemindersScreenViewModelTests {
         viewModel.context.send(viewAction: .load)
         try await loaded.fulfill()
         
-        reminderService.remindersFilterAuthenticationReturnValue = .success(.init(reminders: [], now: now))
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [], now: now))
         let removed = deferFulfillment(viewModel.context.observe(\.viewState.reminders)) { $0.isEmpty }
         viewModel.context.send(viewAction: .snooze(reminder, 20 * 60))
         try await removed.fulfill()
@@ -206,7 +301,7 @@ struct NitroRemindersScreenViewModelTests {
     func marksCodexReminderDone() async throws {
         let reminder = makeReminder(actionKind: .runCodex)
         let reminderService = NitroReminderServiceMock()
-        reminderService.remindersFilterAuthenticationReturnValue = .success(.init(reminders: [reminder], now: .now))
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [reminder], now: .now))
         reminderService.markDoneReminderIDAuthenticationReturnValue = .success(reminder)
         let viewModel = NitroRemindersScreenViewModel(clientProxy: makeClientProxy(),
                                                       reminderService: reminderService,
@@ -215,7 +310,7 @@ struct NitroRemindersScreenViewModelTests {
         viewModel.context.send(viewAction: .load)
         try await loaded.fulfill()
         
-        reminderService.remindersFilterAuthenticationReturnValue = .success(.init(reminders: [], now: .now))
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [], now: .now))
         let removed = deferFulfillment(viewModel.context.observe(\.viewState.reminders)) { $0.isEmpty }
         viewModel.context.send(viewAction: .markDone(reminder))
         try await removed.fulfill()
@@ -227,7 +322,7 @@ struct NitroRemindersScreenViewModelTests {
     func deletesCodexReminder() async throws {
         let reminder = makeReminder(actionKind: .runCodex)
         let reminderService = NitroReminderServiceMock()
-        reminderService.remindersFilterAuthenticationReturnValue = .success(.init(reminders: [reminder], now: .now))
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [reminder], now: .now))
         reminderService.deleteReminderReminderIDAuthenticationReturnValue = .success(())
         let viewModel = NitroRemindersScreenViewModel(clientProxy: makeClientProxy(),
                                                       reminderService: reminderService,
@@ -236,7 +331,7 @@ struct NitroRemindersScreenViewModelTests {
         viewModel.context.send(viewAction: .load)
         try await loaded.fulfill()
         
-        reminderService.remindersFilterAuthenticationReturnValue = .success(.init(reminders: [], now: .now))
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [], now: .now))
         let removed = deferFulfillment(viewModel.context.observe(\.viewState.reminders)) { $0.isEmpty }
         viewModel.context.send(viewAction: .delete(reminder))
         try await removed.fulfill()
@@ -249,7 +344,7 @@ struct NitroRemindersScreenViewModelTests {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let reminder = makeReminder(actionKind: .runCodex)
         let reminderService = NitroReminderServiceMock()
-        reminderService.remindersFilterAuthenticationReturnValue = .success(.init(reminders: [], now: now))
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [], now: now))
         let (stream, continuation) = AsyncStream.makeStream(of: Void.self)
         reminderService.snoozeReminderIDUntilAuthenticationClosure = { _, _, _ in
             for await _ in stream {
@@ -283,15 +378,19 @@ struct NitroRemindersScreenViewModelTests {
     private func makeReminder(id: String = "reminder-1",
                               eventID: String = "$event:example.org",
                               threadRootID: String? = nil,
+                              roomID: String = "!room:example.org",
+                              roomName: String = "Nitro team",
                               actionKind: NitroReminderActionKind = .notify,
                               prompt: String? = nil,
                               recurrence: NitroReminderRecurrence? = nil,
-                              executionStatus: NitroReminderExecutionStatus? = nil) -> NitroReminder {
+                              executionStatus: NitroReminderExecutionStatus? = nil,
+                              lastFiredTimestamp: Int? = nil,
+                              status: NitroReminderStatus = .pending) -> NitroReminder {
         .init(id: id,
               userID: "@alice:example.org",
               homeserverURL: "https://matrix.example.org",
-              roomID: "!room:example.org",
-              roomName: "Nitro team",
+              roomID: roomID,
+              roomName: roomName,
               eventID: eventID,
               threadRootID: threadRootID,
               dueTimestamp: 1_700_000_200,
@@ -300,11 +399,12 @@ struct NitroRemindersScreenViewModelTests {
               createdTimestamp: 1_700_000_000,
               deliveredTimestamp: nil,
               updatedTimestamp: 1_700_000_000,
-              status: .pending,
+              status: status,
               error: nil,
               actionKind: actionKind,
               prompt: prompt,
               recurrence: recurrence,
-              executionStatus: executionStatus)
+              executionStatus: executionStatus,
+              lastFiredTimestamp: lastFiredTimestamp)
     }
 }

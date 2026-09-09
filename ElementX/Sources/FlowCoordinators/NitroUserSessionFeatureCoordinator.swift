@@ -137,6 +137,14 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
         tasksScreenCoordinator.show(room: .init(id: roomID, name: roomName))
         parameters.navigationTabCoordinator.selectedTab = .tasks
     }
+
+    func showReminders(roomID: String, roomName: String) {
+        guard let remindersScreenCoordinator else { return }
+        remindersNavigationStackCoordinator?.setSheetCoordinator(nil)
+        remindersNavigationStackCoordinator?.popToRoot(animated: false)
+        remindersScreenCoordinator.show(room: .init(id: roomID, name: roomName))
+        parameters.navigationTabCoordinator.selectedTab = .reminders
+    }
     
     private func setupTasksObservers() {
         tasksScreenCoordinator.actionsPublisher
