@@ -17,6 +17,7 @@ struct NitroRoomWidgetsScreen: View {
             NitroRoomWidgetContent(context: context)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.compound.bgCanvasDefault)
+                .ignoresSafeArea(edges: context.viewState.destination.displaysWidget ? .bottom : [])
                 .navigationTitle(context.viewState.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -129,7 +130,6 @@ private struct NitroRoomWidgetContent: View {
         case .widget(let widget, let url):
             NitroRoomWidgetWebView(widget: widget, url: url, context: context)
                 .id(url)
-                .ignoresSafeArea(edges: .bottom)
         case .error:
             VStack(spacing: 24) {
                 Text(UntranslatedL10n.screenNitroRoomWidgetsErrorIos)
@@ -152,6 +152,15 @@ private extension NitroRoomWidgetsScreenViewState {
         case .loading(let widget), .widget(let widget, _), .error(let widget):
             widget.name
         }
+    }
+}
+
+private extension NitroRoomWidgetsScreenDestination {
+    var displaysWidget: Bool {
+        if case .widget = self {
+            return true
+        }
+        return false
     }
 }
 
