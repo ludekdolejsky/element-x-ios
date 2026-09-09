@@ -15,7 +15,7 @@ nonisolated protocol NitroTaskSnapshotStoreProtocol: Sendable {
 
 actor NitroTaskSnapshotStore: NitroTaskSnapshotStoreProtocol {
     fileprivate nonisolated struct Snapshot: Codable, Sendable {
-        static let currentVersion = 1
+        static let currentVersion = 2
         let version: Int
         let tasks: [TaskSnapshot]
         let unavailableRoomCount: Int
@@ -31,6 +31,9 @@ actor NitroTaskSnapshotStore: NitroTaskSnapshotStoreProtocol {
         let stateIsAvailable: Bool
         let assigneeDisplayName: String?
         let updatedDate: Date?
+        let canUpdate: Bool?
+        let canArchive: Bool?
+        let canEditContent: Bool?
     }
     
     fileprivate nonisolated struct Metadata: Codable, Sendable {
@@ -142,6 +145,9 @@ private nonisolated extension NitroTaskSnapshotStore.TaskSnapshot {
         stateIsAvailable = task.stateIsAvailable
         assigneeDisplayName = task.assigneeDisplayName
         updatedDate = task.updatedDate
+        canUpdate = task.canUpdate
+        canArchive = task.canArchive
+        canEditContent = task.canEditContent
     }
     
     var task: NitroTask {
@@ -153,9 +159,9 @@ private nonisolated extension NitroTaskSnapshotStore.TaskSnapshot {
                   stateIsAvailable: stateIsAvailable,
                   assigneeDisplayName: assigneeDisplayName,
                   updatedDate: updatedDate,
-                  canUpdate: false,
-                  canArchive: false,
-                  canEditContent: false)
+                  canUpdate: canUpdate ?? false,
+                  canArchive: canArchive ?? false,
+                  canEditContent: canEditContent ?? false)
     }
 }
 

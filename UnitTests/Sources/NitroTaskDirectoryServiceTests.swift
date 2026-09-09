@@ -181,6 +181,19 @@ struct NitroTaskDirectoryServiceTests {
     }
     
     @Test
+    func encryptedEventDoesNotInvalidateEveryTaskInTheRoom() {
+        let update = RoomTimelineUpdate(events: [Self.encryptedEventJSON], limited: false, lagged: false)
+        
+        #expect(!NitroTaskDirectoryService.requiresRoomVerification(update))
+    }
+    
+    @Test
+    func timelineGapRequiresRoomVerification() {
+        #expect(NitroTaskDirectoryService.requiresRoomVerification(.init(events: [], limited: true, lagged: false)))
+        #expect(NitroTaskDirectoryService.requiresRoomVerification(.init(events: [], limited: false, lagged: true)))
+    }
+    
+    @Test
     func ordinaryMessageDoesNotPublishATaskChange() async throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -235,6 +248,27 @@ struct NitroTaskDirectoryServiceTests {
         #expect(recorder.values == [["!first:example.org"], ["!second:example.org"]])
     }
     
+    @Test
+    func publishesPersistedDirtyRoomsAfterRestart() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let key = NitroTaskDirectoryKey(roomID: "!dirty:example.org", taskEventID: "$task:example.org")
+        let store = NitroTaskDirectoryStore(storageDirectory: directory, passphrase: "session-key")
+        await store.markVerificationRequired([key])
+        let service = NitroTaskDirectoryService(client: makeClient(), api: NitroTaskDirectoryAPIMock(), store: store)
+        let recorder = ChangedRoomIDsRecorder(targetRoomID: key.roomID)
+        
+        await waitForConfirmation("Wait for persisted task changes", timeout: .seconds(2)) { confirmation in
+            recorder.cancellable = service.changedRoomIDsPublisher.sink { roomIDs in
+                recorder.record(roomIDs, confirmation: confirmation)
+            }
+            service.start()
+        }
+        service.stop()
+        
+        #expect(recorder.values == [[key.roomID]])
+    }
+    
     private func makeClient() -> ClientSDKMock {
         let client = ClientSDKMock(.init())
         client.sessionReturnValue = .init(accessToken: "token",
@@ -278,6 +312,18 @@ struct NitroTaskDirectoryServiceTests {
       "content": {
         "msgtype": "m.text",
         "body": "Hello"
+      }
+    }
+    """
+    
+    private static let encryptedEventJSON = """
+    {
+      "type": "m.room.encrypted",
+      "event_id": "$encrypted:example.org",
+      "origin_server_ts": 1800000000000,
+      "content": {
+        "algorithm": "m.megolm.v1.aes-sha2",
+        "ciphertext": "opaque"
       }
     }
     """
@@ -392,6 +438,10 @@ private actor FlushRaceTaskDirectoryStore: NitroTaskDirectoryStoreProtocol {
         pendingReadWaiters.removeAll()
         await withCheckedContinuation { firstPendingReadContinuation = $0 }
         return []
+    }
+    
+    func dirtyRoomIDs() async -> Set<String> {
+        []
     }
     
     func acknowledge(_ updates: [NitroTaskDirectoryPendingUpdate], runToken: NitroTaskDirectoryRunToken?) async {

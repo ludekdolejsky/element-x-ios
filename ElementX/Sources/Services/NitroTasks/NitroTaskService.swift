@@ -103,9 +103,15 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         let recoveryCandidates: [RecoveryCandidate]
     }
     
-    nonisolated struct RecoveryCandidate: Equatable, Sendable {
+    nonisolated struct RecoveryCandidate: Equatable, Hashable, Sendable {
         let roomID: String
         let eventID: String
+    }
+    
+    private nonisolated enum RoomPinObservation: Sendable {
+        case eligible(roomID: String, revision: String)
+        case ineligible(roomID: String)
+        case unavailable
     }
     
     private nonisolated enum RecoveryResult: Sendable {
@@ -171,7 +177,6 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     
     private enum LoadScope {
         case all
-        case known
         case rooms(Set<String>)
     }
     
@@ -183,6 +188,7 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     private nonisolated static let maximumConcurrentRoomLoads = 4
     private nonisolated static let snapshotWriteDelay: Duration = .milliseconds(200)
     private nonisolated static let timelineTimeout: Duration = .seconds(15)
+    private nonisolated static let recoveryRetryDelay: TimeInterval = 15 * 60
     private nonisolated static let relationsPageSize = 20
     
     private let client: ClientProtocol
@@ -198,6 +204,7 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     private var recoveryCandidates = [RecoveryCandidate]()
     private var recoveryTask: Task<Void, Never>?
     private var recoveryTaskID: UUID?
+    private var recoveryRetryAfter = [RecoveryCandidate: Date]()
     private var taskIndexUpdateTask: Task<TaskIndexWriteState?, Never>?
     private var taskIndexUpdateTaskID: UUID?
     private var taskIndexWriteState: TaskIndexWriteState?
@@ -260,17 +267,41 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         return taskList
     }
     
-    func currentTaskIndexRevision() async -> String? {
+    func currentTaskIndexSnapshot() async -> NitroTaskIndexSnapshot? {
         guard let index = await loadTaskIndex() else { return nil }
-        return try? index.revisionString()
+        let observations = await Self.roomPinObservations(in: client.rooms())
+        guard !Task.isCancelled else { return nil }
+        var observedPinRevisions = [String: String]()
+        var ineligibleRoomIDs = Set<String>()
+        for observation in observations {
+            switch observation {
+            case .eligible(let roomID, let revision):
+                observedPinRevisions[roomID] = revision
+            case .ineligible(let roomID):
+                ineligibleRoomIDs.insert(roomID)
+            case .unavailable:
+                break
+            }
+        }
+        return Self.taskIndexSnapshot(index: index,
+                                      observedPinRevisions: observedPinRevisions,
+                                      ineligibleRoomIDs: ineligibleRoomIDs)
+    }
+    
+    nonisolated static func taskIndexSnapshot(index: NitroTaskIndex,
+                                              observedPinRevisions: [String: String],
+                                              ineligibleRoomIDs: Set<String>) -> NitroTaskIndexSnapshot {
+        let entries = Set(index.tasks.map { NitroTaskDirectoryKey(roomID: $0.roomID, taskEventID: $0.eventID) })
+        let indexedRoomIDs = Set(index.tasks.map(\.roomID)).union(index.roomPinRevisions.keys)
+        let changedPinRoomIDs = Set(observedPinRevisions.compactMap { roomID, revision in
+            index.roomPinRevisions[roomID] == revision ? nil : roomID
+        })
+        return .init(entries: entries,
+                     roomIDsRequiringRefresh: changedPinRoomIDs.union(ineligibleRoomIDs.intersection(indexedRoomIDs)))
     }
     
     func loadTasks() async -> Result<NitroTaskList, NitroTaskServiceError> {
         await loadTasks(scope: .all)
-    }
-    
-    func refreshKnownTasks() async -> Result<NitroTaskList, NitroTaskServiceError> {
-        await loadTasks(scope: .known)
     }
     
     func refreshTasks(in roomIDs: Set<String>) async -> Result<NitroTaskList, NitroTaskServiceError> {
@@ -296,9 +327,6 @@ final class NitroTaskService: NitroTaskServiceProtocol {
         let roomIDs: Set<String>? = switch scope {
         case .all:
             nil
-        case .known:
-            Set(initialIndex.tasks.map(\.roomID))
-                .union(cachedTaskList?.tasks.map(\.roomID) ?? [])
         case .rooms(let roomIDs):
             roomIDs
         }
@@ -351,14 +379,33 @@ final class NitroTaskService: NitroTaskServiceProtocol {
     }
     
     func startPendingTaskRecovery() {
+        startPendingTaskRecovery(ignoringBackoff: false)
+    }
+    
+    func retryPendingTaskRecovery() {
+        startPendingTaskRecovery(ignoringBackoff: true)
+    }
+    
+    private func startPendingTaskRecovery(ignoringBackoff: Bool) {
         guard loadRequestID == nil, recoveryTask == nil, !recoveryCandidates.isEmpty else { return }
+        if ignoringBackoff {
+            recoveryRetryAfter.removeAll()
+        }
+        let now = Date()
+        let candidates = recoveryCandidates.filter { recoveryRetryAfter[$0].map { $0 <= now } ?? true }
+        let candidateSet = Set(candidates)
+        let deferredCandidates = recoveryCandidates.filter { !candidateSet.contains($0) }
+        guard !candidates.isEmpty else {
+            updatesSubject.send(.recoveryProgress(.init(pendingEventCount: 0,
+                                                        failedEventCount: deferredCandidates.count)))
+            return
+        }
         let taskID = UUID()
-        let candidates = recoveryCandidates
         recoveryTaskID = taskID
         updatesSubject.send(.recoveryProgress(.init(pendingEventCount: candidates.count,
-                                                    failedEventCount: 0)))
+                                                    failedEventCount: deferredCandidates.count)))
         recoveryTask = Task { [weak self] in
-            await self?.recover(candidates, taskID: taskID)
+            await self?.recover(candidates, deferredCandidates: deferredCandidates, taskID: taskID)
         }
     }
     
@@ -1177,6 +1224,46 @@ final class NitroTaskService: NitroTaskServiceProtocol {
 
 extension NitroTaskService {
     @concurrent
+    private static func roomPinObservations(in rooms: [MatrixRustSDK.Room]) async -> [RoomPinObservation] {
+        var iterator = rooms.makeIterator()
+        var observations = [RoomPinObservation]()
+        await withTaskGroup(of: RoomPinObservation.self) { group in
+            for _ in 0..<min(maximumConcurrentRoomLoads, rooms.count) {
+                guard let room = iterator.next() else { break }
+                group.addTask { await roomPinObservation(for: room) }
+            }
+            while let observation = await group.next() {
+                guard !Task.isCancelled else {
+                    group.cancelAll()
+                    return
+                }
+                observations.append(observation)
+                if let room = iterator.next() {
+                    group.addTask { await roomPinObservation(for: room) }
+                }
+            }
+        }
+        return observations
+    }
+    
+    @concurrent
+    private static func roomPinObservation(for room: MatrixRustSDK.Room) async -> RoomPinObservation {
+        let roomID = room.id()
+        guard room.membership() == .joined, !room.isSpace() else {
+            return .ineligible(roomID: roomID)
+        }
+        do {
+            let info = try await room.roomInfo()
+            guard info.membership == .joined, !info.isSpace, info.successorRoom == nil else {
+                return .ineligible(roomID: roomID)
+            }
+            return .eligible(roomID: roomID, revision: NitroTaskIndex.pinRevision(info.pinnedEventIds))
+        } catch {
+            return .unavailable
+        }
+    }
+    
+    @concurrent
     private static func editTask(_ task: NitroTask,
                                  title: String,
                                  description: String,
@@ -1285,13 +1372,20 @@ extension NitroTaskService {
         return LoadedPinnedEvents(taskEvents: taskEvents, recoveryCandidates: recoveryCandidates)
     }
     
-    private func recover(_ candidates: [RecoveryCandidate], taskID: UUID) async {
+    private func recover(_ candidates: [RecoveryCandidate],
+                         deferredCandidates: [RecoveryCandidate],
+                         taskID: UUID) async {
+        let performance = NitroPerformance.start(name: "Nitro Tasks event recovery",
+                                                 operation: "nitro.tasks.recovery")
+        performance.setData(candidates.count, key: "nitro.tasks.recovery_candidate_count")
         let session: Session
         do {
             session = try client.session()
         } catch {
             MXLog.error("Failed starting Nitro task recovery with error: \(error)")
-            finishRecovery(taskID: taskID, failedCandidates: candidates)
+            performance.setData(candidates.count + deferredCandidates.count, key: "nitro.tasks.recovery_failed_count")
+            performance.finish(.failure)
+            finishRecovery(taskID: taskID, failedCandidates: candidates + deferredCandidates)
             return
         }
         
@@ -1333,7 +1427,7 @@ extension NitroTaskService {
                 }
                 updateCachedPendingEventCount(pendingEventCount)
                 updatesSubject.send(.recoveryProgress(.init(pendingEventCount: pendingEventCount,
-                                                            failedEventCount: failedCandidates.count)))
+                                                            failedEventCount: failedCandidates.count + deferredCandidates.count)))
                 
                 if let candidate = iterator.next() {
                     group.addTask {
@@ -1346,7 +1440,25 @@ extension NitroTaskService {
             }
         }
         
-        finishRecovery(taskID: taskID, failedCandidates: failedCandidates)
+        guard !Task.isCancelled, recoveryTaskID == taskID else {
+            performance.finish(.cancelled)
+            return
+        }
+        let failedCount = failedCandidates.count + deferredCandidates.count
+        performance.setData(failedCount, key: "nitro.tasks.recovery_failed_count")
+        performance.setData(candidates.count - failedCandidates.count, key: "nitro.tasks.recovery_loaded_count")
+        performance.setTag(failedCount == 0 ? "complete" : "partial", key: "nitro.tasks.recovery_result")
+        performance.finish(failedCount == 0 ? .success : .failure)
+        recordRecoveryBackoff(for: candidates, failedCandidates: failedCandidates)
+        finishRecovery(taskID: taskID, failedCandidates: failedCandidates + deferredCandidates)
+    }
+    
+    private func recordRecoveryBackoff(for candidates: [RecoveryCandidate], failedCandidates: [RecoveryCandidate]) {
+        let failedSet = Set(failedCandidates)
+        let retryDate = Date().addingTimeInterval(Self.recoveryRetryDelay)
+        for candidate in candidates {
+            recoveryRetryAfter[candidate] = failedSet.contains(candidate) ? retryDate : nil
+        }
     }
     
     private func finishRecovery(taskID: UUID, failedCandidates: [RecoveryCandidate]) {

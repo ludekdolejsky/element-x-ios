@@ -37,7 +37,7 @@ struct NitroTaskServiceTests {
     }
     
     @Test
-    func taskIndexRevisionIsStableAcrossEquivalentJSON() async {
+    func taskIndexSnapshotIsStableAcrossEquivalentJSON() async {
         let client = ClientSDKMock(.init())
         let responses = NitroTaskAccountDataResponses(values: [
             """
@@ -48,13 +48,40 @@ struct NitroTaskServiceTests {
             """
         ])
         client.accountDataEventTypeClosure = { _ in await responses.next() }
+        client.roomsReturnValue = []
         let service = NitroTaskService(client: client)
         
-        let firstRevision = await service.currentTaskIndexRevision()
-        let secondRevision = await service.currentTaskIndexRevision()
+        let firstSnapshot = await service.currentTaskIndexSnapshot()
+        let secondSnapshot = await service.currentTaskIndexSnapshot()
         
-        #expect(firstRevision != nil)
-        #expect(firstRevision == secondRevision)
+        #expect(firstSnapshot?.entries == [
+            .init(roomID: "!one:example.org", taskEventID: "$one"),
+            .init(roomID: "!two:example.org", taskEventID: "$two")
+        ])
+        #expect(firstSnapshot == secondSnapshot)
+    }
+    
+    @Test
+    func taskIndexSnapshotFindsChangedPinsAndIneligibleIndexedRooms() {
+        let index = NitroTaskIndex(migrationComplete: true,
+                                   tasks: [
+                                       .init(roomID: "!current:example.org", eventID: "$one"),
+                                       .init(roomID: "!left:example.org", eventID: "$two")
+                                   ],
+                                   roomPinRevisions: [
+                                       "!current:example.org": "[\"$one\"]",
+                                       "!new:example.org": "[]",
+                                       "!left:example.org": "[\"$two\"]"
+                                   ])
+        
+        let snapshot = NitroTaskService.taskIndexSnapshot(index: index,
+                                                          observedPinRevisions: [
+                                                              "!current:example.org": "[\"$one\"]",
+                                                              "!new:example.org": "[\"$three\"]"
+                                                          ],
+                                                          ineligibleRoomIDs: ["!left:example.org", "!irrelevant:example.org"])
+        
+        #expect(snapshot.roomIDsRequiringRefresh == ["!new:example.org", "!left:example.org"])
     }
     
     @Test

@@ -35,24 +35,19 @@ struct NitroTasksScreenViewModelTests {
     }
     
     @Test
-    func showsCachedTasksWhileRefreshing() async throws {
+    func showsCachedTasksWithoutAutomaticFullRefresh() {
         let cachedTask = makeTask()
-        let refreshedTask = makeTask(id: "$fresh:example.org")
         let service = NitroTaskServiceMock()
         service.cachedTaskList = .init(tasks: [cachedTask], unavailableRoomCount: 1)
-        service.loadTasksReturnValue = .success(.init(tasks: [refreshedTask], unavailableRoomCount: 0))
         let viewModel = NitroTasksScreenViewModel(taskService: service)
         
         #expect(viewModel.context.viewState.tasks == [cachedTask])
         #expect(viewModel.context.viewState.hasLoaded)
         #expect(viewModel.context.viewState.unavailableRoomCount == 1)
-        let refreshed = deferFulfillment(viewModel.context.observe(\.viewState.tasks)) { $0 == [refreshedTask] }
         
         viewModel.context.send(viewAction: .load)
-        try await refreshed.fulfill()
         
-        #expect(service.loadTasksCallsCount == 1)
-        #expect(viewModel.context.viewState.unavailableRoomCount == 0)
+        #expect(service.loadTasksCallsCount == 0)
     }
     
     @Test
@@ -193,7 +188,7 @@ struct NitroTasksScreenViewModelTests {
         
         viewModel.context.send(viewAction: .retryPendingTasks)
         
-        #expect(service.startPendingTaskRecoveryCallsCount == 1)
+        #expect(service.retryPendingTaskRecoveryCallsCount == 1)
     }
     
     @Test

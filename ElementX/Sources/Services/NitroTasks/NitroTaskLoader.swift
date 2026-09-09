@@ -67,6 +67,21 @@ struct NitroTaskLoader {
         let hydrationPerformance = NitroPerformance.start(name: "Nitro Tasks hydration",
                                                           operation: "nitro.tasks.hydrate")
         hydrationPerformance.setData(allKeys.count, key: "nitro.tasks.task_count")
+        hydrationPerformance.setData(directoryResolution.hints.count, key: "nitro.tasks.directory_hint_count")
+        hydrationPerformance.setData(directoryResolution.verificationRequired.count,
+                                     key: "nitro.tasks.verification_required_count")
+        let directoryCoverage = if allKeys.isEmpty {
+            "empty"
+        } else if directoryResolution.hints.isEmpty {
+            "none"
+        } else if directoryResolution.hints.count == allKeys.count {
+            "full"
+        } else {
+            "partial"
+        }
+        hydrationPerformance.setTag(directoryCoverage, key: "nitro.tasks.directory_coverage")
+        hydrationPerformance.setTag(directoryResolution.verificationRequired.isEmpty ? "no" : "yes",
+                                    key: "nitro.tasks.verification_required")
         do {
             let result = try await load(preparedTaskRooms,
                                         ownUserID: ownUserID,
@@ -74,7 +89,11 @@ struct NitroTaskLoader {
                                         index: index,
                                         directoryResolution: directoryResolution)
             hydrationPerformance.setData(result.list.tasks.count, key: "nitro.tasks.loaded_count")
-            hydrationPerformance.finish(.success)
+            hydrationPerformance.setData(result.recoveryCandidates.count, key: "nitro.tasks.recovery_candidate_count")
+            hydrationPerformance.setData(result.directoryUpdates.count, key: "nitro.tasks.directory_update_count")
+            hydrationPerformance.setTag(result.recoveryCandidates.isEmpty ? "complete" : "partial",
+                                        key: "nitro.tasks.hydration_result")
+            hydrationPerformance.finish(result.recoveryCandidates.isEmpty ? .success : .failure)
             return result
         } catch {
             hydrationPerformance.finish(Task.isCancelled ? .cancelled : .failure)

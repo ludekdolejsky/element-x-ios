@@ -27,17 +27,15 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
     var loadTasksReturnValue: Result<NitroTaskList, NitroTaskServiceError> = .success(.init(tasks: [], unavailableRoomCount: 0))
     var loadTasksClosure: (() async -> Result<NitroTaskList, NitroTaskServiceError>)?
     private(set) var loadTasksCallsCount = 0
-    var refreshKnownTasksReturnValue: Result<NitroTaskList, NitroTaskServiceError>?
-    var refreshKnownTasksClosure: (() async -> Result<NitroTaskList, NitroTaskServiceError>)?
-    private(set) var refreshKnownTasksCallsCount = 0
     var refreshTasksReturnValue: Result<NitroTaskList, NitroTaskServiceError> = .success(.init(tasks: [], unavailableRoomCount: 0))
     var refreshTasksClosure: ((Set<String>) async -> Result<NitroTaskList, NitroTaskServiceError>)?
     private(set) var refreshTasksReceivedRoomIDs = [Set<String>]()
     private(set) var startPendingTaskRecoveryCallsCount = 0
+    private(set) var retryPendingTaskRecoveryCallsCount = 0
     
-    var currentTaskIndexRevisionReturnValue: String?
-    var currentTaskIndexRevisionClosure: (() async -> String?)?
-    private(set) var currentTaskIndexRevisionCallsCount = 0
+    var currentTaskIndexSnapshotReturnValue: NitroTaskIndexSnapshot?
+    var currentTaskIndexSnapshotClosure: (() async -> NitroTaskIndexSnapshot?)?
+    private(set) var currentTaskIndexSnapshotCallsCount = 0
     
     var loadRoomsReturnValue: Result<[NitroTaskRoom], NitroTaskServiceError> = .success([])
     var loadRoomsClosure: (() async -> Result<[NitroTaskRoom], NitroTaskServiceError>)?
@@ -76,19 +74,14 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
         return loadCachedTasksReturnValue ?? cachedTaskList
     }
     
-    func currentTaskIndexRevision() async -> String? {
-        currentTaskIndexRevisionCallsCount += 1
-        return await currentTaskIndexRevisionClosure?() ?? currentTaskIndexRevisionReturnValue
+    func currentTaskIndexSnapshot() async -> NitroTaskIndexSnapshot? {
+        currentTaskIndexSnapshotCallsCount += 1
+        return await currentTaskIndexSnapshotClosure?() ?? currentTaskIndexSnapshotReturnValue
     }
     
     func loadTasks() async -> Result<NitroTaskList, NitroTaskServiceError> {
         loadTasksCallsCount += 1
         return await loadTasksClosure?() ?? loadTasksReturnValue
-    }
-    
-    func refreshKnownTasks() async -> Result<NitroTaskList, NitroTaskServiceError> {
-        refreshKnownTasksCallsCount += 1
-        return await refreshKnownTasksClosure?() ?? refreshKnownTasksReturnValue ?? loadTasksReturnValue
     }
     
     func refreshTasks(in roomIDs: Set<String>) async -> Result<NitroTaskList, NitroTaskServiceError> {
@@ -98,6 +91,10 @@ final class NitroTaskServiceMock: NitroTaskServiceProtocol {
     
     func startPendingTaskRecovery() {
         startPendingTaskRecoveryCallsCount += 1
+    }
+    
+    func retryPendingTaskRecovery() {
+        retryPendingTaskRecoveryCallsCount += 1
     }
     
     func loadRooms() async -> Result<[NitroTaskRoom], NitroTaskServiceError> {

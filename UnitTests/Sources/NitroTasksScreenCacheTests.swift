@@ -11,19 +11,10 @@ import Testing
 
 struct NitroTasksScreenCacheTests {
     @Test
-    func hydratesPersistentSnapshotBeforeNetworkRefresh() async throws {
+    func loadsPersistentSnapshotWithoutNetworkHydration() async throws {
         let cachedTask = makeTask()
-        let refreshedTask = makeTask(id: "$fresh:example.org")
         let service = NitroTaskServiceMock()
         service.loadCachedTasksReturnValue = .init(tasks: [cachedTask], unavailableRoomCount: 1)
-        let (networkResults, networkContinuation) = AsyncStream.makeStream(of: Result<NitroTaskList, NitroTaskServiceError>.self)
-        service.refreshKnownTasksClosure = {
-            for await result in networkResults {
-                return result
-            }
-            return .failure(.cancelled)
-        }
-        service.loadTasksReturnValue = .success(.init(tasks: [refreshedTask], unavailableRoomCount: 0))
         let viewModel = NitroTasksScreenViewModel(taskService: service)
         let hydrated = deferFulfillment(viewModel.context.observe(\.viewState.tasks)) { $0 == [cachedTask] }
         
@@ -31,54 +22,25 @@ struct NitroTasksScreenCacheTests {
         try await hydrated.fulfill()
         
         #expect(viewModel.context.viewState.hasLoaded)
-        #expect(viewModel.context.viewState.isLoading)
-        #expect(service.loadCachedTasksCallsCount == 1)
-        viewModel.context.send(viewAction: .setStatus(.done, task: cachedTask))
-        #expect(service.updateTaskReceivedArguments.isEmpty)
-        
-        let refreshed = deferFulfillment(viewModel.context.observe(\.viewState.tasks)) { $0 == [refreshedTask] }
-        networkContinuation.yield(.success(.init(tasks: [refreshedTask], unavailableRoomCount: 0)))
-        networkContinuation.finish()
-        try await refreshed.fulfill()
         #expect(!viewModel.context.viewState.isLoading)
-        #expect(service.refreshKnownTasksCallsCount == 1)
+        #expect(viewModel.context.viewState.canMutateTasks)
+        #expect(service.loadCachedTasksCallsCount == 1)
+        #expect(service.loadTasksCallsCount == 0)
     }
     
     @Test
-    func finishesVisibleRefreshBeforeBackgroundDiscovery() async throws {
+    func inMemorySnapshotDoesNotRefreshWhenViewLoads() {
         let cachedTask = makeTask()
-        let refreshedTask = makeTask(id: "$fresh:example.org")
-        let discoveredTask = makeTask(id: "$discovered:example.org")
         let service = NitroTaskServiceMock()
         service.cachedTaskList = .init(tasks: [cachedTask], unavailableRoomCount: 0)
-        service.refreshKnownTasksReturnValue = .success(.init(tasks: [refreshedTask], unavailableRoomCount: 0))
-        let (discoveryResults, discoveryContinuation) = AsyncStream.makeStream(of: Result<NitroTaskList, NitroTaskServiceError>.self)
-        let (discoveryStarts, discoveryStartContinuation) = AsyncStream.makeStream(of: Void.self)
-        service.loadTasksClosure = {
-            discoveryStartContinuation.yield()
-            for await result in discoveryResults {
-                return result
-            }
-            return .failure(.cancelled)
-        }
         let viewModel = NitroTasksScreenViewModel(taskService: service)
-        let refreshed = deferFulfillment(viewModel.context.observe(\.viewState.tasks)) { $0 == [refreshedTask] }
         
         viewModel.context.send(viewAction: .load)
-        try await refreshed.fulfill()
-        for await _ in discoveryStarts {
-            break
-        }
         
+        #expect(viewModel.context.viewState.tasks == [cachedTask])
         #expect(!viewModel.context.viewState.isLoading)
-        #expect(service.refreshKnownTasksCallsCount == 1)
-        #expect(service.loadTasksCallsCount == 1)
-        
-        let discovered = deferFulfillment(viewModel.context.observe(\.viewState.tasks)) { $0 == [discoveredTask] }
-        discoveryContinuation.yield(.success(.init(tasks: [discoveredTask], unavailableRoomCount: 0)))
-        discoveryContinuation.finish()
-        discoveryStartContinuation.finish()
-        try await discovered.fulfill()
+        #expect(service.loadCachedTasksCallsCount == 0)
+        #expect(service.loadTasksCallsCount == 0)
     }
     
     @Test
@@ -99,6 +61,110 @@ struct NitroTasksScreenCacheTests {
         
         #expect(service.refreshTasksReceivedRoomIDs == [[task.roomID]])
         #expect(service.loadTasksCallsCount == 1)
+    }
+    
+    @Test
+    func roomEntryRefreshesOnlyThatRoom() async {
+        let task = makeTask()
+        let service = NitroTaskServiceMock()
+        service.cachedTaskList = .init(tasks: [task], unavailableRoomCount: 0)
+        let (refreshes, continuation) = AsyncStream.makeStream(of: Set<String>.self)
+        service.refreshTasksClosure = { roomIDs in
+            continuation.yield(roomIDs)
+            return .success(.init(tasks: [task], unavailableRoomCount: 0))
+        }
+        let viewModel = NitroTasksScreenViewModel(taskService: service)
+        
+        viewModel.show(room: .init(id: task.roomID, name: task.roomName))
+        for await roomIDs in refreshes {
+            #expect(roomIDs == [task.roomID])
+            break
+        }
+        continuation.finish()
+        
+        #expect(service.refreshTasksReceivedRoomIDs == [[task.roomID]])
+        #expect(service.loadTasksCallsCount == 0)
+    }
+    
+    @Test
+    func persistedRoomChangeWaitsForSnapshotHydration() async {
+        let task = makeTask()
+        let service = NitroTaskServiceMock()
+        service.loadCachedTasksReturnValue = .init(tasks: [task], unavailableRoomCount: 0)
+        let (refreshes, continuation) = AsyncStream.makeStream(of: Set<String>.self)
+        service.refreshTasksClosure = { roomIDs in
+            continuation.yield(roomIDs)
+            return .success(.init(tasks: [task], unavailableRoomCount: 0))
+        }
+        let viewModel = NitroTasksScreenViewModel(taskService: service)
+        
+        viewModel.refresh(roomIDs: [task.roomID])
+        viewModel.context.send(viewAction: .load)
+        for await roomIDs in refreshes {
+            #expect(roomIDs == [task.roomID])
+            break
+        }
+        continuation.finish()
+        
+        #expect(service.loadCachedTasksCallsCount == 1)
+        #expect(service.refreshTasksReceivedRoomIDs == [[task.roomID]])
+        #expect(service.loadTasksCallsCount == 0)
+    }
+    
+    @Test
+    func offlineTaskIndexChangeRefreshesOnlyChangedRooms() async {
+        let task = makeTask()
+        let addedKey = NitroTaskDirectoryKey(roomID: "!new:example.org", taskEventID: "$new:example.org")
+        let service = NitroTaskServiceMock()
+        service.loadCachedTasksReturnValue = .init(tasks: [task], unavailableRoomCount: 0)
+        service.currentTaskIndexSnapshotReturnValue = .init(entries: [
+            .init(roomID: task.roomID, taskEventID: task.id),
+            addedKey
+        ], roomIDsRequiringRefresh: [])
+        let (refreshes, continuation) = AsyncStream.makeStream(of: Set<String>.self)
+        service.refreshTasksClosure = { roomIDs in
+            continuation.yield(roomIDs)
+            return .success(.init(tasks: [task], unavailableRoomCount: 0))
+        }
+        let viewModel = NitroTasksScreenViewModel(taskService: service)
+        
+        viewModel.context.send(viewAction: .load)
+        for await roomIDs in refreshes {
+            #expect(roomIDs == [addedKey.roomID])
+            break
+        }
+        continuation.finish()
+        
+        #expect(service.currentTaskIndexSnapshotCallsCount == 1)
+        #expect(service.refreshTasksReceivedRoomIDs == [[addedKey.roomID]])
+        #expect(service.loadTasksCallsCount == 0)
+    }
+    
+    @Test
+    func changedPinRevisionRefreshesOnlyThatRoom() async {
+        let task = makeTask()
+        let changedRoomID = "!changed:example.org"
+        let service = NitroTaskServiceMock()
+        service.loadCachedTasksReturnValue = .init(tasks: [task], unavailableRoomCount: 0)
+        service.currentTaskIndexSnapshotReturnValue = .init(entries: [
+            .init(roomID: task.roomID, taskEventID: task.id)
+        ], roomIDsRequiringRefresh: [changedRoomID])
+        let (refreshes, continuation) = AsyncStream.makeStream(of: Set<String>.self)
+        service.refreshTasksClosure = { roomIDs in
+            continuation.yield(roomIDs)
+            return .success(.init(tasks: [task], unavailableRoomCount: 0))
+        }
+        let viewModel = NitroTasksScreenViewModel(taskService: service)
+        
+        viewModel.context.send(viewAction: .load)
+        for await roomIDs in refreshes {
+            #expect(roomIDs == [changedRoomID])
+            break
+        }
+        continuation.finish()
+        
+        #expect(service.refreshTasksReceivedRoomIDs == [[changedRoomID]])
+        #expect(service.loadTasksCallsCount == 0)
     }
     
     @Test

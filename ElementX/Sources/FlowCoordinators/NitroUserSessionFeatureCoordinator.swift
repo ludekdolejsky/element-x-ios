@@ -22,7 +22,7 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
     }
     
     private struct TasksExternalChangeSnapshot: Equatable {
-        let indexRevision: String?
+        let index: NitroTaskIndexSnapshot?
     }
     
     private static let tasksExternalChangeDebounceSeconds = 1
@@ -41,6 +41,7 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
     private var externalChangeCheckTask: Task<Void, Never>?
     private var reminderPresentationTask: Task<Void, Never>?
     private var externalChangeSnapshot: TasksExternalChangeSnapshot?
+    private var pendingTaskRoomIDs = Set<String>()
     private var notifiedCatchUpOperationIDs = Set<String>()
     private var hasStarted = false
     
@@ -111,6 +112,7 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
         externalChangeCheckTask = nil
         reminderPresentationTask?.cancel()
         reminderPresentationTask = nil
+        pendingTaskRoomIDs.removeAll()
         cancellables.removeAll()
         clientProxy.nitroTaskService.stopDirectory()
         clientProxy.nitroCatchUpService.stop()
@@ -158,14 +160,16 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
             .store(in: &cancellables)
         
         let selectedTabs = parameters.navigationTabCoordinator.observe(\.selectedTab)
-        tabObservationTask = Task(name: "Observe Nitro tasks tab") { [weak tasksScreenCoordinator] in
-            var wasTasksSelected = parameters.navigationTabCoordinator.selectedTab == .tasks
+        let initiallySelected = parameters.navigationTabCoordinator.selectedTab == .tasks
+        tabObservationTask = Task(name: "Observe Nitro tasks tab") { [weak self] in
+            var wasTasksSelected = initiallySelected
             for await selectedTab in selectedTabs {
                 guard !Task.isCancelled else { return }
                 let isTasksSelected = selectedTab == .tasks
                 defer { wasTasksSelected = isTasksSelected }
                 guard isTasksSelected, !wasTasksSelected else { continue }
-                tasksScreenCoordinator?.refresh()
+                guard let self else { return }
+                refreshPendingTaskChanges()
             }
         }
         
@@ -178,8 +182,12 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
             }
             .filter { !$0.isEmpty }
             .sink { [weak self] roomIDs in
-                guard let self, parameters.navigationTabCoordinator.selectedTab == .tasks else { return }
-                tasksScreenCoordinator.refresh(roomIDs: roomIDs)
+                guard let self else { return }
+                if parameters.navigationTabCoordinator.selectedTab == .tasks {
+                    tasksScreenCoordinator.refresh(roomIDs: roomIDs)
+                } else {
+                    pendingTaskRoomIDs.formUnion(roomIDs)
+                }
             }
             .store(in: &cancellables)
         
@@ -188,7 +196,7 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
             .debounce(for: .seconds(Self.tasksExternalChangeDebounceSeconds), scheduler: DispatchQueue.main)
             .throttle(for: .seconds(Self.tasksExternalChangeCheckIntervalSeconds), scheduler: DispatchQueue.main, latest: true)
             .sink { [weak self] _ in
-                guard let self, parameters.navigationTabCoordinator.selectedTab == .tasks else { return }
+                guard let self else { return }
                 checkForExternalTaskIndexChange()
             }
             .store(in: &cancellables)
@@ -237,12 +245,29 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
         let taskService = clientProxy.nitroTaskService
         externalChangeCheckTask?.cancel()
         externalChangeCheckTask = Task(name: "Check external Nitro task changes") { [weak self] in
-            let snapshot = await TasksExternalChangeSnapshot(indexRevision: taskService.currentTaskIndexRevision())
+            let snapshot = await TasksExternalChangeSnapshot(index: taskService.currentTaskIndexSnapshot())
             guard !Task.isCancelled, let self else { return }
             let previousSnapshot = externalChangeSnapshot
             externalChangeSnapshot = snapshot
-            guard let previousSnapshot, previousSnapshot != snapshot else { return }
-            tasksScreenCoordinator.refresh()
+            guard let index = snapshot.index else { return }
+            let changedEntryRoomIDs = previousSnapshot?.index.map {
+                Set($0.entries.symmetricDifference(index.entries).map(\.roomID))
+            } ?? []
+            let roomIDs = changedEntryRoomIDs.union(index.roomIDsRequiringRefresh)
+            guard !roomIDs.isEmpty else { return }
+            if parameters.navigationTabCoordinator.selectedTab == .tasks {
+                tasksScreenCoordinator.refresh(roomIDs: roomIDs)
+            } else {
+                pendingTaskRoomIDs.formUnion(roomIDs)
+            }
+        }
+    }
+    
+    private func refreshPendingTaskChanges() {
+        if !pendingTaskRoomIDs.isEmpty {
+            let roomIDs = pendingTaskRoomIDs
+            pendingTaskRoomIDs.removeAll()
+            tasksScreenCoordinator.refresh(roomIDs: roomIDs)
         }
     }
     

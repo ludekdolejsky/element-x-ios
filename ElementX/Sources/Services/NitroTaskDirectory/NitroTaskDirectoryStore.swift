@@ -42,6 +42,7 @@ nonisolated protocol NitroTaskDirectoryStoreProtocol: Sendable {
                                       expectedTokens: [NitroTaskDirectoryKey: UInt64],
                                       runToken: NitroTaskDirectoryRunToken?) async -> Bool
     func pendingUpdates() async -> [NitroTaskDirectoryPendingUpdate]
+    func dirtyRoomIDs() async -> Set<String>
     func acknowledge(_ updates: [NitroTaskDirectoryPendingUpdate], runToken: NitroTaskDirectoryRunToken?) async
 }
 
@@ -215,6 +216,12 @@ actor NitroTaskDirectoryStore: NitroTaskDirectoryStoreProtocol {
     
     func pendingUpdates() async -> [NitroTaskDirectoryPendingUpdate] {
         loadIfNeeded().pendingUpdates
+    }
+    
+    func dirtyRoomIDs() async -> Set<String> {
+        let snapshot = loadIfNeeded()
+        let keys = snapshot.verificationRequired.union(snapshot.pendingUpdates.map(\.update.key))
+        return Set(keys.map(\.roomID))
     }
     
     func acknowledge(_ updates: [NitroTaskDirectoryPendingUpdate], runToken: NitroTaskDirectoryRunToken? = nil) async {

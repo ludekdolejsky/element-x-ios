@@ -7,6 +7,11 @@
 
 import Combine
 
+nonisolated struct NitroTaskIndexSnapshot: Equatable, Sendable {
+    let entries: Set<NitroTaskDirectoryKey>
+    let roomIDsRequiringRefresh: Set<String>
+}
+
 protocol NitroTaskServiceProtocol {
     var updatesPublisher: AnyPublisher<NitroTaskServiceUpdate, Never> { get }
     var changedRoomIDsPublisher: AnyPublisher<Set<String>, Never> { get }
@@ -15,11 +20,11 @@ protocol NitroTaskServiceProtocol {
     func startDirectory()
     func stopDirectory()
     func loadCachedTasks() async -> NitroTaskList?
-    func currentTaskIndexRevision() async -> String?
-    func refreshKnownTasks() async -> Result<NitroTaskList, NitroTaskServiceError>
+    func currentTaskIndexSnapshot() async -> NitroTaskIndexSnapshot?
     func loadTasks() async -> Result<NitroTaskList, NitroTaskServiceError>
     func refreshTasks(in roomIDs: Set<String>) async -> Result<NitroTaskList, NitroTaskServiceError>
     func startPendingTaskRecovery()
+    func retryPendingTaskRecovery()
     func loadRooms() async -> Result<[NitroTaskRoom], NitroTaskServiceError>
     func loadMembers(roomID: String) async -> Result<[NitroTaskMember], NitroTaskServiceError>
     func createTask(_ request: NitroTaskCreationRequest) async -> Result<NitroTask, NitroTaskServiceError>

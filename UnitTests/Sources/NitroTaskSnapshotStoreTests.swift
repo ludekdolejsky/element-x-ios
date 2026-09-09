@@ -5,13 +5,14 @@
 // Please see LICENSE files in the repository root for full details.
 //
 
+import CryptoKit
 @testable import ElementX
 import Foundation
 import Testing
 
 struct NitroTaskSnapshotStoreTests {
     @Test
-    func roundTripsEncryptedTaskSnapshotAsReadOnly() async throws {
+    func roundTripsEncryptedTaskSnapshot() async throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = NitroTaskSnapshotStore(cacheDirectory: directory, passphrase: "correct horse battery staple")
@@ -31,9 +32,9 @@ struct NitroTaskSnapshotStoreTests {
         #expect(loadedTask.state == task.state)
         #expect(loadedTask.assigneeDisplayName == task.assigneeDisplayName)
         #expect(loadedTask.updatedDate == task.updatedDate)
-        #expect(!loadedTask.canUpdate)
-        #expect(!loadedTask.canArchive)
-        #expect(!loadedTask.canEditContent)
+        #expect(loadedTask.canUpdate)
+        #expect(loadedTask.canArchive)
+        #expect(loadedTask.canEditContent)
     }
     
     @Test
@@ -62,6 +63,31 @@ struct NitroTaskSnapshotStoreTests {
         await writer.save(.init(tasks: [makeTask()], unavailableRoomCount: 0))
         
         #expect(await reader.load() == nil)
+    }
+    
+    @Test
+    func rejectsLegacySnapshotWithoutCachedPermissions() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let passphrase = "test-passphrase"
+        let context = Data("com.nitrovery.elementx.task-snapshot-v1".utf8)
+        let key = HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: Data(passphrase.utf8)),
+                                         salt: context,
+                                         info: context,
+                                         outputByteCount: 32)
+        let data = try JSONSerialization.data(withJSONObject: [
+            "version": 1,
+            "tasks": [],
+            "unavailableRoomCount": 0,
+            "pendingEventCount": 0
+        ])
+        let sealedBox = try AES.GCM.seal(data, using: key, authenticating: context)
+        let fileURL = directory.appending(component: "nitro-task-snapshot-v1")
+        try #require(sealedBox.combined).write(to: fileURL)
+        let store = NitroTaskSnapshotStore(cacheDirectory: directory, passphrase: passphrase)
+        
+        #expect(await store.load() == nil)
+        #expect(!FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)))
     }
     
     @Test

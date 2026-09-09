@@ -37,17 +37,24 @@ final class NitroTaskDirectoryService: NitroTaskDirectoryServiceProtocol {
     }
     
     private struct RoomObservation {
-        let timelineHandle: TaskHandle
-        let eventCacheHandle: TaskHandle
+        let pinnedEventsHandle: TaskHandle
+        let timelineHandle: TaskHandle?
+        let eventCacheHandle: TaskHandle?
+        
+        var observesTimeline: Bool {
+            timelineHandle != nil
+        }
         
         func cancel() {
-            timelineHandle.cancel()
-            eventCacheHandle.cancel()
+            pinnedEventsHandle.cancel()
+            timelineHandle?.cancel()
+            eventCacheHandle?.cancel()
         }
     }
     
     private static let initialRetryDelay: Duration = .seconds(1)
     private static let maximumRetryDelay: Duration = .seconds(30)
+    private static let pinnedEventsType = "m.room.pinned_events"
     private let client: ClientProtocol
     private let api: any NitroTaskDirectoryClientProtocol
     private let store: any NitroTaskDirectoryStoreProtocol
@@ -90,6 +97,7 @@ final class NitroTaskDirectoryService: NitroTaskDirectoryServiceProtocol {
         activeSubscriptionName = subscriptionName
         subscribedRoomIDs = []
         roomObservationRefreshTask = Task { [weak self] in
+            await self?.publishPersistedChanges(runID: runID)
             while !Task.isCancelled {
                 await self?.refreshRoomObservations(runID: runID, subscriptionName: subscriptionName)
                 do {
@@ -100,6 +108,12 @@ final class NitroTaskDirectoryService: NitroTaskDirectoryServiceProtocol {
             }
         }
         scheduleFlush(after: .zero)
+    }
+    
+    private func publishPersistedChanges(runID: UUID) async {
+        let roomIDs = await store.dirtyRoomIDs()
+        guard self.runID == runID, !Task.isCancelled, !roomIDs.isEmpty else { return }
+        changedRoomIDsSubject.send(roomIDs)
     }
     
     func stop() {
@@ -268,23 +282,43 @@ final class NitroTaskDirectoryService: NitroTaskDirectoryServiceProtocol {
             } catch { }
         }
         guard self.runID == runID, !Task.isCancelled else { return }
-        let rooms = client.rooms().filter {
-            indexedRoomIDs.contains($0.id()) && $0.membership() == .joined && !$0.isSpace()
-        }
+        let rooms = client.rooms().filter { $0.membership() == .joined && !$0.isSpace() }
         let roomIDs = Set(rooms.map { $0.id() })
         let removedRoomIDs = roomObservations.keys.filter { !roomIDs.contains($0) }
         for roomID in removedRoomIDs {
             roomObservations[roomID]?.cancel()
             roomObservations[roomID] = nil
         }
-        for room in rooms where roomObservations[room.id()] == nil {
+        for room in rooms {
             let roomID = room.id()
-            let listener = SDKListener<RoomTimelineUpdate>.onMainActor { [weak self] update in
-                self?.handle(update, roomID: roomID, runID: runID)
+            let observesTimeline = indexedRoomIDs.contains(roomID)
+            if roomObservations[roomID]?.observesTimeline == observesTimeline {
+                continue
             }
-            roomObservations[roomID] = .init(timelineHandle: room.subscribeToTimelineUpdates(listener: listener),
-                                             eventCacheHandle: room.subscribeToEventCacheUpdates(listener: listener))
+            roomObservations[roomID]?.cancel()
+            let pinnedEventsListener = SDKListener<Void>.onMainActor { [weak self] _ in
+                self?.handlePinnedEventsChange(roomID: roomID, runID: runID)
+            }
+            let pinnedEventsHandle = room.subscribeToRoomStateUpdates(eventTypes: [Self.pinnedEventsType],
+                                                                      listener: pinnedEventsListener)
+            if observesTimeline {
+                let timelineListener = SDKListener<RoomTimelineUpdate>.onMainActor { [weak self] update in
+                    self?.handle(update, roomID: roomID, runID: runID)
+                }
+                roomObservations[roomID] = .init(pinnedEventsHandle: pinnedEventsHandle,
+                                                 timelineHandle: room.subscribeToTimelineUpdates(listener: timelineListener),
+                                                 eventCacheHandle: room.subscribeToEventCacheUpdates(listener: timelineListener))
+            } else {
+                roomObservations[roomID] = .init(pinnedEventsHandle: pinnedEventsHandle,
+                                                 timelineHandle: nil,
+                                                 eventCacheHandle: nil)
+            }
         }
+    }
+    
+    private func handlePinnedEventsChange(roomID: String, runID: UUID) {
+        guard self.runID == runID else { return }
+        changedRoomIDsSubject.send([roomID])
     }
     
     private func handle(_ update: RoomTimelineUpdate, roomID: String, runID: UUID) {
@@ -328,29 +362,30 @@ final class NitroTaskDirectoryService: NitroTaskDirectoryServiceProtocol {
         }
         let eventUpdates = await Self.storeUpdates(from: write.update.events, roomID: write.roomID)
         let eventKeys = Set(eventUpdates.map(\.update.key))
-        let mutationTokensBeforeUpdate = if eventKeys.isEmpty {
+        let affectedKeys = eventKeys.union(verificationRequired)
+        let mutationTokensBeforeUpdate = if affectedKeys.isEmpty {
             [NitroTaskDirectoryKey: UInt64]()
         } else {
-            await store.verificationSnapshot(for: eventKeys).mutationTokens
+            await store.verificationSnapshot(for: affectedKeys).mutationTokens
         }
         updates.append(contentsOf: eventUpdates)
         guard runID == write.runID, !Task.isCancelled, !updates.isEmpty || !verificationRequired.isEmpty else { return }
         await store.apply(updates, verificationRequired: verificationRequired, runToken: runToken)
         guard runID == write.runID, !Task.isCancelled else { return }
-        guard !eventKeys.isEmpty else {
+        guard !affectedKeys.isEmpty else {
             scheduleFlush(after: .milliseconds(250))
             return
         }
-        let mutationTokensAfterUpdate = await store.verificationSnapshot(for: eventKeys).mutationTokens
+        let mutationTokensAfterUpdate = await store.verificationSnapshot(for: affectedKeys).mutationTokens
         guard runID == write.runID, !Task.isCancelled else { return }
-        if eventKeys.contains(where: { mutationTokensBeforeUpdate[$0] != mutationTokensAfterUpdate[$0] }) {
+        if affectedKeys.contains(where: { mutationTokensBeforeUpdate[$0] != mutationTokensAfterUpdate[$0] }) {
             changedRoomIDsSubject.send([write.roomID])
         }
         scheduleFlush(after: .milliseconds(250))
     }
     
     nonisolated static func requiresRoomVerification(_ update: RoomTimelineUpdate) -> Bool {
-        update.limited || update.lagged || update.events.contains(where: NitroTaskEventParser.isEncryptedEnvelope)
+        update.limited || update.lagged
     }
     
     @concurrent
