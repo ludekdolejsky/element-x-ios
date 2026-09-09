@@ -128,7 +128,7 @@ struct NitroReminderServiceTests {
               "minute": 5,
               "timezone": "Europe/Prague"
             },
-            "execution_status": "queued",
+            "execution_status": "submitting",
             "last_fired_ts": 1699999000
           }]
         }
@@ -143,11 +143,49 @@ struct NitroReminderServiceTests {
         #expect(reminder.actionKind == .runCodex)
         #expect(reminder.prompt == "Summarise overnight activity")
         #expect(reminder.recurrence == .init(kind: .daily, hour: 9, minute: 5, timeZone: "Europe/Prague"))
-        #expect(reminder.executionStatus == .queued)
+        #expect(reminder.executionStatus == .submitting)
         #expect(reminder.lastFiredDate == Date(timeIntervalSince1970: 1_699_999_000))
         #expect(reminder.messageEventID == nil)
     }
     
+    @Test
+    func toleratesNewReminderMetadataValues() async throws {
+        let data = Data(#"""
+        {
+          "ok": true,
+          "now_ts": 1700000100,
+          "reminders": [{
+            "id": "future-reminder-1",
+            "user_id": "@alice:example.org",
+            "homeserver_url": "https://matrix.example.org",
+            "room_id": "!room:example.org",
+            "room_name": "Nitro team",
+            "event_id": "",
+            "thread_root_id": null,
+            "due_ts": 1700000200,
+            "label": "future",
+            "permalink": "https://matrix.to/#/!room:example.org",
+            "created_ts": 1700000000,
+            "delivered_ts": null,
+            "updated_ts": 1700000000,
+            "status": "pending",
+            "error": null,
+            "action_kind": "future_action",
+            "execution_status": "future_status"
+          }]
+        }
+        """#.utf8)
+        let fixture = try MockNitroReminderURLProtocol.makeFixture(statusCode: 200, data: data)
+        defer { fixture.remove() }
+        let service = NitroReminderService(baseURL: fixture.baseURL, urlSession: makeURLSession())
+
+        let result = try await service.reminders(filter: .upcoming, authentication: authentication).get()
+        let reminder = try #require(result.reminders.first)
+
+        #expect(reminder.actionKind == .notify)
+        #expect(reminder.executionStatus == nil)
+    }
+
     @Test
     func includesBackendErrorMessage() async throws {
         let fixture = try MockNitroReminderURLProtocol.makeFixture(statusCode: 400,

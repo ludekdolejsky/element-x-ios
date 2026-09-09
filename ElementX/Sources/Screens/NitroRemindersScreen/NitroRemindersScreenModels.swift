@@ -88,6 +88,7 @@ struct NitroReminderRowPresentation: Equatable {
             case .waking: UntranslatedL10n.screenNitroRemindersExecutionWakingIos
             case .queued: UntranslatedL10n.screenNitroRemindersExecutionQueuedIos
             case .retrying: UntranslatedL10n.screenNitroRemindersExecutionRetryingIos
+            case .submitting: UntranslatedL10n.screenNitroRemindersExecutionStartingIos
             case .done: UntranslatedL10n.screenNitroRemindersDoneIos
             case .deleted: UntranslatedL10n.screenNitroRemindersExecutionDeletedIos
             }

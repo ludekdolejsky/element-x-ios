@@ -73,6 +73,7 @@ nonisolated enum NitroReminderExecutionStatus: String, Decodable, Equatable, Sen
     case waking
     case queued
     case retrying
+    case submitting
     case done
     case deleted
 }
@@ -202,10 +203,12 @@ nonisolated struct NitroReminder: Decodable, Equatable, Identifiable, Sendable {
         updatedTimestamp = try container.decodeIfPresent(Int.self, forKey: .updatedTimestamp)
         status = try container.decode(NitroReminderStatus.self, forKey: .status)
         error = try container.decodeIfPresent(String.self, forKey: .error)
-        actionKind = try container.decodeIfPresent(NitroReminderActionKind.self, forKey: .actionKind) ?? .notify
+        let actionKindValue = try container.decodeIfPresent(String.self, forKey: .actionKind)
+        actionKind = actionKindValue.flatMap(NitroReminderActionKind.init(rawValue:)) ?? .notify
         prompt = try container.decodeIfPresent(String.self, forKey: .prompt)
         recurrence = try container.decodeIfPresent(NitroReminderRecurrence.self, forKey: .recurrence)
-        executionStatus = try container.decodeIfPresent(NitroReminderExecutionStatus.self, forKey: .executionStatus)
+        let executionStatusValue = try container.decodeIfPresent(String.self, forKey: .executionStatus)
+        executionStatus = executionStatusValue.flatMap(NitroReminderExecutionStatus.init(rawValue:))
         lastFiredTimestamp = try container.decodeIfPresent(Int.self, forKey: .lastFiredTimestamp)
     }
 }

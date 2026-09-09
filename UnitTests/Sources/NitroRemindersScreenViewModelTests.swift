@@ -71,7 +71,8 @@ struct NitroRemindersScreenViewModelTests {
             (.claimed, "Starting"),
             (.waking, "Waking"),
             (.queued, "Queued"),
-            (.retrying, "Retrying")
+            (.retrying, "Retrying"),
+            (.submitting, "Starting")
         ]
         
         for (status, expected) in statuses {
