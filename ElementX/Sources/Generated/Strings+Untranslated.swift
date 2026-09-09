@@ -42,6 +42,10 @@ internal nonisolated enum UntranslatedL10n {
   internal static var actionOpenNitroTaskInRoomIos: String { return UntranslatedL10n.tr("Untranslated", "action_open_nitro_task_in_room_ios") }
   /// Open source message
   internal static var actionOpenNitroTaskSourceIos: String { return UntranslatedL10n.tr("Untranslated", "action_open_nitro_task_source_ios") }
+  /// Open message
+  internal static var actionOpenReminderMessageIos: String { return UntranslatedL10n.tr("Untranslated", "action_open_reminder_message_ios") }
+  /// Open room
+  internal static var actionOpenReminderRoomIos: String { return UntranslatedL10n.tr("Untranslated", "action_open_reminder_room_ios") }
   /// Refresh
   internal static var actionRefreshIos: String { return UntranslatedL10n.tr("Untranslated", "action_refresh_ios") }
   /// Remind me…
@@ -236,6 +240,12 @@ internal nonisolated enum UntranslatedL10n {
   internal static var screenNitroReminderMondayNineIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_monday_nine_ios") }
   /// Tomorrow at 09:00
   internal static var screenNitroReminderTomorrowNineIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminder_tomorrow_nine_ios") }
+  /// Codex prompt unavailable
+  internal static var screenNitroRemindersCodexPromptUnavailableIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_codex_prompt_unavailable_ios") }
+  /// Daily at %1$@ · %2$@
+  internal static func screenNitroRemindersDailyRecurrenceIos(_ p1: Any, _ p2: Any) -> String {
+    return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_daily_recurrence_ios", String(describing: p1), String(describing: p2))
+  }
   /// Done
   internal static var screenNitroRemindersDoneIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_done_ios") }
   /// Due
@@ -258,6 +268,18 @@ internal nonisolated enum UntranslatedL10n {
   internal static var screenNitroRemindersEmptyUpcomingMessageIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_empty_upcoming_message_ios") }
   /// No upcoming reminders
   internal static var screenNitroRemindersEmptyUpcomingTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_empty_upcoming_title_ios") }
+  /// Deleted
+  internal static var screenNitroRemindersExecutionDeletedIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_execution_deleted_ios") }
+  /// Queued
+  internal static var screenNitroRemindersExecutionQueuedIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_execution_queued_ios") }
+  /// Retrying
+  internal static var screenNitroRemindersExecutionRetryingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_execution_retrying_ios") }
+  /// Scheduled
+  internal static var screenNitroRemindersExecutionScheduledIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_execution_scheduled_ios") }
+  /// Starting
+  internal static var screenNitroRemindersExecutionStartingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_execution_starting_ios") }
+  /// Waking
+  internal static var screenNitroRemindersExecutionWakingIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_execution_waking_ios") }
   /// Loading message…
   internal static var screenNitroRemindersLoadingMessageIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_loading_message_ios") }
   /// Message unavailable
@@ -270,6 +292,8 @@ internal nonisolated enum UntranslatedL10n {
   internal static func screenNitroRemindersReminderLabelIos(_ p1: Any) -> String {
     return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_reminder_label_ios", String(describing: p1))
   }
+  /// Runs Codex
+  internal static var screenNitroRemindersRunsCodexIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_runs_codex_ios") }
   /// Reminders
   internal static var screenNitroRemindersTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_title_ios") }
   /// Upcoming

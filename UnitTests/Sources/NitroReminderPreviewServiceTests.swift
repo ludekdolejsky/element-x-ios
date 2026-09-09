@@ -115,6 +115,18 @@ struct NitroReminderPreviewServiceTests {
         #expect(NitroReminderPreviewService.preview(for: "$missing:example.org", in: [proxy]) == nil)
     }
     
+    @Test
+    func skipsCodexRemindersWithoutLoadingMatrixEvents() async {
+        let client = ClientProxyMock(.init())
+        let service = NitroReminderPreviewService(clientProxy: client)
+        let reminder = makeReminder(eventID: "", actionKind: .runCodex)
+        
+        let updates = await collect(from: service, reminder: reminder)
+        
+        #expect(updates.isEmpty)
+        #expect(!client.roomForIdentifierCalled)
+    }
+    
     private func collect(from service: NitroReminderPreviewService, reminder: NitroReminder) async -> [NitroReminderPreviewUpdate] {
         var updates = [NitroReminderPreviewUpdate]()
         await service.loadPreviews(for: [reminder], forceRefresh: false) { update in
@@ -150,13 +162,14 @@ struct NitroReminderPreviewServiceTests {
         return provider
     }
     
-    private func makeReminder() -> NitroReminder {
+    private func makeReminder(eventID: String = "$event:example.org",
+                              actionKind: NitroReminderActionKind = .notify) -> NitroReminder {
         .init(id: "reminder-1",
               userID: "@alice:example.org",
               homeserverURL: "https://matrix.example.org",
               roomID: "!room:example.org",
               roomName: "Nitro team",
-              eventID: "$event:example.org",
+              eventID: eventID,
               threadRootID: nil,
               dueTimestamp: 1_700_000_200,
               label: "in 20 minutes",
@@ -165,6 +178,7 @@ struct NitroReminderPreviewServiceTests {
               deliveredTimestamp: nil,
               updatedTimestamp: nil,
               status: .pending,
-              error: nil)
+              error: nil,
+              actionKind: actionKind)
     }
 }

@@ -278,12 +278,14 @@ final class NitroUserSessionFeatureCoordinator: CoordinatorProtocol {
                 remindersNavigationStackCoordinator?.popToRoot(animated: false)
                 switch action {
                 case .openReminder(let roomID, let eventID, let threadRootID):
-                    if let threadRootID {
+                    if let eventID, let threadRootID {
                         actionsSubject.send(.openRoute(.thread(roomID: roomID,
                                                                threadRootEventID: threadRootID,
                                                                focusEventID: eventID)))
-                    } else {
+                    } else if let eventID {
                         actionsSubject.send(.openRoute(.event(eventID: eventID, roomID: roomID, via: [])))
+                    } else {
+                        actionsSubject.send(.openRoute(.room(roomID: roomID, via: [])))
                     }
                 }
             }

@@ -15,7 +15,7 @@ struct NitroRemindersScreenCoordinatorParameters {
 }
 
 enum NitroRemindersScreenCoordinatorAction {
-    case openReminder(roomID: String, eventID: String, threadRootID: String?)
+    case openReminder(roomID: String, eventID: String?, threadRootID: String?)
 }
 
 final class NitroRemindersScreenCoordinator: CoordinatorProtocol {

@@ -49,7 +49,7 @@ struct NitroReminderServiceTests {
     }
     
     @Test
-    func listsAndDecodesReminders() async throws {
+    func listsAndDecodesLegacyNotifyReminder() async throws {
         let data = Data(#"""
         {
           "ok": true,
@@ -85,11 +85,67 @@ struct NitroReminderServiceTests {
         #expect(reminder.userID == "@alice:example.org")
         #expect(reminder.roomName == "Nitro team")
         #expect(reminder.status == .pending)
+        #expect(reminder.actionKind == .notify)
+        #expect(reminder.prompt == nil)
+        #expect(reminder.recurrence == nil)
+        #expect(reminder.executionStatus == nil)
+        #expect(reminder.lastFiredDate == nil)
+        #expect(reminder.messageEventID == "$event:example.org")
         let request = try #require(fixture.lastRequest)
         #expect(request.url?.path() == "/api/reminders/list")
         let body = try #require(request.httpBody)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(json["status"] as? String == "upcoming")
+    }
+    
+    @Test
+    func listsAndDecodesCodexReminder() async throws {
+        let data = Data(#"""
+        {
+          "ok": true,
+          "now_ts": 1700000100,
+          "reminders": [{
+            "id": "codex-reminder-1",
+            "user_id": "@alice:example.org",
+            "homeserver_url": "https://matrix.example.org",
+            "room_id": "!room:example.org",
+            "room_name": "Nitro team",
+            "event_id": "",
+            "thread_root_id": null,
+            "due_ts": 1700000200,
+            "label": "daily",
+            "permalink": "https://matrix.to/#/!room:example.org",
+            "created_ts": 1700000000,
+            "delivered_ts": null,
+            "updated_ts": 1700000000,
+            "status": "pending",
+            "error": null,
+            "action_kind": "run_codex",
+            "prompt": "Summarise overnight activity",
+            "recurrence": {
+              "kind": "daily",
+              "hour": 9,
+              "minute": 5,
+              "timezone": "Europe/Prague"
+            },
+            "execution_status": "queued",
+            "last_fired_ts": 1699999000
+          }]
+        }
+        """#.utf8)
+        let fixture = try MockNitroReminderURLProtocol.makeFixture(statusCode: 200, data: data)
+        defer { fixture.remove() }
+        let service = NitroReminderService(baseURL: fixture.baseURL, urlSession: makeURLSession())
+        
+        let result = try await service.reminders(filter: .upcoming, authentication: authentication).get()
+        let reminder = try #require(result.reminders.first)
+        
+        #expect(reminder.actionKind == .runCodex)
+        #expect(reminder.prompt == "Summarise overnight activity")
+        #expect(reminder.recurrence == .init(kind: .daily, hour: 9, minute: 5, timeZone: "Europe/Prague"))
+        #expect(reminder.executionStatus == .queued)
+        #expect(reminder.lastFiredDate == Date(timeIntervalSince1970: 1_699_999_000))
+        #expect(reminder.messageEventID == nil)
     }
     
     @Test

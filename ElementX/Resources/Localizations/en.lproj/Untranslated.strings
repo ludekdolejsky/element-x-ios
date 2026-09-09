@@ -48,8 +48,20 @@
 "screen_nitro_reminders_meta_ios" = "Set %1$@ · Due %2$@";
 "screen_nitro_reminders_loading_message_ios" = "Loading message…";
 "screen_nitro_reminders_message_unavailable_ios" = "Message unavailable";
+"screen_nitro_reminders_runs_codex_ios" = "Runs Codex";
+"screen_nitro_reminders_codex_prompt_unavailable_ios" = "Codex prompt unavailable";
+/* Localazy: change %1$@ -> %1$s and %2$@ -> %2$s */
+"screen_nitro_reminders_daily_recurrence_ios" = "Daily at %1$@ · %2$@";
+"screen_nitro_reminders_execution_scheduled_ios" = "Scheduled";
+"screen_nitro_reminders_execution_starting_ios" = "Starting";
+"screen_nitro_reminders_execution_waking_ios" = "Waking";
+"screen_nitro_reminders_execution_queued_ios" = "Queued";
+"screen_nitro_reminders_execution_retrying_ios" = "Retrying";
+"screen_nitro_reminders_execution_deleted_ios" = "Deleted";
 "screen_nitro_reminders_edit_title_ios" = "Edit reminder time";
 "screen_nitro_reminders_edit_hint_ios" = "Set an exact local date and time for this reminder.";
+"action_open_reminder_message_ios" = "Open message";
+"action_open_reminder_room_ios" = "Open room";
 "action_add_nitro_task_ios" = "Add task";
 "action_archive_nitro_task_ios" = "Archive";
 "action_create_nitro_task_ios" = "New task";

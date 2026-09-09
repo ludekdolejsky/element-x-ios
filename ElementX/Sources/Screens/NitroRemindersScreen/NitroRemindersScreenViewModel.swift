@@ -64,7 +64,7 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
             startLoad(forcePreviewRefresh: false)
         case .open(let reminder):
             actionsSubject.send(.openReminder(roomID: reminder.roomID,
-                                              eventID: reminder.eventID,
+                                              eventID: reminder.messageEventID,
                                               threadRootID: reminder.threadRootID))
         case .markDone(let reminder):
             startMutation(.markDone, reminderID: reminder.id)
@@ -141,8 +141,9 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
                   loadTaskID == taskID,
                   state.bindings.filter == filter else { return }
             state.reminders = result.reminders
+            let previewReminderIDs = Set(result.reminders.filter(\.usesMessagePreview).map(\.id))
             state.previews = state.previews.filter { preview in
-                result.reminders.contains { $0.id == preview.key }
+                previewReminderIDs.contains(preview.key)
             }
             state.serverNow = result.now
             state.hasLoaded = true
@@ -158,6 +159,12 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
     
     private func startPreviewLoad(for reminders: [NitroReminder], forceRefresh: Bool) {
         previewTask?.cancel()
+        let reminders = reminders.filter(\.usesMessagePreview)
+        guard !reminders.isEmpty else {
+            previewTask = nil
+            previewTaskID = nil
+            return
+        }
         let taskID = UUID()
         previewTaskID = taskID
         if forceRefresh {

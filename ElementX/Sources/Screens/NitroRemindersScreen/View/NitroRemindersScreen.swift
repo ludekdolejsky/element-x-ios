@@ -87,7 +87,8 @@ struct NitroRemindersScreen: View {
     }
     
     private func reminderRow(_ reminder: NitroReminder) -> some View {
-        HStack(spacing: 12) {
+        let presentation = NitroReminderRowPresentation(reminder: reminder, serverNow: context.viewState.serverNow)
+        return HStack(spacing: 12) {
             Button {
                 context.send(viewAction: .open(reminder))
             } label: {
@@ -97,12 +98,27 @@ struct NitroRemindersScreen: View {
                             .font(.compound.bodySMSemibold)
                             .foregroundStyle(.compound.textPrimary)
                             .lineLimit(1)
+                            .layoutPriority(1)
+                        if let badge = presentation.badge {
+                            Text(badge)
+                                .font(.compound.bodyXS)
+                                .foregroundStyle(.compound.textOnSolidPrimary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.compound.bgActionPrimaryRest, in: Capsule())
+                        }
                         Spacer()
-                        Text(status(for: reminder))
+                        Text(presentation.status)
                             .font(.compound.bodyXS)
                             .foregroundStyle(.compound.textSecondary)
                     }
-                    reminderPreview(reminder)
+                    reminderPreview(reminder, presentation: presentation)
+                    if let recurrence = presentation.recurrence {
+                        Text(recurrence)
+                            .font(.compound.bodyXS)
+                            .foregroundStyle(.compound.textSecondary)
+                            .lineLimit(1)
+                    }
                     Text(UntranslatedL10n.screenNitroRemindersMetaIos(formatted(reminder.createdDate), formatted(reminder.dueDate)))
                         .font(.compound.bodyXS)
                         .foregroundStyle(.compound.textSecondary)
@@ -115,21 +131,26 @@ struct NitroRemindersScreen: View {
             if context.viewState.busyReminderID == reminder.id {
                 ProgressView()
             } else {
-                reminderMenu(reminder)
+                reminderMenu(reminder, presentation: presentation)
             }
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .contextMenu {
             if context.viewState.busyReminderID != reminder.id {
-                reminderMenuContent(reminder)
+                reminderMenuContent(reminder, presentation: presentation)
             }
         }
     }
     
     @ViewBuilder
-    private func reminderPreview(_ reminder: NitroReminder) -> some View {
-        if let preview = context.viewState.previews[reminder.id] {
+    private func reminderPreview(_ reminder: NitroReminder, presentation: NitroReminderRowPresentation) -> some View {
+        if let prompt = presentation.prompt {
+            Text(prompt)
+                .font(.compound.bodyMD)
+                .foregroundStyle(.compound.textPrimary)
+                .lineLimit(3)
+        } else if let preview = context.viewState.previews[reminder.id] {
             Text(preview.text)
                 .font(.compound.bodyMD)
                 .foregroundStyle(preview.isAvailable ? .compound.textPrimary : .compound.textSecondary)
@@ -157,9 +178,9 @@ struct NitroRemindersScreen: View {
         }
     }
     
-    private func reminderMenu(_ reminder: NitroReminder) -> some View {
+    private func reminderMenu(_ reminder: NitroReminder, presentation: NitroReminderRowPresentation) -> some View {
         Menu {
-            reminderMenuContent(reminder)
+            reminderMenuContent(reminder, presentation: presentation)
         } label: {
             Image(systemSymbol: .ellipsis)
                 .frame(width: 44, height: 44)
@@ -170,11 +191,11 @@ struct NitroRemindersScreen: View {
     }
     
     @ViewBuilder
-    private func reminderMenuContent(_ reminder: NitroReminder) -> some View {
+    private func reminderMenuContent(_ reminder: NitroReminder, presentation: NitroReminderRowPresentation) -> some View {
         Button {
             context.send(viewAction: .open(reminder))
         } label: {
-            Label(UntranslatedL10n.actionOpenIos, icon: \.visibilityOn)
+            Label(presentation.openAction, icon: \.visibilityOn)
         }
         
         if reminder.status != .done {
@@ -269,16 +290,6 @@ struct NitroRemindersScreen: View {
         case .upcoming: UntranslatedL10n.screenNitroRemindersEmptyUpcomingMessageIos
         case .done: UntranslatedL10n.screenNitroRemindersEmptyDoneMessageIos
         }
-    }
-    
-    private func status(for reminder: NitroReminder) -> String {
-        if reminder.status == .done {
-            return UntranslatedL10n.screenNitroRemindersDoneIos
-        }
-        if reminder.dueDate <= context.viewState.serverNow {
-            return UntranslatedL10n.screenNitroRemindersDueNowIos
-        }
-        return UntranslatedL10n.screenNitroRemindersUpcomingIos
     }
     
     private func formatted(_ date: Date) -> String {

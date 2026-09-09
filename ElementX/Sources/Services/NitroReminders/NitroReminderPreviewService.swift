@@ -97,8 +97,9 @@ final class NitroReminderPreviewService: NitroReminderPreviewServiceProtocol {
                                        update: @escaping @MainActor @Sendable (NitroReminderPreviewUpdate) -> Void) async {
         var reminderIDsByTarget = [Target: [String]]()
         var targets = [Target]()
-        for reminder in reminders {
-            let target = Target(roomID: reminder.roomID, eventID: reminder.eventID)
+        for reminder in reminders where reminder.usesMessagePreview {
+            guard let eventID = reminder.messageEventID else { continue }
+            let target = Target(roomID: reminder.roomID, eventID: eventID)
             if reminderIDsByTarget[target] == nil {
                 targets.append(target)
             }
