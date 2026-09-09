@@ -69,7 +69,7 @@ enum NitroMessageCopyFormatter {
             let content = renderedContent(for: item)
             var representations: [String: Any] = [
                 UTType.utf8PlainText.identifier: content.plainText,
-                UTType.html.identifier: content.html,
+                UTType.html.identifier: utf8HTMLDocument(for: content.html),
                 markdownTypeIdentifier: content.markdown
             ]
             if let rtf = rtfData(from: content.attributedString) {
@@ -77,22 +77,9 @@ enum NitroMessageCopyFormatter {
             }
             return representations
         case .markdown:
-            let markdown = markdown(for: item)
-            return [
-                UTType.utf8PlainText.identifier: markdown,
-                markdownTypeIdentifier: markdown
-            ]
+            return [UTType.utf8PlainText.identifier: markdown(for: item)]
         case .html:
-            let html = html(for: item)
-            let content = renderedContent(forHTML: html, fallbackBody: item.body)
-            var representations: [String: Any] = [
-                UTType.utf8PlainText.identifier: html,
-                UTType.html.identifier: utf8HTMLDocument(for: html)
-            ]
-            if let rtf = rtfData(from: content.attributedString) {
-                representations[UTType.rtf.identifier] = rtf
-            }
-            return representations
+            return [UTType.utf8PlainText.identifier: html(for: item)]
         }
     }
     
@@ -276,6 +263,51 @@ enum NitroMessageCopyFormatter {
         formattedBodyHTML(for: item) ?? item.body
     }
     
+    static func composerCompatibleHTML(fromMarkdown markdown: String) -> String? {
+        let lines = markdown
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+        var html = ""
+        var markdownLines = [String]()
+        var codeLines = [String]()
+        var activeFence: (marker: Character, length: Int)?
+        var foundCodeBlock = false
+        
+        func appendMarkdownLines() {
+            guard !markdownLines.isEmpty else { return }
+            let markdown = markdownLines.joined(separator: "\n")
+            let viewModel = WysiwygComposerViewModel()
+            viewModel.setMarkdownContent(markdown)
+            html += viewModel.content.html.isEmpty && !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? htmlForPlainText(markdown)
+                : viewModel.content.html
+            markdownLines.removeAll(keepingCapacity: true)
+        }
+        
+        for rawLine in lines.map(String.init) {
+            if let fence = activeFence {
+                if isClosingFence(rawLine, matching: fence) {
+                    html += "<pre><code>\(escapedHTML(codeLines.joined(separator: "\n")))</code></pre>"
+                    codeLines.removeAll(keepingCapacity: true)
+                    activeFence = nil
+                    foundCodeBlock = true
+                } else {
+                    codeLines.append(rawLine)
+                }
+            } else if let fence = openingFence(in: rawLine) {
+                appendMarkdownLines()
+                activeFence = fence
+            } else {
+                markdownLines.append(rawLine)
+            }
+        }
+        
+        guard activeFence == nil, foundCodeBlock else { return nil }
+        appendMarkdownLines()
+        return html
+    }
+    
     private struct RenderedContent {
         let plainText: String
         let html: String
@@ -304,12 +336,16 @@ enum NitroMessageCopyFormatter {
     }
     
     private static func htmlForPlainText(_ text: String) -> String {
-        let escaped = text
+        let escaped = escapedHTML(text)
+            .replacingOccurrences(of: "\n", with: "<br>")
+        return "<p>\(escaped)</p>"
+    }
+    
+    private static func escapedHTML(_ text: String) -> String {
+        text
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\n", with: "<br>")
-        return "<p>\(escaped)</p>"
     }
     
     private static func utf8HTMLDocument(for html: String) -> String {

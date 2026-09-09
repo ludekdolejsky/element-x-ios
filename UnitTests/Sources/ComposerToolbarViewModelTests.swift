@@ -1311,6 +1311,48 @@ extension ComposerToolbarViewModelTests {
     }
     
     @Test
+    func pastesNitroMarkdownFencedCodeAsFormattedContent() {
+        let markdown = """
+        Received webhook data:
+        
+        ```
+        {
+          "monitor_id": "5d3cc01479c6d06d5e4af4de337bb84b",
+          "monitor_status": "online"
+        }
+        ```
+        """
+        
+        viewModel.process(viewAction: .pasteRichText(.markdown(markdown)))
+        
+        #expect(wysiwygViewModel.attributedContent.text.string.contains("Received webhook data:"))
+        #expect(wysiwygViewModel.attributedContent.text.string.contains(#""monitor_status": "online""#))
+        #expect(wysiwygViewModel.content.html.contains("<pre><code>"))
+        #expect(wysiwygViewModel.content.markdown.contains("```"))
+    }
+    
+    @Test
+    func fallsBackToPlainTextWhenMarkdownCannotBeParsed() {
+        let markdown = "```"
+        
+        viewModel.process(viewAction: .pasteRichText(.markdown(markdown)))
+        
+        #expect(wysiwygViewModel.attributedContent.text.string == markdown)
+    }
+    
+    @Test
+    func fallsBackToPlainTextWhenAppendingMarkdownThatCannotBeParsed() {
+        let existingText = "Existing text"
+        let markdown = "```"
+        wysiwygViewModel.setMarkdownContent(existingText)
+        wysiwygViewModel.select(range: .init(location: existingText.utf16.count, length: 0))
+        
+        viewModel.process(viewAction: .pasteRichText(.markdown(markdown)))
+        
+        #expect(wysiwygViewModel.attributedContent.text.string == existingText + markdown)
+    }
+    
+    @Test
     func pastesNitroPlainTextWithoutInterpretingMarkdown() {
         viewModel.process(viewAction: .pasteRichText(.plainText("__Hello__")))
         

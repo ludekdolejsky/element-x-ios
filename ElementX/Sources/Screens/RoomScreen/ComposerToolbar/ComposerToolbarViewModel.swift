@@ -356,7 +356,20 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
                 wysiwygViewModel.setHtmlContent(wysiwygViewModel.content.html + restoration.html)
             }
         case .markdown(let markdown):
-            wysiwygViewModel.setMarkdownContent(replacesAll ? markdown : wysiwygViewModel.content.markdown + markdown)
+            if let html = NitroMessageCopyFormatter.composerCompatibleHTML(fromMarkdown: markdown) {
+                wysiwygViewModel.setHtmlContent(replacesAll ? html : wysiwygViewModel.content.html + html)
+            } else {
+                let markdownProbe = WysiwygComposerViewModel()
+                markdownProbe.setMarkdownContent(markdown)
+                let renderedText = markdownProbe.attributedContent.text.string
+                    .replacingOccurrences(of: "\u{200B}", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, renderedText.isEmpty {
+                    replaceRichComposerText(in: selection, with: markdown)
+                } else {
+                    wysiwygViewModel.setMarkdownContent(replacesAll ? markdown : wysiwygViewModel.content.markdown + markdown)
+                }
+            }
         case .plainText:
             break
         }
