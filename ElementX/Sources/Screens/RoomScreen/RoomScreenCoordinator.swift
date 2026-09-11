@@ -245,7 +245,7 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
                     actionsSubject.send(.presentNitroRoomWidgets(widgets, initialWidgetID: nil))
                 case .displayPrimaryNitroRoomWidget(let widgets):
                     let activeWidgetID = nitroRoomWidgetsCoordinator?.context.viewState.destination.widgetID
-                    let initialWidgetID = activeWidgetID ?? nitroRoomWidgetSessionStore.primaryWidgetID(in: widgets, for: roomID)
+                    let initialWidgetID = activeWidgetID ?? nitroRoomWidgetSessionStore.primaryWidgetID(in: widgets)
                     actionsSubject.send(.presentNitroRoomWidgets(widgets, initialWidgetID: initialWidgetID))
                 case .displayThread(let threadRootEventID, let focussedEventID):
                     actionsSubject.send(.presentThread(threadRootEventID: threadRootEventID, focussedEventID: focussedEventID))
@@ -321,9 +321,6 @@ final class RoomScreenCoordinator: CoordinatorProtocol {
     
     private func dismissNitroRoomWidgets() {
         nitroRoomWidgetSessionStore.setPreferredLayout(nitroRoomWidgetPanelController.layout, for: roomID)
-        if let widgetID = nitroRoomWidgetsCoordinator?.context.viewState.destination.widgetID {
-            nitroRoomWidgetSessionStore.setPreferredWidgetID(widgetID, for: roomID)
-        }
         nitroRoomWidgetSessionStore.removeSession(for: roomID)
         tearDownNitroRoomWidgets()
     }

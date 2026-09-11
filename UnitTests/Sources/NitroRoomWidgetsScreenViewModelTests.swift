@@ -502,7 +502,7 @@ struct NitroRoomWidgetSessionStoreTests {
         #expect(store.session(for: "!second:example.org") == secondSession)
         #expect(store.preferredLayout(for: "!first:example.org") == .full)
         #expect(store.preferredLayout(for: "!second:example.org") == .half)
-        #expect(try store.primaryWidgetID(in: [widget(id: "cockpit"), widget(id: "catch-up")], for: "!first:example.org") == "cockpit")
+        #expect(try store.primaryWidgetID(in: [widget(id: "cockpit"), widget(id: "catch-up")]) == nil)
     }
     
     @Test
@@ -517,29 +517,13 @@ struct NitroRoomWidgetSessionStoreTests {
     }
     
     @Test
-    func remembersExplicitlySelectedWidgetWithoutRestoringItsPanel() throws {
-        let store = NitroRoomWidgetSessionStore()
-        
-        store.setPreferredWidgetID("catch-up", for: "!room:example.org")
-        
-        #expect(store.session(for: "!room:example.org") == nil)
-        #expect(try store.primaryWidgetID(in: [widget(id: "cockpit"), widget(id: "catch-up")], for: "!room:example.org") == "catch-up")
-    }
-    
-    @Test
-    func resolvesPrimaryWidgetFromHistoryOrAnUnambiguousList() throws {
+    func resolvesPrimaryWidgetOnlyFromAnUnambiguousList() throws {
         let store = NitroRoomWidgetSessionStore()
         let cockpit = try widget(id: "cockpit")
         let catchUp = try widget(id: "catch-up")
-        let roomID = "!room:example.org"
         
-        #expect(store.primaryWidgetID(in: [cockpit], for: roomID) == cockpit.id)
-        #expect(store.primaryWidgetID(in: [cockpit, catchUp], for: roomID) == nil)
-        
-        store.setPreferredWidgetID(catchUp.id, for: roomID)
-        
-        #expect(store.primaryWidgetID(in: [cockpit, catchUp], for: roomID) == catchUp.id)
-        #expect(store.primaryWidgetID(in: [cockpit], for: roomID) == cockpit.id)
+        #expect(store.primaryWidgetID(in: [cockpit]) == cockpit.id)
+        #expect(store.primaryWidgetID(in: [cockpit, catchUp]) == nil)
     }
     
     private func widget(id: String) throws -> NitroRoomWidget {
