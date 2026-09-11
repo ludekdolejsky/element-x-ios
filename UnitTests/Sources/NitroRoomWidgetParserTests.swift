@@ -11,14 +11,15 @@ import Testing
 
 struct NitroRoomWidgetParserTests {
     @Test
-    func parsesTrustedWidgetsFromBothStateEventTypes() {
+    func parsesTrustedNitroveryWidgets() {
         let widgets = NitroRoomWidgetParser.parse([
             event(stateKey: "cockpit", type: "com.nitrovery.c2m.cockpit", url: "https://pub-artifacts.nitrovery.com/cockpit", name: "Cockpit"),
+            event(stateKey: "ops", type: "com.nitrovery.tabulator.ops", url: "https://pub-artifacts.nitrovery.com/tabulator-ops", name: "Tabulator Ops"),
             event(stateKey: "history", type: "com.nitrovery.c2m.history", url: "https://artifacts.nitrovery.com/history", name: "Thinking history")
         ])
         
-        #expect(widgets.map(\.name) == ["Cockpit", "Thinking history"])
-        #expect(widgets.map(\.id) == ["cockpit", "history"])
+        #expect(widgets.map(\.name) == ["Cockpit", "Tabulator Ops", "Thinking history"])
+        #expect(widgets.map(\.id) == ["cockpit", "ops", "history"])
     }
     
     @Test

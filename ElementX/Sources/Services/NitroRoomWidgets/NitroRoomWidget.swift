@@ -59,7 +59,7 @@ protocol NitroRoomWidgetRoomProxyProtocol: AnyObject {
 }
 
 enum NitroRoomWidgetParser {
-    private static let trustedTypePrefix = "com.nitrovery.c2m."
+    private static let trustedTypePrefix = "com.nitrovery."
     private static let trustedHosts = ["artifacts.nitrovery.com", "pub-artifacts.nitrovery.com"]
     private static let decoder = JSONDecoder()
     
