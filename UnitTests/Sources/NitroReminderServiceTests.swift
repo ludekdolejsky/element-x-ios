@@ -205,6 +205,50 @@ struct NitroReminderServiceTests {
     }
 
     @Test
+    func updatesCodexReminderPrompt() async throws {
+        let data = Data(#"""
+        {
+          "reminder": {
+            "id": "codex-reminder-1",
+            "user_id": "@alice:example.org",
+            "homeserver_url": "https://matrix.example.org",
+            "room_id": "!room:example.org",
+            "room_name": "Nitro team",
+            "event_id": "",
+            "thread_root_id": null,
+            "due_ts": 1700000200,
+            "label": "daily",
+            "permalink": "https://matrix.to/#/!room:example.org",
+            "created_ts": 1700000000,
+            "delivered_ts": null,
+            "updated_ts": 1700000100,
+            "status": "pending",
+            "error": null,
+            "action_kind": "run_codex",
+            "prompt": "Revised instructions",
+            "execution_status": "scheduled",
+            "prompt_updated_ts": 1700000100
+          }
+        }
+        """#.utf8)
+        let fixture = try MockNitroReminderURLProtocol.makeFixture(statusCode: 200, data: data)
+        defer { fixture.remove() }
+        let service = NitroReminderService(baseURL: fixture.baseURL, urlSession: makeURLSession())
+
+        let reminder = try await service.updatePrompt(reminderID: "codex-reminder-1",
+                                                      prompt: "Revised instructions",
+                                                      authentication: authentication).get()
+
+        #expect(reminder.prompt == "Revised instructions")
+        #expect(reminder.promptUpdatedTimestamp == 1_700_000_100)
+        let request = try #require(fixture.lastRequest)
+        #expect(request.url?.path() == "/api/reminders/codex-reminder-1/edit-prompt")
+        let body = try #require(request.httpBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["prompt"] as? String == "Revised instructions")
+    }
+
+    @Test
     func includesBackendErrorMessage() async throws {
         let fixture = try MockNitroReminderURLProtocol.makeFixture(statusCode: 400,
                                                                    data: Data(#"{"error":"due_ts is in the past"}"#.utf8))

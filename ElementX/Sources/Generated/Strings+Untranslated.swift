@@ -26,6 +26,8 @@ internal nonisolated enum UntranslatedL10n {
   internal static var actionCopyAsMarkdownIos: String { return UntranslatedL10n.tr("Untranslated", "action_copy_as_markdown_ios") }
   /// New task
   internal static var actionCreateNitroTaskIos: String { return UntranslatedL10n.tr("Untranslated", "action_create_nitro_task_ios") }
+  /// Edit prompt
+  internal static var actionEditCodexPromptIos: String { return UntranslatedL10n.tr("Untranslated", "action_edit_codex_prompt_ios") }
   /// Edit time
   internal static var actionEditTimeIos: String { return UntranslatedL10n.tr("Untranslated", "action_edit_time_ios") }
   /// Catch me up
@@ -256,6 +258,10 @@ internal nonisolated enum UntranslatedL10n {
   internal static var screenNitroRemindersDueNowIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_due_now_ios") }
   /// Set an exact local date and time for this reminder.
   internal static var screenNitroRemindersEditHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_edit_hint_ios") }
+  /// The updated prompt will be used for the next run and all future recurring runs.
+  internal static var screenNitroRemindersEditPromptHintIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_edit_prompt_hint_ios") }
+  /// Edit Codex prompt
+  internal static var screenNitroRemindersEditPromptTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_edit_prompt_title_ios") }
   /// Edit reminder time
   internal static var screenNitroRemindersEditTitleIos: String { return UntranslatedL10n.tr("Untranslated", "screen_nitro_reminders_edit_title_ios") }
   /// Reminders you mark done will appear here.

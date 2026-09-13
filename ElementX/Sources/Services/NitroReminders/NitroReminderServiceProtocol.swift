@@ -99,6 +99,7 @@ nonisolated struct NitroReminder: Decodable, Equatable, Identifiable, Sendable {
     let recurrence: NitroReminderRecurrence?
     let executionStatus: NitroReminderExecutionStatus?
     let lastFiredTimestamp: Int?
+    let promptUpdatedTimestamp: Int?
     
     init(id: String,
          userID: String,
@@ -119,7 +120,8 @@ nonisolated struct NitroReminder: Decodable, Equatable, Identifiable, Sendable {
          prompt: String? = nil,
          recurrence: NitroReminderRecurrence? = nil,
          executionStatus: NitroReminderExecutionStatus? = nil,
-         lastFiredTimestamp: Int? = nil) {
+         lastFiredTimestamp: Int? = nil,
+         promptUpdatedTimestamp: Int? = nil) {
         self.id = id
         self.userID = userID
         self.homeserverURL = homeserverURL
@@ -140,6 +142,7 @@ nonisolated struct NitroReminder: Decodable, Equatable, Identifiable, Sendable {
         self.recurrence = recurrence
         self.executionStatus = executionStatus
         self.lastFiredTimestamp = lastFiredTimestamp
+        self.promptUpdatedTimestamp = promptUpdatedTimestamp
     }
     
     var dueDate: Date {
@@ -184,6 +187,7 @@ nonisolated struct NitroReminder: Decodable, Equatable, Identifiable, Sendable {
         case recurrence
         case executionStatus = "execution_status"
         case lastFiredTimestamp = "last_fired_ts"
+        case promptUpdatedTimestamp = "prompt_updated_ts"
     }
     
     init(from decoder: Decoder) throws {
@@ -210,6 +214,7 @@ nonisolated struct NitroReminder: Decodable, Equatable, Identifiable, Sendable {
         let executionStatusValue = try container.decodeIfPresent(String.self, forKey: .executionStatus)
         executionStatus = executionStatusValue.flatMap(NitroReminderExecutionStatus.init(rawValue:))
         lastFiredTimestamp = try container.decodeIfPresent(Int.self, forKey: .lastFiredTimestamp)
+        promptUpdatedTimestamp = try container.decodeIfPresent(Int.self, forKey: .promptUpdatedTimestamp)
     }
 }
 
@@ -237,6 +242,9 @@ nonisolated protocol NitroReminderServiceProtocol: Sendable {
     func snooze(reminderID: String,
                 until dueDate: Date,
                 authentication: NitroReminderAuthentication) async -> Result<NitroReminder, NitroReminderError>
+    func updatePrompt(reminderID: String,
+                      prompt: String,
+                      authentication: NitroReminderAuthentication) async -> Result<NitroReminder, NitroReminderError>
     func deleteReminder(reminderID: String,
                         authentication: NitroReminderAuthentication) async -> Result<Void, NitroReminderError>
 }

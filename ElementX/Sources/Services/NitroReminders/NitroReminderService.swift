@@ -131,17 +131,20 @@ nonisolated struct NitroReminderService: NitroReminderServiceProtocol {
         let homeserverURL: String
         let openIDToken: OpenIDTokenPayload
         let dueTimestamp: Int?
+        let prompt: String?
         
-        init(authentication: NitroReminderAuthentication, dueDate: Date? = nil) {
+        init(authentication: NitroReminderAuthentication, dueDate: Date? = nil, prompt: String? = nil) {
             homeserverURL = authentication.homeserverURL.absoluteString
             openIDToken = .init(token: authentication.openIDToken)
             dueTimestamp = dueDate.map { Int($0.timeIntervalSince1970) }
+            self.prompt = prompt
         }
         
         private enum CodingKeys: String, CodingKey {
             case homeserverURL = "homeserver_url"
             case openIDToken = "openid_token"
             case dueTimestamp = "due_ts"
+            case prompt
         }
     }
     
@@ -199,6 +202,16 @@ nonisolated struct NitroReminderService: NitroReminderServiceProtocol {
         let result: Result<ActionResponse, NitroReminderError> = await post(path: "api/reminders/\(reminderID)/snooze",
                                                                             body: ActionRequest(authentication: authentication, dueDate: dueDate),
                                                                             action: "snooze")
+        return result.map(\.reminder)
+    }
+
+    func updatePrompt(reminderID: String,
+                      prompt: String,
+                      authentication: NitroReminderAuthentication) async -> Result<NitroReminder, NitroReminderError> {
+        let result: Result<ActionResponse, NitroReminderError> = await post(path: "api/reminders/\(reminderID)/edit-prompt",
+                                                                            body: ActionRequest(authentication: authentication,
+                                                                                                prompt: prompt),
+                                                                            action: "edit-prompt")
         return result.map(\.reminder)
     }
     

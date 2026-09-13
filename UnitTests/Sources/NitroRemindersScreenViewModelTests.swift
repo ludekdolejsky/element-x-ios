@@ -338,6 +338,45 @@ struct NitroRemindersScreenViewModelTests {
         
         #expect(reminderService.deleteReminderReminderIDAuthenticationReceivedArguments?.reminderID == reminder.id)
     }
+
+    @Test
+    func editsCodexReminderPrompt() async throws {
+        let reminder = makeReminder(actionKind: .runCodex, prompt: "Original prompt")
+        let reminderService = NitroReminderServiceMock()
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [reminder], now: .now))
+        reminderService.updatePromptReminderIDPromptAuthenticationReturnValue = .success(reminder)
+        let viewModel = NitroRemindersScreenViewModel(clientProxy: makeClientProxy(),
+                                                      reminderService: reminderService,
+                                                      previewService: NitroReminderPreviewServiceMock())
+
+        viewModel.context.send(viewAction: .editPrompt(reminder))
+        #expect(viewModel.context.viewState.bindings.editPrompt == "Original prompt")
+        #expect(viewModel.context.viewState.bindings.editingPromptReminder == reminder)
+        viewModel.context.editPrompt = "  Revised prompt  "
+        reminderService.remindersFilterRoomIDAuthenticationReturnValue = .success(.init(reminders: [], now: .now))
+        let finished = deferFulfillment(viewModel.context.observe(\.viewState.bindings.editingPromptReminder)) { $0 == nil }
+
+        viewModel.context.send(viewAction: .saveEditedPrompt(reminderID: reminder.id))
+        try await finished.fulfill()
+
+        let arguments = try #require(reminderService.updatePromptReminderIDPromptAuthenticationReceivedArguments)
+        #expect(arguments.reminderID == reminder.id)
+        #expect(arguments.prompt == "Revised prompt")
+    }
+
+    @Test
+    func doesNotEditCompletedCodexReminderPrompt() {
+        let reminder = makeReminder(actionKind: .runCodex, prompt: "Completed prompt", status: .done)
+        let reminderService = NitroReminderServiceMock()
+        let viewModel = NitroRemindersScreenViewModel(clientProxy: makeClientProxy(),
+                                                      reminderService: reminderService,
+                                                      previewService: NitroReminderPreviewServiceMock())
+
+        viewModel.context.send(viewAction: .editPrompt(reminder))
+
+        #expect(viewModel.context.viewState.bindings.editingPromptReminder == nil)
+        #expect(reminderService.updatePromptReminderIDPromptAuthenticationReceivedArguments == nil)
+    }
     
     @Test
     func cancelDoesNotDismissEditWhileSaving() async throws {

@@ -58,6 +58,8 @@ struct NitroRemindersScreenViewStateBindings {
     var selectedRoomID: String?
     var editingReminder: NitroReminder?
     var editDate = Date()
+    var editingPromptReminder: NitroReminder?
+    var editPrompt = ""
     var alertInfo: AlertInfo<NitroRemindersScreenAlertID>?
 }
 
@@ -72,6 +74,9 @@ enum NitroRemindersScreenViewAction {
     case edit(NitroReminder)
     case cancelEdit
     case saveEditedTime(reminderID: String)
+    case editPrompt(NitroReminder)
+    case cancelPromptEdit
+    case saveEditedPrompt(reminderID: String)
     case delete(NitroReminder)
 }
 

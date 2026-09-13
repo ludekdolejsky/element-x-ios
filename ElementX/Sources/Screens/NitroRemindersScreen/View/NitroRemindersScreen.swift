@@ -51,6 +51,9 @@ struct NitroRemindersScreen: View {
         .sheet(item: $context.editingReminder) { reminder in
             editSheet(reminder: reminder)
         }
+        .sheet(item: $context.editingPromptReminder) { reminder in
+            editPromptSheet(reminder: reminder)
+        }
         .task {
             context.send(viewAction: .load)
         }
@@ -225,6 +228,13 @@ struct NitroRemindersScreen: View {
             } label: {
                 Label(UntranslatedL10n.actionEditTimeIos, icon: \.edit)
             }
+            if reminder.actionKind == .runCodex, reminder.status != .done {
+                Button {
+                    context.send(viewAction: .editPrompt(reminder))
+                } label: {
+                    Label(UntranslatedL10n.actionEditCodexPromptIos, icon: \.edit)
+                }
+            }
         }
         
         Button(role: .destructive) {
@@ -265,6 +275,45 @@ struct NitroRemindersScreen: View {
                         Button(L10n.actionSave) {
                             context.send(viewAction: .saveEditedTime(reminderID: reminder.id))
                         }
+                    }
+                }
+            }
+            .interactiveDismissDisabled(isSaving)
+        }
+    }
+
+    private func editPromptSheet(reminder: NitroReminder) -> some View {
+        let isSaving = context.viewState.busyReminderID == reminder.id
+        let promptIsEmpty = context.editPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return ElementNavigationStack {
+            Form {
+                Section {
+                    Text(UntranslatedL10n.screenNitroRemindersEditPromptHintIos)
+                        .font(.compound.bodyMD)
+                        .foregroundStyle(.compound.textSecondary)
+                    TextEditor(text: $context.editPrompt)
+                        .frame(minHeight: 180)
+                }
+            }
+            .compoundList()
+            .disabled(isSaving)
+            .navigationTitle(UntranslatedL10n.screenNitroRemindersEditPromptTitleIos)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.actionCancel) {
+                        context.send(viewAction: .cancelPromptEdit)
+                    }
+                    .disabled(isSaving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button(L10n.actionSave) {
+                            context.send(viewAction: .saveEditedPrompt(reminderID: reminder.id))
+                        }
+                        .disabled(promptIsEmpty)
                     }
                 }
             }

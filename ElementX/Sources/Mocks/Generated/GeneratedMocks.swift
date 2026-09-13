@@ -8423,6 +8423,47 @@ nonisolated class NitroReminderServiceMock: NitroReminderServiceProtocol, @unche
             return snoozeReminderIDUntilAuthenticationReturnValue
         }
     }
+    //MARK: - updatePrompt
+
+    private let updatePromptReminderIDPromptAuthenticationCallsCountLock = NSLock()
+    private nonisolated(unsafe) var updatePromptReminderIDPromptAuthenticationUnderlyingCallsCount = 0
+    var updatePromptReminderIDPromptAuthenticationCallsCount: Int {
+        get { updatePromptReminderIDPromptAuthenticationCallsCountLock.withLock { updatePromptReminderIDPromptAuthenticationUnderlyingCallsCount } }
+        set { updatePromptReminderIDPromptAuthenticationCallsCountLock.withLock { updatePromptReminderIDPromptAuthenticationUnderlyingCallsCount = newValue } }
+    }
+    var updatePromptReminderIDPromptAuthenticationCalled: Bool {
+        return updatePromptReminderIDPromptAuthenticationCallsCount > 0
+    }
+    private let updatePromptReminderIDPromptAuthenticationReceivedArgumentsLock = NSLock()
+    private nonisolated(unsafe) var updatePromptReminderIDPromptAuthenticationUnderlyingReceivedArguments: (reminderID: String, prompt: String, authentication: NitroReminderAuthentication)?
+    var updatePromptReminderIDPromptAuthenticationReceivedArguments: (reminderID: String, prompt: String, authentication: NitroReminderAuthentication)? {
+        get { updatePromptReminderIDPromptAuthenticationReceivedArgumentsLock.withLock { updatePromptReminderIDPromptAuthenticationUnderlyingReceivedArguments } }
+        set { updatePromptReminderIDPromptAuthenticationReceivedArgumentsLock.withLock { updatePromptReminderIDPromptAuthenticationUnderlyingReceivedArguments = newValue } }
+    }
+    private let updatePromptReminderIDPromptAuthenticationReceivedInvocationsLock = NSLock()
+    private nonisolated(unsafe) var updatePromptReminderIDPromptAuthenticationUnderlyingReceivedInvocations: [(reminderID: String, prompt: String, authentication: NitroReminderAuthentication)] = []
+    var updatePromptReminderIDPromptAuthenticationReceivedInvocations: [(reminderID: String, prompt: String, authentication: NitroReminderAuthentication)] {
+        get { updatePromptReminderIDPromptAuthenticationReceivedInvocationsLock.withLock { updatePromptReminderIDPromptAuthenticationUnderlyingReceivedInvocations } }
+        set { updatePromptReminderIDPromptAuthenticationReceivedInvocationsLock.withLock { updatePromptReminderIDPromptAuthenticationUnderlyingReceivedInvocations = newValue } }
+    }
+    private let updatePromptReminderIDPromptAuthenticationReturnValueLock = NSLock()
+    private nonisolated(unsafe) var updatePromptReminderIDPromptAuthenticationUnderlyingReturnValue: Result<NitroReminder, NitroReminderError>!
+    var updatePromptReminderIDPromptAuthenticationReturnValue: Result<NitroReminder, NitroReminderError>! {
+        get { updatePromptReminderIDPromptAuthenticationReturnValueLock.withLock { updatePromptReminderIDPromptAuthenticationUnderlyingReturnValue } }
+        set { updatePromptReminderIDPromptAuthenticationReturnValueLock.withLock { updatePromptReminderIDPromptAuthenticationUnderlyingReturnValue = newValue } }
+    }
+    nonisolated(unsafe) var updatePromptReminderIDPromptAuthenticationClosure: ((String, String, NitroReminderAuthentication) async -> Result<NitroReminder, NitroReminderError>)?
+
+    @concurrent func updatePrompt(reminderID: String, prompt: String, authentication: NitroReminderAuthentication) async -> Result<NitroReminder, NitroReminderError> {
+        updatePromptReminderIDPromptAuthenticationCallsCountLock.withLock { updatePromptReminderIDPromptAuthenticationUnderlyingCallsCount += 1 }
+        updatePromptReminderIDPromptAuthenticationReceivedArguments = (reminderID: reminderID, prompt: prompt, authentication: authentication)
+        updatePromptReminderIDPromptAuthenticationReceivedInvocationsLock.withLock { updatePromptReminderIDPromptAuthenticationUnderlyingReceivedInvocations.append((reminderID: reminderID, prompt: prompt, authentication: authentication)) }
+        if let updatePromptReminderIDPromptAuthenticationClosure = updatePromptReminderIDPromptAuthenticationClosure {
+            return await updatePromptReminderIDPromptAuthenticationClosure(reminderID, prompt, authentication)
+        } else {
+            return updatePromptReminderIDPromptAuthenticationReturnValue
+        }
+    }
     //MARK: - deleteReminder
 
     private let deleteReminderReminderIDAuthenticationCallsCountLock = NSLock()

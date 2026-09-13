@@ -14,6 +14,7 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
     private enum Mutation {
         case markDone
         case snooze(Date)
+        case editPrompt(String)
         case delete
     }
     
@@ -96,6 +97,17 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
                 return
             }
             startMutation(.snooze(state.bindings.editDate), reminderID: reminderID)
+        case .editPrompt(let reminder):
+            guard reminder.actionKind == .runCodex, reminder.status != .done else { return }
+            state.bindings.editPrompt = reminder.prompt ?? ""
+            state.bindings.editingPromptReminder = reminder
+        case .cancelPromptEdit:
+            guard state.busyReminderID == nil else { return }
+            state.bindings.editingPromptReminder = nil
+        case .saveEditedPrompt(let reminderID):
+            let prompt = state.bindings.editPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !prompt.isEmpty else { return }
+            startMutation(.editPrompt(prompt), reminderID: reminderID)
         case .delete(let reminder):
             startMutation(.delete, reminderID: reminder.id)
         }
@@ -243,6 +255,10 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
             result = await reminderService.snooze(reminderID: reminderID,
                                                   until: dueDate,
                                                   authentication: authentication).map { _ in () }
+        case .editPrompt(let prompt):
+            result = await reminderService.updatePrompt(reminderID: reminderID,
+                                                        prompt: prompt,
+                                                        authentication: authentication).map { _ in () }
         case .delete:
             result = await reminderService.deleteReminder(reminderID: reminderID, authentication: authentication)
         }
@@ -251,6 +267,7 @@ final class NitroRemindersScreenViewModel: NitroRemindersScreenViewModelType, Ni
         switch result {
         case .success:
             state.bindings.editingReminder = nil
+            state.bindings.editingPromptReminder = nil
             state.reminders.removeAll { $0.id == reminderID }
             startLoadAfterMutation(taskID: taskID)
         case .failure(.cancelled):

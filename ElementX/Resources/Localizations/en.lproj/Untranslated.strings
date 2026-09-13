@@ -17,6 +17,7 @@
 "action_snooze_24_hours_ios" = "Snooze 24 hours";
 "action_snooze_one_week_ios" = "Snooze 1 week";
 "action_edit_time_ios" = "Edit time";
+"action_edit_codex_prompt_ios" = "Edit prompt";
 "action_open_ios" = "Open";
 "action_refresh_ios" = "Refresh";
 "common_reminder_set_ios" = "Reminder set";
@@ -66,6 +67,8 @@
 "screen_nitro_reminders_execution_deleted_ios" = "Deleted";
 "screen_nitro_reminders_edit_title_ios" = "Edit reminder time";
 "screen_nitro_reminders_edit_hint_ios" = "Set an exact local date and time for this reminder.";
+"screen_nitro_reminders_edit_prompt_title_ios" = "Edit Codex prompt";
+"screen_nitro_reminders_edit_prompt_hint_ios" = "The updated prompt will be used for the next run and all future recurring runs.";
 "action_open_reminder_message_ios" = "Open message";
 "action_open_reminder_room_ios" = "Open room";
 "action_add_nitro_task_ios" = "Add task";
