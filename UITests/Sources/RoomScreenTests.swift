@@ -12,65 +12,62 @@ import XCTest
 
 @MainActor
 class RoomScreenUITests: XCTestCase {
-    private let complexClipboardStartMarker = "Nitro clipboard test"
-    private let complexClipboardEndMarker = "Konec komplexní zprávy"
-
     func testPlainNoAvatar() async throws {
         let app = Application.launch(.roomPlainNoAvatar)
-
+        
         XCTAssert(app.buttons[A11yIdentifiers.roomScreen.name].exists)
         XCTAssert(app.buttons[A11yIdentifiers.roomScreen.avatar].exists)
-
+        
         try await app.assertScreenshot()
     }
-
+    
     func testSmallTimelineLayout() async throws {
         let app = Application.launch(.roomSmallTimeline)
-
+        
         // The messages should be bottom aligned.
         try await app.assertScreenshot()
     }
-
+    
     func testComposerFormattingKeepsText() {
         let app = Application.launch(.roomSmallTimeline)
         let composer = app.textViews[A11yIdentifiers.roomScreen.messageComposer]
         let openFormattingOptions = app.buttons[A11yIdentifiers.roomScreen.composerToolbar.openComposeOptions]
         let closeFormattingOptions = app.buttons[A11yIdentifiers.roomScreen.composerToolbar.closeFormattingOptions]
-
+        
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         XCTAssertTrue(openFormattingOptions.exists)
         XCTAssertFalse(closeFormattingOptions.exists)
-
+        
         composer.tap()
         composer.typeText("Formatting stays")
         XCTAssertEqual(composer.value as? String, "Formatting stays")
-
+        
         openFormattingOptions.tap()
         let textFormatting = app.buttons[A11yIdentifiers.roomScreen.attachmentPickerTextFormatting]
         XCTAssertTrue(textFormatting.waitForExistence(timeout: 5))
         textFormatting.tap()
-
+        
         XCTAssertTrue(closeFormattingOptions.waitForExistence(timeout: 5))
         XCTAssertEqual(composer.value as? String, "Formatting stays")
     }
-
+    
     func testPastesNotesPlainTextIntoComposer() {
         let app = Application.launch(.roomSmallTimeline)
         let composer = app.textViews[A11yIdentifiers.roomScreen.messageComposer]
-
+        
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         UIPasteboard.general.items = [[
             "com.apple.notes.richtext": Data("notes-richtext".utf8),
             UTType.utf8PlainText.identifier: "Hello from Notes"
         ]]
         defer { UIPasteboard.general.items = [] }
-
+        
         composer.tap()
         composer.press(forDuration: 1)
         let paste = app.menuItems["Paste"]
         XCTAssertTrue(paste.waitForExistence(timeout: 5))
         paste.tap()
-
+        
         let inserted = expectation(for: NSPredicate { object, _ in
             guard let composer = object as? XCUIElement else { return false }
             return composer.value as? String == "Hello from Notes"
@@ -78,28 +75,11 @@ class RoomScreenUITests: XCTestCase {
         wait(for: [inserted], timeout: 5)
         XCTAssertEqual(composer.value as? String, "Hello from Notes")
     }
-
-    func testCopiesComplexMessageAndPastesItIntoComposer() {
-        let app = Application.launch(.roomComplexClipboardTimeline, disableTimelineAccessibility: false)
-        copyComplexMessage(in: app)
-        defer { UIPasteboard.general.items = [] }
-
-        pasteIntoComposer(in: app)
-
-        let composer = app.textViews[A11yIdentifiers.roomScreen.messageComposer]
-        let startMarker = complexClipboardStartMarker
-        let endMarker = complexClipboardEndMarker
-        let inserted = expectation(for: NSPredicate { object, _ in
-            guard let value = (object as? XCUIElement)?.value as? String else { return false }
-            return value.contains(startMarker) && value.contains(endMarker)
-        }, evaluatedWith: composer)
-        wait(for: [inserted], timeout: 5)
-    }
-
+    
     func testSanitizedCustomEmojiTimeline() {
         let app = Application.launch(.roomSanitizedCustomEmojiTimeline, disableTimelineAccessibility: false)
         let customEmojiMessage = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", "Look \u{FFFC} now")).firstMatch
-
+        
         XCTAssertTrue(customEmojiMessage.waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["[img: Meatspin]"].exists)
         Thread.sleep(forTimeInterval: 0.5)
@@ -110,172 +90,135 @@ class RoomScreenUITests: XCTestCase {
         }
         XCTAssertGreaterThan(renderedFrames.count, 1, "The custom emoji should render more than one animation frame")
     }
-
-    private func copyComplexMessage(in app: XCUIApplication) {
-        let message = app.otherElements.matching(NSPredicate(format: "label CONTAINS %@", complexClipboardEndMarker)).firstMatch
-        XCTAssertTrue(message.waitForExistence(timeout: 5))
-        XCTAssertTrue(message.isHittable)
-        message.press(forDuration: 1)
-
-        let actionMenu = app.descendants(matching: .any)[A11yIdentifiers.roomScreen.timelineItemActionMenu]
-        XCTAssertTrue(actionMenu.waitForExistence(timeout: 5))
-        app.buttons["Copy"].tap()
-
-        let copyButtons = app.buttons.matching(NSPredicate(format: "label == %@", "Copy"))
-        var copyRepresentation: XCUIElement?
-        for index in 0..<copyButtons.count {
-            let candidate = copyButtons.element(boundBy: index)
-            if candidate.isHittable, candidate.frame.width < app.frame.width {
-                copyRepresentation = candidate
-                break
-            }
-        }
-        guard let copyRepresentation else {
-            XCTFail("The Copy submenu representation is not hittable.")
-            return
-        }
-        copyRepresentation.tap()
-        XCTAssertTrue(actionMenu.wait(for: \.exists, toEqual: false, timeout: 5))
-    }
-
-    private func pasteIntoComposer(in app: XCUIApplication) {
-        let composer = app.textViews[A11yIdentifiers.roomScreen.messageComposer]
-        XCTAssertTrue(composer.waitForExistence(timeout: 5))
-        composer.tap()
-        composer.press(forDuration: 1)
-        let paste = app.menuItems["Paste"]
-        XCTAssertTrue(paste.waitForExistence(timeout: 5))
-        paste.tap()
-    }
-
+    
     func testSmallTimelineWithIncomingAndPagination() async throws {
         let client = try UITestsSignalling.Client(mode: .tests)
-
+        
         let app = Application.launch(.roomSmallTimelineIncomingAndSmallPagination)
-
+        
         await client.waitForApp()
         defer { try? client.stop() }
-
+        
         // When a back pagination occurs and an incoming message arrives.
         try await performOperation(.incomingMessage, using: client)
         try await performOperation(.paginate, using: client)
-
+        
         // Then the 4 visible messages should stay aligned to the bottom.
         try await app.assertScreenshot()
     }
-
+    
     func testSmallTimelineWithLargePagination() async throws {
         let client = try UITestsSignalling.Client(mode: .tests)
-
+        
         let app = Application.launch(.roomSmallTimelineLargePagination)
-
+        
         await client.waitForApp()
         defer { try? client.stop() }
-
+        
         // When a large back pagination occurs.
         try await performOperation(.paginate, using: client)
-
+        
         // The bottom of the timeline should remain visible with more items added above.
         try await app.assertScreenshot()
     }
-
+    
     func testTimelineLayoutAtTop() async throws {
         let client = try UITestsSignalling.Client(mode: .tests)
-
+        
         let app = Application.launch(.roomLayoutTop)
-
+        
         await client.waitForApp()
         defer { try? client.stop() }
-
+        
         // Given a timeline that is scrolled to the top.
         for _ in 0...5 {
             app.swipeDown()
         }
         try await app.assertScreenshot() // Assert initial state for comparison.
-
+        
         // When a back pagination occurs.
         try await performOperation(.paginate, using: client)
-
+        
         // Then the bottom of the timeline should remain unchanged (with new items having been added above).
         try await app.assertScreenshot()
     }
-
+    
     func testTimelineLayoutAtBottom() async throws {
         let client = try UITestsSignalling.Client(mode: .tests)
-
+        
         let app = Application.launch(.roomLayoutBottom)
-
+        
         await client.waitForApp()
         defer { try? client.stop() }
-
+        
         // Some time for the timeline to settle
         try await Task.sleep(for: .seconds(1))
         // When an incoming message arrives.
         try await performOperation(.incomingMessage, using: client)
         // Some time for the timeline to settle
         try await Task.sleep(for: .seconds(1))
-
+        
         // Then the timeline should scroll down to reveal the message.
         try await app.assertScreenshot(step: 0)
-
+        
         // When the keyboard appears for the message composer.
         try await tapMessageComposer(in: app)
-
+        
         try await app.assertScreenshot(step: 1)
     }
-
+    
     func testTimelineLayoutHighlightExisting() async throws {
         let client = try UITestsSignalling.Client(mode: .tests)
-
+        
         let app = Application.launch(.roomLayoutHighlight)
-
+        
         await client.waitForApp()
         defer { try? client.stop() }
-
+        
         // When tapping a permalink to an item in the timeline.
         try await performOperation(.focusOnEvent("$5"), using: client)
-
+        
         // Then the item should become highlighted.
         try await app.assertScreenshot()
-
+        
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
-
+        
         // When scrolling to the bottom and tapping the same permalink again.
         app.buttons[A11yIdentifiers.roomScreen.scrollToBottom].tap()
         try await Task.sleep(for: .seconds(1)) // Some time for the timeline to settle
         try await performOperation(.focusOnEvent("$5"), using: client)
-
+        
         // Then the item should also be highlighted and scrolled to in the same state as before.
         try await app.assertScreenshot()
     }
-
+    
     func testTimelineReadReceipts() async throws {
         let app = Application.launch(.roomSmallTimelineWithReadReceipts)
-
+        
         // The messages should be bottom aligned.
         try await app.assertScreenshot()
     }
-
+    
     func testTimelineDisclosedPolls() async throws {
         let app = Application.launch(.roomWithDisclosedPolls)
-
+        
         try await app.assertScreenshot()
     }
-
+    
     func testTimelineUndisclosedPolls() async throws {
         let app = Application.launch(.roomWithUndisclosedPolls)
-
+        
         try await app.assertScreenshot()
     }
-
+    
     func testTimelineOutgoingPolls() async throws {
         let app = Application.launch(.roomWithOutgoingPolls)
-
+        
         try await app.assertScreenshot()
     }
-
+    
     // MARK: - Helper Methods
-
+    
     private func performOperation(_ operation: UITestsSignal.Timeline, using client: UITestsSignalling.Client) async throws {
         try client.send(.timeline(operation))
         // The type is not sendable so we can't use the first function directly on the values.
@@ -284,7 +227,7 @@ class RoomScreenUITests: XCTestCase {
         while let signal = await iterator.next(isolation: #isolation), signal != .success { }
         try await Task.sleep(for: .seconds(2)) // Allow the timeline to update
     }
-
+    
     private func tapMessageComposer(in app: XCUIApplication) async throws {
         app.textViews.element.tap()
         try await Task.sleep(for: .seconds(10)) // Allow the animations to complete

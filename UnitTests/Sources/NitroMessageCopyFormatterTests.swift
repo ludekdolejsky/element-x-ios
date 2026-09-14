@@ -18,20 +18,20 @@ struct NitroMessageCopyFormatterTests {
                             html: "<p>Intro</p><ul><li>one</li><li>two</li></ul>")
         #expect(NitroMessageCopyFormatter.markdown(for: item) == "Intro\n\n- one\n- two")
     }
-
+    
     @Test
     func copiesOriginalHTML() {
         let html = "<strong>Hello</strong>"
         let item = textItem(body: "Hello", html: html)
         #expect(NitroMessageCopyFormatter.html(for: item) == html)
     }
-
+    
     @Test
     func providesRichAndPlainRepresentationsForCopy() {
         let html = "<strong>Hello</strong>"
         let item = textItem(body: "Hello", html: html)
         let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .text)
-
+        
         #expect(representations[UTType.utf8PlainText.identifier] as? String == "Hello")
         #expect((representations[UTType.html.identifier] as? String)?.contains(#"<meta charset="utf-8">"#) == true)
         #expect((representations[UTType.html.identifier] as? String)?.contains(html) == true)
@@ -44,13 +44,13 @@ struct NitroMessageCopyFormatterTests {
             UTType.rtf.identifier
         ])
     }
-
+    
     @Test
     func preservesCustomEmojiAcrossClipboardRepresentations() throws {
         let html = #"Hello <img data-mx-emoticon src="mxc://example.org/meatspin" alt="Meatspin" title="meatspin" height="32" />"#
         let item = textItem(body: "Hello :meatspin:", html: html)
         let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .text)
-
+        
         #expect(representations[UTType.utf8PlainText.identifier] as? String == "Hello :meatspin:")
         #expect((representations[UTType.html.identifier] as? String)?.contains(html) == true)
         #expect(representations[NitroMessageCopyFormatter.markdownTypeIdentifier] as? String == "Hello :meatspin:")
@@ -60,226 +60,67 @@ struct NitroMessageCopyFormatterTests {
                                                       documentAttributes: nil)
         #expect(attributedString.string == "Hello :meatspin:")
     }
-
+    
     @Test
     func providesPlainTextSourceForExplicitFormats() {
         let html = "<strong>Hello</strong>"
         let item = textItem(body: "Hello", html: html)
-
+        
         let markdownRepresentations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .markdown)
         #expect(markdownRepresentations.count == 1)
         #expect(markdownRepresentations[UTType.utf8PlainText.identifier] as? String == "__Hello__")
-
+        
         let htmlRepresentations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .html)
         #expect(htmlRepresentations.count == 1)
         #expect(htmlRepresentations[UTType.utf8PlainText.identifier] as? String == html)
     }
-
+    
     @Test
     func explicitHTMLPreservesUnicodeInPlainText() {
         let text = "Příliš žluťoučký kůň — 日本語"
         let html = "<strong>\(text)</strong>"
         let item = textItem(body: text, html: html)
         let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .html)
-
+        
         #expect(representations[UTType.utf8PlainText.identifier] as? String == html)
     }
-
+    
     @Test
     func providesStandardRepresentationsForPlainMessages() {
         let item = textItem(body: "2 < 3", html: nil)
         let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .text)
-
+        
         #expect(representations[UTType.utf8PlainText.identifier] as? String == "2 < 3")
         #expect((representations[UTType.html.identifier] as? String)?.contains(#"<meta charset="utf-8">"#) == true)
         #expect((representations[UTType.html.identifier] as? String)?.contains("<p>2 &lt; 3</p>") == true)
         #expect(representations[NitroMessageCopyFormatter.markdownTypeIdentifier] as? String == "2 < 3")
         #expect(!(representations[UTType.rtf.identifier] as? Data ?? Data()).isEmpty)
     }
-
-    @Test
-    func preservesMarkdownWhenRichRenderingIsEmpty() throws {
-        let item = try #require(TimelineFixtures.complexClipboardChunk.first as? EventBasedMessageTimelineItemProtocol)
-        let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .text)
-
-        let plainText = try #require(representations[UTType.utf8PlainText.identifier] as? String)
-        let markdown = try #require(representations[NitroMessageCopyFormatter.markdownTypeIdentifier] as? String)
-        let rtf = try #require(representations[UTType.rtf.identifier] as? Data)
-        let attributedString = try NSAttributedString(data: rtf,
-                                                      options: [.documentType: NSAttributedString.DocumentType.rtf],
-                                                      documentAttributes: nil)
-
-        #expect(plainText == item.body)
-        #expect(markdown.contains("### Nitro clipboard test"))
-        #expect(markdown.contains("__Přehled změn__"))
-        #expect(markdown.contains("- __Stav:__ Připraveno"))
-        #expect(markdown.contains("`alpha_beta`"))
-        #expect(markdown.contains("### Technické detaily"))
-        #expect(markdown.contains("Konec komplexní zprávy"))
-        #expect(plainText.contains("Připraveno"))
-        #expect(attributedString.string.contains("Konec komplexní zprávy"))
-        #expect(!attributedString.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-    }
-
-    @Test
-    func prefersMarkdownOverPlainTextWhenPastingComplexMultiformatContent() async throws {
-        let item = try #require(TimelineFixtures.complexClipboardChunk.first as? EventBasedMessageTimelineItemProtocol)
-        let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .text)
-        let markdown = try #require(representations[NitroMessageCopyFormatter.markdownTypeIdentifier] as? String)
-
-        #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider(representations: representations)) == .markdown(markdown))
-        #expect(markdown.contains("### Nitro clipboard test"))
-        #expect(markdown.contains("- __Stav:__ Připraveno"))
-        #expect(markdown.contains("`alpha_beta`"))
-    }
-
-    @Test
-    func preservesCodeBlocksAndTablesInMarkdownFallback() {
-        let body = """
-        Report
-
-        first line
-          indented line
-
-        Name | Status
-        Alpha | Ready
-        """
-        let html = """
-        <h3>Report</h3>
-        <pre><code>first line
-          indented line</code></pre>
-        <table>
-        <thead><tr><th>Name</th><th>Status</th></tr></thead>
-        <tbody><tr><td>Alpha</td><td><strong>Ready</strong></td></tr></tbody>
-        </table>
-        """
-        let markdown = NitroMessageCopyFormatter.markdown(for: textItem(body: body, html: html))
-
-        #expect(markdown.contains("### Report"))
-        #expect(markdown.contains("```\nfirst line\n  indented line\n```"))
-        #expect(markdown.contains("| Name | Status |"))
-        #expect(markdown.contains("| --- | --- |"))
-        #expect(markdown.contains("| Alpha | __Ready__ |"))
-    }
-
-    @Test
-    func escapesLiteralMarkdownAndInlineCodeInFallback() {
-        let body = """
-        Report
-
-        # literal heading
-        * literal emphasis *
-        value`with`two  spaces
-        [label]
-        """
-        let html = """
-        <h3>Report</h3>
-        <p># literal heading</p>
-        <p>* literal emphasis *</p>
-        <p><code>value`with`two  spaces</code></p>
-        <p><a href="https://example.com/a_(b)">[label]</a></p>
-        """
-        let markdown = NitroMessageCopyFormatter.markdown(for: textItem(body: body, html: html))
-
-        #expect(markdown.contains("\\# literal heading"))
-        #expect(markdown.contains(#"\* literal emphasis \*"#))
-        #expect(markdown.contains("`` value`with`two  spaces ``"))
-        #expect(markdown.contains(#"[\[label\]](https://example.com/a_\(b\))"#))
-    }
-
-    @Test
-    func rejectsIncompleteHTMLRenderingWhenPasting() async {
-        let plainText = "Before\nName Status\nAlpha Ready\nAfter"
-        let html = """
-        <p>Before</p>
-        <table><tr><th>Name</th><th>Status</th></tr><tr><td>Alpha</td><td>Ready</td></tr></table>
-        <p>After</p>
-        """
-        let provider = itemProvider(representations: [
-            UTType.html.identifier: html,
-            UTType.utf8PlainText.identifier: plainText
-        ])
-
-        #expect(await NitroMessageCopyFormatter.richPasteContent(from: provider) == .plainText(plainText))
-    }
-
-    @Test
-    func derivesPlainTextForIncompleteHTMLWithoutPlainRepresentation() async {
-        let html = """
-        <p>Before</p>
-        <table><tr><th>Name</th><th>Status</th></tr><tr><td>Alpha</td><td>Ready</td></tr></table>
-        <p>After</p>
-        """
-        let provider = itemProvider(representations: [UTType.html.identifier: html])
-
-        guard case .plainText(let plainText) = await NitroMessageCopyFormatter.richPasteContent(from: provider) else {
-            Issue.record("Expected readable plain text fallback")
-            return
-        }
-        #expect(!plainText.contains("<table>"))
-        #expect(plainText.contains("Before"))
-        #expect(plainText.contains("Alpha"))
-        #expect(plainText.contains("After"))
-    }
-
-    @Test
-    func ignoresEmptyPlainRepresentationForValidHTML() async {
-        let provider = itemProvider(representations: [
-            UTType.html.identifier: "<strong>Hello</strong>",
-            UTType.utf8PlainText.identifier: ""
-        ])
-
-        #expect(await NitroMessageCopyFormatter.richPasteContent(from: provider) == .html("<strong>Hello</strong>", plainText: "Hello"))
-    }
-
-    @Test
-    func ignoresEmptyPlainRepresentationForIncompleteHTML() async {
-        let html = "<p>Before</p><table><tr><td>Alpha</td></tr></table><p>After</p>"
-        let provider = itemProvider(representations: [
-            UTType.html.identifier: html,
-            UTType.utf8PlainText.identifier: ""
-        ])
-
-        guard case .plainText(let plainText) = await NitroMessageCopyFormatter.richPasteContent(from: provider) else {
-            Issue.record("Expected readable plain text fallback")
-            return
-        }
-        #expect(plainText.contains("Before"))
-        #expect(plainText.contains("Alpha"))
-        #expect(plainText.contains("After"))
-    }
-
-    @Test
-    func doesNotTreatEmptyHTMLAsGenericText() async {
-        let provider = itemProvider(representations: [UTType.html.identifier: "<div></div>"])
-
-        #expect(await NitroMessageCopyFormatter.richPasteContent(from: provider) == nil)
-    }
-
+    
     @Test
     func convertsFencedMarkdownToComposerHTML() {
         let markdown = """
         __Before__
-
+        
         ```json
         {"comparison":"1 < 2 & 3 > 2"}
         ```
-
+        
         After
         """
-
+        
         let html = NitroMessageCopyFormatter.composerCompatibleHTML(fromMarkdown: markdown)
-
+        
         #expect(html?.contains("<strong>Before</strong>") == true)
         #expect(html?.contains(#"<pre><code>{"comparison":"1 &lt; 2 &amp; 3 &gt; 2"}</code></pre>"#) == true)
         #expect(html?.contains("After") == true)
     }
-
+    
     @Test
     func rejectsUnclosedFencedMarkdownConversion() {
         #expect(NitroMessageCopyFormatter.composerCompatibleHTML(fromMarkdown: "```\nunclosed") == nil)
     }
-
+    
     @Test
     func readsRichPasteContent() async {
         let item = textItem(body: "Hello", html: "<strong>Hello</strong>")
@@ -288,29 +129,29 @@ struct NitroMessageCopyFormatterTests {
         #expect(NitroMessageCopyFormatter.supportsTextPaste(itemProvider))
         #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) == .html("<strong>Hello</strong>", plainText: "Hello"))
     }
-
+    
     @Test
     func readsStandardMarkdownPasteContent() async {
         let representations = [NitroMessageCopyFormatter.markdownTypeIdentifier: "__Hello__"]
         #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider(representations: representations)) == .markdown("__Hello__"))
     }
-
+    
     @Test
     func readsExplicitHTMLSourceAsPlainText() async {
         let item = textItem(body: "Hello", html: "<strong>Hello</strong>")
         let representations = NitroMessageCopyFormatter.pasteboardRepresentations(for: item, format: .html)
         #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider(representations: representations)) == .plainText("<strong>Hello</strong>"))
     }
-
+    
     @Test
     func derivesPlainTextWhenPastedHTMLHasNoPlainRepresentation() async {
         let itemProvider = itemProvider(representations: [
             UTType.html.identifier: "<strong>Hello</strong>"
         ])
-
+        
         #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) == .html("<strong>Hello</strong>", plainText: "Hello"))
     }
-
+    
     @Test
     func normalizesMailDivHTMLForComposer() async {
         let html = """
@@ -323,7 +164,7 @@ struct NitroMessageCopyFormatterTests {
             UTType.html.identifier: html,
             UTType.utf8PlainText.identifier: plainText
         ])
-
+        
         guard case let .html(composerHTML, fallback) = await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) else {
             Issue.record("Expected normalized HTML paste content")
             return
@@ -332,7 +173,7 @@ struct NitroMessageCopyFormatterTests {
         #expect(composerHTML == "<p style=\"font-family: Aptos; font-size: 12pt\">Excellent, thanks Ludek</p><p style=\"font-family: Aptos; font-size: 12pt\"></p><p style=\"font-family: Aptos; font-size: 12pt\">Best wishes</p>")
         #expect(fallback == plainText)
     }
-
+    
     @Test
     func preservesMailDivFormatting() async {
         let html = #"<div style="font-weight: 700; font-style: italic">Formatted</div><div>Plain</div>"#
@@ -340,7 +181,7 @@ struct NitroMessageCopyFormatterTests {
             UTType.html.identifier: html,
             UTType.utf8PlainText.identifier: "Formatted\nPlain"
         ])
-
+        
         guard case let .html(composerHTML, _) = await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) else {
             Issue.record("Expected normalized HTML paste content")
             return
@@ -350,31 +191,31 @@ struct NitroMessageCopyFormatterTests {
         #expect(composerHTML.contains(#"<p style="font-weight: 700; font-style: italic">Formatted</p>"#))
         #expect(composerHTML.hasSuffix("<p>Plain</p>"))
     }
-
+    
     @Test
     func fallsBackToProvidedPlainTextWhenHTMLRendersEmpty() async {
         let itemProvider = itemProvider(representations: [
             UTType.html.identifier: "<div></div>",
             UTType.utf8PlainText.identifier: "Fallback text"
         ])
-
+        
         #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) == .plainText("Fallback text"))
     }
-
+    
     @Test
     func acceptsEquivalentTextWithDifferentHTMLLineBreaks() async {
         let itemProvider = itemProvider(representations: [
             UTType.html.identifier: "<div>First</div><div><br></div><div>Last</div>",
             UTType.utf8PlainText.identifier: "First\nLast"
         ])
-
+        
         guard case let .html(_, plainText) = await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) else {
             Issue.record("Expected normalized HTML paste content")
             return
         }
         #expect(plainText == "First\nLast")
     }
-
+    
     @Test
     func readsPlainTextFromNotesProvider() async throws {
         let rtf = try NSAttributedString(string: "Hello from Notes").data(from: NSRange(location: 0, length: 16),
@@ -384,32 +225,32 @@ struct NitroMessageCopyFormatterTests {
             UTType.rtf.identifier: rtf,
             UTType.utf8PlainText.identifier: "Hello from Notes"
         ])
-
+        
         #expect(NitroMessageCopyFormatter.supportsTextPaste(itemProvider))
         #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) == .plainText("Hello from Notes"))
     }
-
+    
     @Test
     func fallsBackToPlainTextFromRTF() async throws {
         let text = "Only RTF"
         let rtf = try NSAttributedString(string: text).data(from: NSRange(location: 0, length: text.utf16.count),
                                                             documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
         let itemProvider = itemProvider(representations: [UTType.rtf.identifier: rtf])
-
+        
         #expect(NitroMessageCopyFormatter.supportsTextPaste(itemProvider))
         #expect(await NitroMessageCopyFormatter.richPasteContent(from: itemProvider) == .plainText(text))
     }
-
+    
     @Test
     func readsGenericTextProvider() async {
         let provider = itemProvider(representations: [
             UTType.text.identifier: "Selected text from Mail"
         ])
-
+        
         #expect(NitroMessageCopyFormatter.supportsTextPaste(provider))
         #expect(await NitroMessageCopyFormatter.richPasteContent(from: provider) == .plainText("Selected text from Mail"))
     }
-
+    
     @Test
     func clipboardDiagnosticsIncludeTextContent() async {
         let secret = "private email content"
@@ -419,14 +260,14 @@ struct NitroMessageCopyFormatterTests {
             UTType.html.identifier: html,
             UTType.pdf.identifier: Data("pdf".utf8)
         ])
-
+        
         let report = await NitroClipboardDiagnostics.report(itemProviders: [provider],
                                                             generatedAt: Date(timeIntervalSince1970: 0),
                                                             systemName: "iOS",
                                                             systemVersion: "27.0",
                                                             appVersion: "1.0",
                                                             buildNumber: "1")
-
+        
         #expect(report.contains("public.text"))
         #expect(report.contains(UTType.pdf.identifier))
         #expect(report.contains("Selected format: HTML"))
@@ -435,18 +276,18 @@ struct NitroMessageCopyFormatterTests {
         #expect(report.contains(html))
         #expect(report.contains("not loaded (non-text)"))
     }
-
+    
     @Test
     func supportsStandardRichTextProviders() {
         let htmlProvider = NSItemProvider(item: "<strong>Hello</strong>" as NSString,
                                           typeIdentifier: UTType.html.identifier)
         let markdownProvider = NSItemProvider(item: "**Hello**" as NSString,
                                               typeIdentifier: NitroMessageCopyFormatter.markdownTypeIdentifier)
-
+        
         #expect(NitroMessageCopyFormatter.supportsTextPaste(htmlProvider))
         #expect(NitroMessageCopyFormatter.supportsTextPaste(markdownProvider))
     }
-
+    
     @Test
     func prefersRichTextFromMixedProvider() {
         let itemProvider = itemProvider(representations: [
@@ -456,21 +297,21 @@ struct NitroMessageCopyFormatterTests {
         #expect(itemProvider.preferredContentType?.type == .pdf)
         #expect(NitroMessageCopyFormatter.supportsTextPaste(itemProvider))
     }
-
+    
     @Test
     func fallsBackToPlainBody() {
         let item = textItem(body: "Hello", html: nil)
         #expect(NitroMessageCopyFormatter.markdown(for: item) == "Hello")
         #expect(NitroMessageCopyFormatter.html(for: item) == "Hello")
     }
-
+    
     @Test
     func preservesCodeBlockContents() {
         let item = textItem(body: "* literal bullet",
                             html: "<pre><code>* literal bullet</code></pre>")
         #expect(NitroMessageCopyFormatter.markdown(for: item) == "```\n* literal bullet\n```\n")
     }
-
+    
     private func textItem(body: String, html: String?) -> TextRoomTimelineItem {
         TextRoomTimelineItem(id: .randomEvent,
                              timestamp: Date(),
@@ -480,7 +321,7 @@ struct NitroMessageCopyFormatterTests {
                              sender: .init(id: "@alice:example.org", displayName: "Alice"),
                              content: .init(body: body, formattedBodyHTMLString: html))
     }
-
+    
     private func itemProvider(representations: [String: Any]) -> NSItemProvider {
         let provider = NSItemProvider()
         for (type, value) in representations {

@@ -93,12 +93,12 @@ enum TimelineFixtures {
                                             formattedBody: AttributedStringBuilder(mentionBuilder: MentionBuilder())
                                                 .fromHTML("Hol' up <blockquote>New home office set up!</blockquote>That's amazing! Congrats 🥳")))
     ]
-
+    
     /// A small chunk of events, containing 2 text items.
     static var smallChunk: [RoomTimelineItemProtocol] {
         smallChunkProxies.buildRoomTimelineItems()
     }
-
+    
     /// A message after the Rust timeline sanitizer has removed `data-mx-emoticon`.
     static var sanitizedCustomEmojiChunk: [RoomTimelineItemProtocol] {
         let body = "Look :meatspin: now"
@@ -119,53 +119,7 @@ enum TimelineFixtures {
         }
         return [item]
     }
-
-    /// A formatted message that exercises rich clipboard representations in UI tests.
-    static var complexClipboardChunk: [RoomTimelineItemProtocol] {
-        let body = """
-        Nitro clipboard test
-
-        Přehled změn
-
-        Stav: Připraveno
-        Riziko: Žádné známé
-        Další krok: Ověřit vložení
-
-        Technické detaily
-
-        Hodnota alpha_beta zůstává beze změny.
-
-        Konec komplexní zprávy
-        """
-        let html = """
-        <h3>Nitro clipboard test</h3>
-        <p><strong>Přehled změn</strong></p>
-        <ul>
-        <li><strong>Stav:</strong> Připraveno</li>
-        <li><strong>Riziko:</strong> Žádné známé</li>
-        <li><strong>Další krok:</strong> Ověřit vložení</li>
-        </ul>
-        <h3>Technické detaily</h3>
-        <p>Hodnota <code>alpha_beta</code> zůstává beze změny.</p>
-        <p>Konec komplexní zprávy</p>
-        """
-        let messageType = MessageType.text(content: .init(body: body, formatted: .init(format: .html, body: html)))
-        let content = TimelineItemContent.msgLike(content: .init(kind: .message(content: .init(msgType: messageType,
-                                                                                               body: body,
-                                                                                               isEdited: false,
-                                                                                               mentions: nil)),
-                                                                 reactions: [],
-                                                                 inReplyTo: nil,
-                                                                 threadRoot: nil,
-                                                                 threadSummary: nil))
-        let event = EventTimelineItem(configuration: .init(sender: "@alice:matrix.org", isOwn: false, content: content))
-        let proxy = EventTimelineItemProxy(item: event, uniqueID: .init("complex-clipboard"))
-        guard let item = factory.buildTimelineItem(for: proxy, isDM: false) else {
-            fatalError("Unable to build complex clipboard timeline fixture")
-        }
-        return [item]
-    }
-
+    
     /// A small chunk of events, containing 2 text items.
     static var smallChunkWithReadReceipts: [RoomTimelineItemProtocol] {
         [TextRoomTimelineItem(text: "Hey there 👋",
@@ -187,32 +141,32 @@ enum TimelineFixtures {
                                    ReadReceipt(userID: "c4", formattedTimestamp: nil),
                                    ReadReceipt(userID: "d4", formattedTimestamp: nil)])]
     }
-
+    
     /// A chunk of events that contains a single text item.
     static var singleMessageChunk: [RoomTimelineItemProtocol] {
         singleMessageChunkProxies.buildRoomTimelineItems()
     }
-
+    
     /// A large chunk of events, containing 40 text items which should fill an iPad
     /// with enough items so that it won't perform another back pagination.
     static var largeChunk: [RoomTimelineItemProtocol] {
         largeChunkProxies.buildRoomTimelineItems()
     }
-
+    
     static var disclosedPolls: [RoomTimelineItemProtocol] {
         [PollRoomTimelineItem.mock(poll: .disclosed(), isOutgoing: false),
          PollRoomTimelineItem.mock(poll: .endedDisclosed)]
     }
-
+    
     static var undisclosedPolls: [RoomTimelineItemProtocol] {
         [PollRoomTimelineItem.mock(poll: .undisclosed(), isOutgoing: false),
          PollRoomTimelineItem.mock(poll: .endedUndisclosed)]
     }
-
+    
     static var outgoingPolls: [RoomTimelineItemProtocol] {
         [PollRoomTimelineItem.mock(poll: .disclosed(createdByAccountOwner: true), isOutgoing: true)]
     }
-
+    
     static var permalinkChunk: [RoomTimelineItemProtocol] {
         (1...20).map { index in
             TextRoomTimelineItem(id: .event(uniqueID: .init("\(index)"), eventOrTransactionID: .eventID("$\(index)")),
@@ -220,7 +174,7 @@ enum TimelineFixtures {
                                  senderDisplayName: index > 10 ? "Alice" : "Bob")
         }
     }
-
+    
     static var mediaChunk: [RoomTimelineItemProtocol] {
         [
             AudioRoomTimelineItem(isOutgoing: false, caption: "Listen to this!"),
@@ -243,14 +197,14 @@ enum TimelineFixtures {
                                     caption: "Everything from the trip!")
         ]
     }
-
+    
     static var separator: SeparatorRoomTimelineItem {
         SeparatorRoomTimelineItem(id: .virtual(uniqueID: .init(UUID().uuidString)),
                                   timestamp: .now)
     }
-
+    
     // MARK: - TimelineItemProxy fixtures
-
+    
     /// ``TimelineItemProxy`` equivalents of ``smallChunk``.
     static var smallChunkProxies: [TimelineItemProxy] {
         [
@@ -258,17 +212,17 @@ enum TimelineFixtures {
             .mockText("How are you?", sender: "Alice", isOwn: true)
         ]
     }
-
+    
     /// ``TimelineItemProxy`` equivalent of ``singleMessageChunk``.
     static var singleMessageChunkProxies: [TimelineItemProxy] {
         [.mockText("Tap tap tap 🎙️. Is this thing on?", sender: "Helena")]
     }
-
+    
     /// ``TimelineItemProxy`` equivalent of ``incomingMessage``.
     static var incomingMessageProxy: TimelineItemProxy {
         .mockText("Hello, World!", sender: "Bob")
     }
-
+    
     /// ``TimelineItemProxy`` equivalents of ``largeChunk``.
     static var largeChunkProxies: [TimelineItemProxy] {
         [
@@ -346,10 +300,10 @@ private extension TimelineItemProxy {
               let item = TimelineFixtures.factory.buildTimelineItem(for: eventProxy, isDM: false) else {
             fatalError()
         }
-
+        
         return item
     }
-
+    
     static func mockText(_ body: String, sender: String, isOwn: Bool = false) -> TimelineItemProxy {
         let messageType = MessageType.text(content: .init(body: body, formatted: nil))
         let content = TimelineItemContent.msgLike(content: .init(kind: .message(content: .init(msgType: messageType,
@@ -390,7 +344,7 @@ private extension TextRoomTimelineItem {
                   sender: .init(id: "", displayName: senderDisplayName),
                   content: .init(body: text))
     }
-
+    
     func withReadReceipts(_ receipts: [ReadReceipt]) -> TextRoomTimelineItem {
         var newSelf = self
         newSelf.properties.orderedReadReceipts = receipts
