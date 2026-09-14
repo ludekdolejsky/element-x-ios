@@ -120,6 +120,52 @@ enum TimelineFixtures {
         return [item]
     }
     
+    /// A formatted message that exercises rich clipboard representations in UI tests.
+    static var complexClipboardChunk: [RoomTimelineItemProtocol] {
+        let body = """
+        Nitro clipboard test
+
+        Přehled změn
+
+        Stav: Připraveno
+        Riziko: Žádné známé
+        Další krok: Ověřit vložení
+
+        Technické detaily
+
+        Hodnota alpha_beta zůstává beze změny.
+
+        Konec komplexní zprávy
+        """
+        let html = """
+        <h3>Nitro clipboard test</h3>
+        <p><strong>Přehled změn</strong></p>
+        <ul>
+        <li><strong>Stav:</strong> Připraveno</li>
+        <li><strong>Riziko:</strong> Žádné známé</li>
+        <li><strong>Další krok:</strong> Ověřit vložení</li>
+        </ul>
+        <h3>Technické detaily</h3>
+        <p>Hodnota <code>alpha_beta</code> zůstává beze změny.</p>
+        <p>Konec komplexní zprávy</p>
+        """
+        let messageType = MessageType.text(content: .init(body: body, formatted: .init(format: .html, body: html)))
+        let content = TimelineItemContent.msgLike(content: .init(kind: .message(content: .init(msgType: messageType,
+                                                                                               body: body,
+                                                                                               isEdited: false,
+                                                                                               mentions: nil)),
+                                                                 reactions: [],
+                                                                 inReplyTo: nil,
+                                                                 threadRoot: nil,
+                                                                 threadSummary: nil))
+        let event = EventTimelineItem(configuration: .init(sender: "@alice:matrix.org", isOwn: false, content: content))
+        let proxy = EventTimelineItemProxy(item: event, uniqueID: .init("complex-clipboard"))
+        guard let item = factory.buildTimelineItem(for: proxy, isDM: false) else {
+            fatalError("Unable to build complex clipboard timeline fixture")
+        }
+        return [item]
+    }
+
     /// A small chunk of events, containing 2 text items.
     static var smallChunkWithReadReceipts: [RoomTimelineItemProtocol] {
         [TextRoomTimelineItem(text: "Hey there 👋",

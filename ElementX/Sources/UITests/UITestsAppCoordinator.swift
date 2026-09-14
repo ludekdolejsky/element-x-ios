@@ -307,9 +307,10 @@ class MockScreen: Identifiable {
             let coordinator = RoomScreenCoordinator(parameters: parameters)
             navigationStackCoordinator.setRootCoordinator(coordinator)
             return navigationStackCoordinator
-        case .roomSmallTimeline:
+        case .roomSmallTimeline, .roomComplexClipboardTimeline:
             let navigationStackCoordinator = NavigationStackCoordinator()
-            let timelineController = TimelineControllerMock(.init(timelineItems: TimelineFixtures.smallChunk))
+            let timelineItems = id == .roomComplexClipboardTimeline ? TimelineFixtures.complexClipboardChunk : TimelineFixtures.smallChunk
+            let timelineController = TimelineControllerMock(.init(timelineItems: timelineItems))
             let parameters = RoomScreenCoordinatorParameters(userSession: UserSessionMock(.init()),
                                                              roomProxy: JoinedRoomProxyMock(.init(name: "New room", avatarURL: .mockMXCAvatar)),
                                                              timelineController: timelineController,

@@ -63,6 +63,11 @@ enum NitroMessageCopyFormatter {
         let format: String
     }
     
+    private struct HTMLPasteResolution {
+        let preferredContent: ResolvedRichPasteContent?
+        let textFallback: ResolvedRichPasteContent?
+    }
+
     static func pasteboardRepresentations(for item: EventBasedMessageTimelineItemProtocol, format: Format) -> [String: Any] {
         switch format {
         case .text:
@@ -123,43 +128,20 @@ enum NitroMessageCopyFormatter {
     }
     
     private static func resolvedRichPasteContent(from itemProvider: NSItemProvider) async -> ResolvedRichPasteContent? {
-        if itemProvider.hasItemConformingToTypeIdentifier(UTType.html.identifier),
-           let html = await string(from: itemProvider, type: UTType.html.identifier) {
-            let sourceHTML = htmlBodyFragment(from: html) ?? html
-            let composerHTML = composerCompatibleHTML(from: sourceHTML)
-            let normalizedDivs = composerHTML != sourceHTML
-            let renderedPlainText = renderedContent(forHTML: composerHTML).plainText
-            let comparablePlainText = (try? SwiftSoup.parseBodyFragment(sourceHTML).text()) ?? renderedPlainText
-            let providedPlainText = await string(from: itemProvider, type: UTType.utf8PlainText.identifier)
-            let providedPlainTextIsHTMLSource = providedPlainText == composerHTML || providedPlainText == html ||
-                providedPlainText.map { utf8HTMLDocument(for: $0) == html } == true
-            let plainText = providedPlainTextIsHTMLSource ? renderedPlainText : providedPlainText ?? renderedPlainText
-            let renderedTextMatchesFallback = !normalizedDivs || providedPlainTextIsHTMLSource || providedPlainText == nil ||
-                normalizedPlainText(comparablePlainText) == normalizedPlainText(providedPlainText ?? "")
-            if !renderedPlainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               renderedTextMatchesFallback {
-                return .init(content: .html(composerHTML, plainText: plainText),
-                             typeIdentifier: UTType.html.identifier,
-                             format: "HTML")
-            }
-            if !providedPlainTextIsHTMLSource,
-               let providedPlainText,
-               !providedPlainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return .init(content: .plainText(providedPlainText),
-                             typeIdentifier: UTType.utf8PlainText.identifier,
-                             format: "Plain text fallback")
-            }
+        let htmlResolution = await htmlPasteResolution(from: itemProvider)
+        if let preferredContent = htmlResolution?.preferredContent {
+            return preferredContent
         }
         
         if itemProvider.hasItemConformingToTypeIdentifier(markdownTypeIdentifier),
-           let markdown = await string(from: itemProvider, type: markdownTypeIdentifier) {
+           let markdown = await nonEmptyText(string(from: itemProvider, type: markdownTypeIdentifier)) {
             return .init(content: .markdown(markdown),
                          typeIdentifier: markdownTypeIdentifier,
                          format: "Markdown")
         }
         
         for type in plainTextTypeIdentifiers where itemProvider.registeredTypeIdentifiers.contains(type) {
-            if let plainText = await string(from: itemProvider, type: type) {
+            if let plainText = await nonEmptyText(string(from: itemProvider, type: type)) {
                 return .init(content: .plainText(plainText),
                              typeIdentifier: type,
                              format: "Plain text")
@@ -168,25 +150,33 @@ enum NitroMessageCopyFormatter {
         
         if itemProvider.hasItemConformingToTypeIdentifier(UTType.rtf.identifier),
            let data = await data(from: itemProvider, type: UTType.rtf.identifier),
-           let plainText = await plainText(fromRTF: data) {
+           let plainText = await nonEmptyText(plainText(fromRTF: data)) {
             return .init(content: .plainText(plainText),
                          typeIdentifier: UTType.rtf.identifier,
                          format: "RTF")
         }
         
         let registeredTypes = itemProvider.registeredTypeIdentifiers.filter {
-            !plainTextTypeIdentifiers.contains($0) && $0 != UTType.rtf.identifier && isTextType($0)
+            !plainTextTypeIdentifiers.contains($0) &&
+                $0 != UTType.html.identifier &&
+                $0 != UTType.rtf.identifier &&
+                isTextType($0)
         }
         for type in registeredTypes {
-            if let plainText = await string(from: itemProvider, type: type) {
+            if let plainText = await nonEmptyText(string(from: itemProvider, type: type)) {
                 return .init(content: .plainText(plainText),
                              typeIdentifier: type,
                              format: "Generic text")
             }
         }
         
-        if itemProvider.hasItemConformingToTypeIdentifier(UTType.text.identifier),
-           let plainText = await string(from: itemProvider, type: UTType.text.identifier) {
+        if let textFallback = htmlResolution?.textFallback {
+            return textFallback
+        }
+
+        if htmlResolution == nil,
+           itemProvider.hasItemConformingToTypeIdentifier(UTType.text.identifier),
+           let plainText = await nonEmptyText(string(from: itemProvider, type: UTType.text.identifier)) {
             return .init(content: .plainText(plainText),
                          typeIdentifier: UTType.text.identifier,
                          format: "Conforming text fallback")
@@ -195,6 +185,48 @@ enum NitroMessageCopyFormatter {
         return nil
     }
     
+    private static func htmlPasteResolution(from itemProvider: NSItemProvider) async -> HTMLPasteResolution? {
+        guard itemProvider.hasItemConformingToTypeIdentifier(UTType.html.identifier),
+              let html = await string(from: itemProvider, type: UTType.html.identifier) else {
+            return nil
+        }
+        let sourceHTML = htmlBodyFragment(from: html) ?? html
+        let composerHTML = composerCompatibleHTML(from: sourceHTML)
+        let normalizedDivs = composerHTML != sourceHTML
+        let renderedContent = renderedContent(forHTML: composerHTML)
+        let renderedPlainText = renderedContent.plainText
+        let comparablePlainText = (try? SwiftSoup.parseBodyFragment(sourceHTML).text()) ?? renderedPlainText
+        let providedPlainText = await string(from: itemProvider, type: UTType.utf8PlainText.identifier)
+        let nonEmptyProvidedPlainText = nonEmptyText(providedPlainText)
+        let providedPlainTextIsHTMLSource = nonEmptyProvidedPlainText == composerHTML || nonEmptyProvidedPlainText == html ||
+            nonEmptyProvidedPlainText.map { utf8HTMLDocument(for: $0) == html } == true
+        let usableProvidedPlainText = providedPlainTextIsHTMLSource ? nil : nonEmptyProvidedPlainText
+        let derivedPlainText = nonEmptyText(renderedContent.attributedString.string) ?? nonEmptyText(comparablePlainText) ?? renderedPlainText
+        let plainText = usableProvidedPlainText ?? derivedPlainText
+        let renderedTextMatchesFallback = !normalizedDivs || providedPlainTextIsHTMLSource || nonEmptyProvidedPlainText == nil ||
+            normalizedPlainText(comparablePlainText) == normalizedPlainText(nonEmptyProvidedPlainText ?? "")
+        if renderedContent.isComplete,
+           !renderedPlainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           renderedTextMatchesFallback {
+            let content = ResolvedRichPasteContent(content: .html(composerHTML, plainText: plainText),
+                                                   typeIdentifier: UTType.html.identifier,
+                                                   format: "HTML")
+            return .init(preferredContent: content, textFallback: nil)
+        }
+        if let usableProvidedPlainText {
+            let content = ResolvedRichPasteContent(content: .plainText(usableProvidedPlainText),
+                                                   typeIdentifier: UTType.utf8PlainText.identifier,
+                                                   format: "Plain text fallback")
+            return .init(preferredContent: nil, textFallback: content)
+        }
+        let textFallback = nonEmptyText(derivedPlainText).map {
+            ResolvedRichPasteContent(content: .plainText($0),
+                                     typeIdentifier: UTType.html.identifier,
+                                     format: "HTML text fallback")
+        }
+        return .init(preferredContent: nil, textFallback: textFallback)
+    }
+
     private static func isTextType(_ typeIdentifier: String) -> Bool {
         typeIdentifier == markdownTypeIdentifier ||
             UTType(typeIdentifier)?.conforms(to: .text) == true
@@ -313,6 +345,7 @@ enum NitroMessageCopyFormatter {
         let html: String
         let markdown: String
         let attributedString: NSAttributedString
+        let isComplete: Bool
     }
     
     private static func renderedContent(for item: EventBasedMessageTimelineItemProtocol) -> RenderedContent {
@@ -320,7 +353,8 @@ enum NitroMessageCopyFormatter {
             return .init(plainText: item.body,
                          html: htmlForPlainText(item.body),
                          markdown: item.body,
-                         attributedString: .init(string: item.body))
+                         attributedString: .init(string: item.body),
+                         isComplete: true)
         }
         return renderedContent(forHTML: html, fallbackBody: item.body)
     }
@@ -329,10 +363,40 @@ enum NitroMessageCopyFormatter {
         let wysiwygHTML = CustomEmojiMessageContent.restoringShortcodes(in: html, fallbackBody: fallbackBody)
         let viewModel = WysiwygComposerViewModel()
         viewModel.setHtmlContent(wysiwygHTML)
-        return .init(plainText: viewModel.attributedContent.text.string,
+        let renderedAttributedString = viewModel.attributedContent.text
+        let renderedPlainText = renderedAttributedString.string
+        let hasRenderedText = !renderedPlainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let sourcePlainText = (try? SwiftSoup.parseBodyFragment(wysiwygHTML).text()) ?? fallbackBody
+        let renderedAllText = sourcePlainText.map {
+            normalizedPlainText($0) == normalizedPlainText(renderedPlainText)
+        } ?? hasRenderedText
+        let hasCompleteRenderedText = hasRenderedText && renderedAllText
+        let plainText = hasCompleteRenderedText
+            ? renderedPlainText
+            : fallbackBody ?? renderedPlainText
+        let renderedMarkdown = desktopCompatibleMarkdown(viewModel.content.markdown)
+        let markdown = if hasCompleteRenderedText,
+                          !renderedMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            renderedMarkdown
+        } else if let fallbackMarkdown = markdownFallback(fromHTML: wysiwygHTML),
+                  !fallbackMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            fallbackMarkdown
+        } else {
+            fallbackBody ?? renderedMarkdown
+        }
+        let attributedString = if hasCompleteRenderedText {
+            renderedAttributedString
+        } else if let htmlAttributedString = attributedString(fromHTML: wysiwygHTML),
+                  !htmlAttributedString.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            htmlAttributedString
+        } else {
+            NSAttributedString(string: plainText)
+        }
+        return .init(plainText: plainText,
                      html: html,
-                     markdown: desktopCompatibleMarkdown(viewModel.content.markdown),
-                     attributedString: viewModel.attributedContent.text)
+                     markdown: markdown,
+                     attributedString: attributedString,
+                     isComplete: hasCompleteRenderedText)
     }
     
     private static func htmlForPlainText(_ text: String) -> String {
@@ -439,11 +503,236 @@ enum NitroMessageCopyFormatter {
             .joined(separator: " ")
     }
     
+    private static func nonEmptyText(_ text: String?) -> String? {
+        guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return text
+    }
+
     private static func rtfData(from attributedString: NSAttributedString) -> Data? {
         try? attributedString.data(from: NSRange(location: 0, length: attributedString.length),
                                    documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
     }
     
+    private static func attributedString(fromHTML html: String) -> NSAttributedString? {
+        guard let data = utf8HTMLDocument(for: html).data(using: .utf8) else { return nil }
+        return try? NSAttributedString(data: data,
+                                       options: [.documentType: NSAttributedString.DocumentType.html,
+                                                 .characterEncoding: String.Encoding.utf8.rawValue],
+                                       documentAttributes: nil)
+    }
+
+    private static func markdownFallback(fromHTML html: String) -> String? {
+        guard let document = try? SwiftSoup.parseBodyFragment(html),
+              let body = document.body(),
+              let markdown = try? markdown(from: body, listDepth: 0) else {
+            return nil
+        }
+        return markdown
+            .replacingOccurrences(of: #"[ \t]+\n"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func markdown(from node: Node, listDepth: Int) throws -> String {
+        if let textNode = node as? TextNode {
+            let text = textNode.getWholeText().replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            return markdownEscapedText(text)
+        }
+        guard let element = node as? Element else { return "" }
+
+        let content = try element.getChildNodes().map { try markdown(from: $0, listDepth: listDepth) }.joined()
+        switch element.tagName().lowercased() {
+        case "body":
+            return content
+        case "h1", "h2", "h3", "h4", "h5", "h6":
+            let level = Int(element.tagName().dropFirst()) ?? 1
+            return "\(String(repeating: "#", count: level)) \(content.trimmingCharacters(in: .whitespacesAndNewlines))\n\n"
+        case "p", "div":
+            return "\(content.trimmingCharacters(in: .whitespacesAndNewlines))\n\n"
+        case "br":
+            return "\n"
+        case "strong", "b":
+            return "__\(content)__"
+        case "em", "i":
+            return "_\(content)_"
+        case "del", "s", "strike":
+            return "~~\(content)~~"
+        case "code" where element.parent()?.tagName().lowercased() != "pre":
+            return markdownInlineCode(preformattedText(from: element))
+        case "pre":
+            let text = preformattedText(from: element)
+            let fence = markdownBackticks(for: text, minimumLength: 3)
+            return "\(fence)\n\(text)\n\(fence)\n\n"
+        case "ul":
+            return try markdownList(from: element, ordered: false, depth: listDepth)
+        case "ol":
+            return try markdownList(from: element, ordered: true, depth: listDepth)
+        case "li":
+            return content
+        case "blockquote":
+            let quoted = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                .split(separator: "\n", omittingEmptySubsequences: false)
+                .map { "> \($0)" }
+                .joined(separator: "\n")
+            return "\(quoted)\n\n"
+        case "table":
+            return try markdownTable(from: element, listDepth: listDepth)
+        case "a":
+            let href = try element.attr("href")
+            return href.isEmpty ? content : "[\(content)](\(markdownLinkDestination(href)))"
+        case "img":
+            let title = try element.attr("title")
+            let alt = try element.attr("alt")
+            return title.isEmpty ? alt : title
+        default:
+            return content
+        }
+    }
+
+    private static func markdownList(from element: Element, ordered: Bool, depth: Int) throws -> String {
+        var result = ""
+        var itemNumber = 1
+        for child in element.children() where child.tagName().lowercased() == "li" {
+            var itemContent = ""
+            var nestedLists = ""
+            for node in child.getChildNodes() {
+                if let nestedList = node as? Element,
+                   ["ul", "ol"].contains(nestedList.tagName().lowercased()) {
+                    nestedLists += try markdownList(from: nestedList,
+                                                    ordered: nestedList.tagName().lowercased() == "ol",
+                                                    depth: depth + 1)
+                } else {
+                    itemContent += try markdown(from: node, listDepth: depth)
+                }
+            }
+            let marker = ordered ? "\(itemNumber)." : "-"
+            result += "\(String(repeating: "  ", count: depth))\(marker) \(itemContent.trimmingCharacters(in: .whitespacesAndNewlines))\n"
+            result += nestedLists
+            itemNumber += 1
+        }
+        return depth == 0 ? "\(result)\n" : result
+    }
+
+    private static func preformattedText(from node: Node) -> String {
+        if let textNode = node as? TextNode {
+            return textNode.getWholeText()
+        }
+        guard let element = node as? Element else { return "" }
+        if element.tagName().lowercased() == "br" {
+            return "\n"
+        }
+        return element.getChildNodes().map(preformattedText).joined()
+    }
+
+    private static func markdownInlineCode(_ source: String) -> String {
+        let text = source
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "\n", with: " ")
+        let delimiter = markdownBackticks(for: text, minimumLength: 1)
+        let needsPadding = text.contains("`") || text.hasPrefix(" ") || text.hasSuffix(" ")
+        let padding = needsPadding ? " " : ""
+        return "\(delimiter)\(padding)\(text)\(padding)\(delimiter)"
+    }
+
+    private static func markdownBackticks(for text: String, minimumLength: Int) -> String {
+        var longestRun = 0
+        var currentRun = 0
+        for character in text {
+            if character == "`" {
+                currentRun += 1
+                longestRun = max(longestRun, currentRun)
+            } else {
+                currentRun = 0
+            }
+        }
+        return String(repeating: "`", count: max(minimumLength, longestRun + 1))
+    }
+
+    private static func markdownEscapedText(_ text: String) -> String {
+        let escapableCharacters: Set<Character> = ["\\", "`", "*", "_", "[", "]", "<", ">", "~"]
+        let escaped = text.reduce(into: "") { result, character in
+            if escapableCharacters.contains(character) {
+                result.append("\\")
+            }
+            result.append(character)
+        }
+        return escapingMarkdownBlockMarker(in: escaped)
+    }
+
+    private static func escapingMarkdownBlockMarker(in line: String) -> String {
+        let indentation = line.prefix { $0.isWhitespace }
+        let content = line.dropFirst(indentation.count)
+        guard !content.isEmpty else { return line }
+
+        let markerPatterns = [#"^(#{1,6}|>|[-+])\s"#, #"^\d+[.)]\s"#, #"^-{3,}\s*$"#]
+        guard let match = markerPatterns.lazy.compactMap({ pattern in
+            content.range(of: pattern, options: .regularExpression)
+        }).first else {
+            return line
+        }
+        let marker = content[match].firstIndex { $0 == "." || $0 == ")" } ?? content.startIndex
+        var escapedContent = String(content)
+        escapedContent.insert("\\", at: escapedContent.index(escapedContent.startIndex,
+                                                             offsetBy: content.distance(from: content.startIndex, to: marker)))
+        return "\(indentation)\(escapedContent)"
+    }
+
+    private static func markdownLinkDestination(_ destination: String) -> String {
+        destination
+            .replacingOccurrences(of: "\\", with: #"\\"#)
+            .replacingOccurrences(of: "(", with: #"\("#)
+            .replacingOccurrences(of: ")", with: #"\)"#)
+    }
+
+    private static func markdownTable(from table: Element, listDepth: Int) throws -> String {
+        let rows = tableRows(in: table)
+        guard !rows.isEmpty else { return "" }
+
+        var renderedRows = try rows.map { row in
+            try row.children()
+                .filter { ["th", "td"].contains($0.tagName().lowercased()) }
+                .map { try markdownTableCell(from: $0, listDepth: listDepth) }
+        }
+        let columnCount = renderedRows.map(\.count).max() ?? 0
+        guard columnCount > 0 else { return "" }
+        renderedRows = renderedRows.map { $0 + Array(repeating: "", count: columnCount - $0.count) }
+
+        let firstRowIsHeader = rows[0].children().contains { $0.tagName().lowercased() == "th" }
+        let header = firstRowIsHeader ? renderedRows.removeFirst() : Array(repeating: "", count: columnCount)
+        var lines = [markdownTableRow(header), markdownTableRow(Array(repeating: "---", count: columnCount))]
+        lines.append(contentsOf: renderedRows.map(markdownTableRow))
+
+        let caption = table.children().first { $0.tagName().lowercased() == "caption" }
+        let renderedCaption = try caption.map { try markdown(from: $0, listDepth: listDepth) }
+            .map { "_\($0.trimmingCharacters(in: .whitespacesAndNewlines))_\n\n" } ?? ""
+        return "\(renderedCaption)\(lines.joined(separator: "\n"))\n\n"
+    }
+
+    private static func tableRows(in element: Element) -> [Element] {
+        element.children().flatMap { child -> [Element] in
+            switch child.tagName().lowercased() {
+            case "tr":
+                [child]
+            case "thead", "tbody", "tfoot":
+                tableRows(in: child)
+            default:
+                []
+            }
+        }
+    }
+
+    private static func markdownTableCell(from cell: Element, listDepth: Int) throws -> String {
+        try markdown(from: cell, listDepth: listDepth)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "|", with: #"\|"#)
+            .replacingOccurrences(of: #"\s*\n\s*"#, with: "<br>", options: .regularExpression)
+    }
+
+    private static func markdownTableRow(_ cells: [String]) -> String {
+        "| \(cells.joined(separator: " | ")) |"
+    }
+
     private static func formattedBodyHTML(for item: EventBasedMessageTimelineItemProtocol) -> String? {
         switch item.contentType {
         case .text(let content):

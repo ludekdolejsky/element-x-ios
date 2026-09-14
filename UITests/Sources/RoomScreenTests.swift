@@ -12,6 +12,9 @@ import XCTest
 
 @MainActor
 class RoomScreenUITests: XCTestCase {
+    private let complexClipboardStartMarker = "Nitro clipboard test"
+    private let complexClipboardEndMarker = "Konec komplexní zprávy"
+
     func testPlainNoAvatar() async throws {
         let app = Application.launch(.roomPlainNoAvatar)
         
@@ -76,6 +79,23 @@ class RoomScreenUITests: XCTestCase {
         XCTAssertEqual(composer.value as? String, "Hello from Notes")
     }
     
+    func testCopiesComplexMessageAndPastesItIntoComposer() {
+        let app = Application.launch(.roomComplexClipboardTimeline, disableTimelineAccessibility: false)
+        copyComplexMessage(in: app)
+        defer { UIPasteboard.general.items = [] }
+
+        pasteIntoComposer(in: app)
+
+        let composer = app.textViews[A11yIdentifiers.roomScreen.messageComposer]
+        let startMarker = complexClipboardStartMarker
+        let endMarker = complexClipboardEndMarker
+        let inserted = expectation(for: NSPredicate { object, _ in
+            guard let value = (object as? XCUIElement)?.value as? String else { return false }
+            return value.contains(startMarker) && value.contains(endMarker)
+        }, evaluatedWith: composer)
+        wait(for: [inserted], timeout: 5)
+    }
+
     func testSanitizedCustomEmojiTimeline() {
         let app = Application.launch(.roomSanitizedCustomEmojiTimeline, disableTimelineAccessibility: false)
         let customEmojiMessage = app.textViews.matching(NSPredicate(format: "value BEGINSWITH %@", "Look \u{FFFC} now")).firstMatch
@@ -91,6 +111,43 @@ class RoomScreenUITests: XCTestCase {
         XCTAssertGreaterThan(renderedFrames.count, 1, "The custom emoji should render more than one animation frame")
     }
     
+    private func copyComplexMessage(in app: XCUIApplication) {
+        let message = app.otherElements.matching(NSPredicate(format: "label CONTAINS %@", complexClipboardEndMarker)).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        XCTAssertTrue(message.isHittable)
+        message.press(forDuration: 1)
+
+        let actionMenu = app.descendants(matching: .any)[A11yIdentifiers.roomScreen.timelineItemActionMenu]
+        XCTAssertTrue(actionMenu.waitForExistence(timeout: 5))
+        app.buttons["Copy"].tap()
+
+        let copyButtons = app.buttons.matching(NSPredicate(format: "label == %@", "Copy"))
+        var copyRepresentation: XCUIElement?
+        for index in 0..<copyButtons.count {
+            let candidate = copyButtons.element(boundBy: index)
+            if candidate.isHittable, candidate.frame.width < app.frame.width {
+                copyRepresentation = candidate
+                break
+            }
+        }
+        guard let copyRepresentation else {
+            XCTFail("The Copy submenu representation is not hittable.")
+            return
+        }
+        copyRepresentation.tap()
+        XCTAssertTrue(actionMenu.wait(for: \.exists, toEqual: false, timeout: 5))
+    }
+
+    private func pasteIntoComposer(in app: XCUIApplication) {
+        let composer = app.textViews[A11yIdentifiers.roomScreen.messageComposer]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.tap()
+        composer.press(forDuration: 1)
+        let paste = app.menuItems["Paste"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 5))
+        paste.tap()
+    }
+
     func testSmallTimelineWithIncomingAndPagination() async throws {
         let client = try UITestsSignalling.Client(mode: .tests)
         
