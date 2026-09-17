@@ -395,12 +395,20 @@ extension AccessibilityTests {
         try await performAccessibilityAudit(named: "NitroCatchUpScreen_Previews")
     }
 
+    func testNitroGIFPickerScreen() async throws {
+        try await performAccessibilityAudit(named: "NitroGIFPickerScreen_Previews")
+    }
+
     func testNitroReminderCreateScreen() async throws {
         try await performAccessibilityAudit(named: "NitroReminderCreateScreen_Previews")
     }
 
     func testNitroRemindersScreen() async throws {
         try await performAccessibilityAudit(named: "NitroRemindersScreen_Previews")
+    }
+
+    func testNitroRoomWidgetsScreen() async throws {
+        try await performAccessibilityAudit(named: "NitroRoomWidgetsScreen_Previews")
     }
 
     func testNitroTaskCreateScreen() async throws {
@@ -513,6 +521,10 @@ extension AccessibilityTests {
 
     func testReadReceiptsSummaryView() async throws {
         try await performAccessibilityAudit(named: "ReadReceiptsSummaryView_Previews")
+    }
+
+    func testRedactConfirmationView() async throws {
+        try await performAccessibilityAudit(named: "RedactConfirmationView_Previews")
     }
 
     func testRedactedRoomTimelineView() async throws {

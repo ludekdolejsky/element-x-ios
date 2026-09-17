@@ -16,11 +16,12 @@ nonisolated extension AttributedString {
     
     var formattedComponents: [AttributedStringBuilderComponent] {
         var components = [AttributedStringBuilderComponent]()
-        for run in runs[\.blockquote, \.codeBlock, \.table] {
+        for run in runs[\.blockquote, \.codeBlock, \.table, \.details] {
             let isBlockquote = run.0 != nil
             let isCodeBlock = run.1 != nil
             let table = run.2
-            var attributedString = AttributedString(self[run.3])
+            let details = run.3
+            var attributedString = AttributedString(self[run.4])
             
             if let table {
                 components.append(AttributedStringBuilderComponent(id: table.id.uuidString,
@@ -35,12 +36,14 @@ nonisolated extension AttributedString {
                 attributedString.removeSubrange(range)
             }
             
-            let componentType: AttributedStringBuilderComponent.ComponentType = switch (isBlockquote, isCodeBlock) {
-            case (true, _):
+            let componentType: AttributedStringBuilderComponent.ComponentType = switch (details, isBlockquote, isCodeBlock) {
+            case (.some(let summary), _, _):
+                .details(summary: summary)
+            case (_, true, _):
                 .blockquote
-            case (false, true):
+            case (_, false, true):
                 .codeBlock
-            case (false, false):
+            case (_, false, false):
                 .plainText
             }
             

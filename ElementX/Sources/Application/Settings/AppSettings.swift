@@ -349,6 +349,9 @@ final nonisolated class AppSettings: @unchecked Sendable {
     @UserPreference(defaultValue: RoomListActivityVisibility.current)
     var roomListActivityVisibility: RoomListActivityVisibility
     
+    @UserPreference(defaultValue: false)
+    var roomListNotificationCountEnabled: Bool
+    
     // MARK: - Room Screen
     
     @UserPreference(defaultValue: AppBuildType.current == .debug)
@@ -416,6 +419,9 @@ final nonisolated class AppSettings: @unchecked Sendable {
     @UserPreference(defaultValue: false)
     var lowPriorityFilterEnabled: Bool
     
+    @UserPreference(defaultValue: false)
+    var mentionsFilterEnabled: Bool
+    
     /// Configuration to enable only signed device isolation mode for  crypto. In this mode only devices signed by their owner will be considered in e2ee rooms.
     @UserPreference(defaultValue: false)
     var enableOnlySignedDeviceIsolationMode: Bool
@@ -428,6 +434,9 @@ final nonisolated class AppSettings: @unchecked Sendable {
     
     @UserPreference(defaultValue: NitroConfiguration.isEnabled)
     var roomThreadListEnabled: Bool
+    
+    @UserPreference(defaultValue: false)
+    var messageMultiSelectEnabled: Bool
     
     @UserPreference(defaultValue: NitroConfiguration.isEnabled || ProcessInfo().isiOSAppOnMac)
     var globalSearchEnabled: Bool
@@ -469,9 +478,6 @@ final nonisolated class AppSettings: @unchecked Sendable {
     
     @UserPreference(key: "clientPausingAndResumingEnabledV2", defaultValue: NitroConfiguration.isEnabled, volatile: true)
     var clientPausingAndResumingEnabled: Bool
-    
-    @UserPreference(defaultValue: false)
-    var userStatusEnabled: Bool
     
     @UserPreference(defaultValue: AppBuildType.current != .release)
     var developerOptionsEnabled: Bool

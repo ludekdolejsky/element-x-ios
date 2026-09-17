@@ -243,6 +243,31 @@ struct AttributedStringBuilderTests {
     }
     
     @Test
+    func detailsAndSummary() throws {
+        let htmlString = "Before<details><summary>Expand me</summary><p>Hidden content</p></details>After"
+        
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString), "Could not build the attributed string")
+        
+        #expect(String(attributedString.characters) == "BeforeHidden content\nAfter")
+        
+        let components = attributedString.formattedComponents
+        
+        #expect(components.count == 3)
+        #expect(components.map(\.type) == [.plainText, .details(summary: "Expand me"), .plainText])
+        #expect(components[1].attributedString.string == "Hidden content")
+    }
+    
+    @Test
+    func detailsWithoutSummary() throws {
+        let htmlString = "<details><p>Content</p></details>"
+        
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString), "Could not build the attributed string")
+        
+        #expect(String(attributedString.characters) == "Content")
+        #expect(attributedString.formattedComponents.map(\.type) == [.details(summary: L10n.a11yViewDetails)])
+    }
+    
+    @Test
     func singleBlockquote() throws {
         let htmlString = "<blockquote>Blockquote</blockquote><p>Another paragraph</p>"
         
@@ -751,6 +776,41 @@ struct AttributedStringBuilderTests {
         for tag in ["s", "del", "strike"] {
             let attributedString = try #require(attributedStringBuilder.fromHTML("<\(tag)>one</\(tag)>"), "Could not build the attributed string")
             #expect(attributedString == strikethrough, "<\(tag)> should render as a strikethrough")
+        }
+    }
+    
+    /// A blank line the user typed after a list must survive, just like one between two paragraphs.
+    @Test
+    func newLineAfterList() throws {
+        let htmlString = "<p>Line 1</p>\n<ul>\n<li>Line 2</li>\n</ul>\n<p>Line 4</p>\n"
+        
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString), "Could not build the attributed string")
+        
+        #expect(String(attributedString.characters) == "Line 1\n  • Line 2\n\nLine 4")
+    }
+    
+    /// Without a blank line the trailing text is a lazy continuation of the item, so it stays on its line.
+    @Test
+    func noNewLineAfterList() throws {
+        let htmlString = "<ul><li>Line 1</li></ul><p>Line 2</p>"
+        
+        let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString), "Could not build the attributed string")
+        
+        #expect(String(attributedString.characters) == "  • Line 1\nLine 2")
+    }
+    
+    /// A blank line is preserved wherever it can be told apart from mere block separation.
+    @Test
+    func newLinesBetweenBlocks() throws {
+        let expectations = ["<p>a</p>\n<p>b</p>": "a\n\nb",
+                            "<p>a</p>\n\n<p>b</p>": "a\n\n\nb",
+                            "<ol start=\"2\"><li>a</li></ol>\n<p>b</p>": "  2. a\n\nb",
+                            // A list can interrupt a paragraph, so this newline is block separation.
+                            "<p>a</p>\n<ul><li>b</li></ul>": "a\n  • b"]
+        
+        for (htmlString, expectation) in expectations {
+            let attributedString = try #require(attributedStringBuilder.fromHTML(htmlString), "Could not build the attributed string")
+            #expect(String(attributedString.characters) == expectation, "Wrong rendering for \(htmlString)")
         }
     }
     

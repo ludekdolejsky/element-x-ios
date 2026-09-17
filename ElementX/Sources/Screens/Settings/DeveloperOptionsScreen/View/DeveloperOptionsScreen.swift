@@ -98,10 +98,6 @@ struct DeveloperOptionsScreen: View {
                     Text("Moves search to a separate tab")
                 }
                 
-                Toggle(isOn: $context.userStatusEnabled) {
-                    Text("User status")
-                }
-                
                 context.viewState.appHooks
                     .developerOptionsScreenHook
                     .generalSectionRows(isSignedIn: context.viewState.isSignedIn)
@@ -115,12 +111,20 @@ struct DeveloperOptionsScreen: View {
                     }
                 }
                 
+                Toggle(isOn: $context.roomListNotificationCountEnabled) {
+                    Text("Show unread notification count")
+                }
+                
                 Toggle(isOn: $context.fuzzyRoomListSearchEnabled) {
                     Text("Fuzzy searching")
                 }
                 
                 Toggle(isOn: $context.lowPriorityFilterEnabled) {
                     Text("Low priority filter")
+                }
+                
+                Toggle(isOn: $context.mentionsFilterEnabled) {
+                    Text("Mentions filter")
                 }
                 
                 Toggle(isOn: $context.automaticBackPaginationEnabled) {
@@ -130,20 +134,11 @@ struct DeveloperOptionsScreen: View {
             }
             
             Section("Room") {
-                Toggle(isOn: $context.roomThreadListEnabled) {
-                    Text("Room thread list")
-                }
-                
                 Toggle(isOn: $context.linkPreviewsEnabled) {
                     Text("Link previews")
                     Text("Follows the timeline media visibility settings.")
                     Text("Can leak the device IP address when loading link metadata.")
                         .foregroundStyle(.compound.textCriticalPrimary)
-                }
-                
-                Toggle(isOn: $context.galleryEnabled) {
-                    Text("Gallery messages")
-                    Text("Allows sending multiple media in a single message. Received galleries always render regardless of this setting.")
                 }
                 
                 Toggle(isOn: $context.jumpToReadMarkerEnabled) {
@@ -177,6 +172,11 @@ struct DeveloperOptionsScreen: View {
                 Toggle(isOn: $context.knockingEnabled) {
                     Text("Knocking")
                     Text("Ask to join rooms")
+                }
+                
+                Toggle(isOn: $context.messageMultiSelectEnabled) {
+                    Text("Multi-select messages")
+                    Text("Adds a Select action to the message menu to pick several messages at once.")
                 }
             }
             

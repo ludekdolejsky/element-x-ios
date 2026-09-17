@@ -85,7 +85,7 @@ protocol TimelineControllerProtocol: Sendable {
     @discardableResult
     func toggleReaction(_ reaction: String, to eventOrTransactionID: TimelineItemIdentifier.EventOrTransactionID) async -> Result<Void, TimelineProxyError>
     
-    func redact(_ eventOrTransactionID: TimelineItemIdentifier.EventOrTransactionID) async
+    func redact(_ eventOrTransactionID: TimelineItemIdentifier.EventOrTransactionID, reason: String?) async
     
     func pin(eventID: String) async
     

@@ -17,6 +17,7 @@ struct TimelineItemMenuActionProvider {
     let pinnedEventIDs: Set<String>
     let isViewSourceEnabled: Bool
     let areThreadsEnabled: Bool
+    let isMultiSelectEnabled: Bool
     let timelineKind: TimelineKind
     let emojiProvider: EmojiProviderProtocol
     
@@ -66,6 +67,10 @@ struct TimelineItemMenuActionProvider {
         }
         
         actions.append(contentsOf: audioTranscriptionActions(for: item))
+        
+        if isMultiSelectEnabled, item.isBulkSelectable {
+            actions.append(.selectMessages)
+        }
         
         if item.isEditable, canCurrentUserSendMessage {
             if item.supportsMediaCaption {

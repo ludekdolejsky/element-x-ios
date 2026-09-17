@@ -187,7 +187,7 @@ class RoomScreenViewModel: RoomScreenViewModelType, RoomScreenViewModelProtocol 
     // MARK: - Private
     
     private func setupSubscriptions(ongoingCallRoomIDPublisher: CurrentValuePublisher<String?, Never>) {
-        appSettings.roomThreadListEnabledPublisher
+        appSettings.threadsEnabledPublisher
             .weakAssign(to: \.state.roomThreadListEnabled, on: self)
             .store(in: &cancellables)
         

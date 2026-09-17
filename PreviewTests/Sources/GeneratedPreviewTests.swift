@@ -691,6 +691,13 @@ extension PreviewTests {
     }
 
     @Test
+    func nitroGIFPickerScreen() async throws {
+        for (index, preview) in NitroGIFPickerScreen_Previews._allPreviews.enumerated() {
+            try await assertSnapshots(matching: preview, step: index)
+        }
+    }
+
+    @Test
     func nitroReminderCreateScreen() async throws {
         for (index, preview) in NitroReminderCreateScreen_Previews._allPreviews.enumerated() {
             try await assertSnapshots(matching: preview, step: index)
@@ -700,6 +707,13 @@ extension PreviewTests {
     @Test
     func nitroRemindersScreen() async throws {
         for (index, preview) in NitroRemindersScreen_Previews._allPreviews.enumerated() {
+            try await assertSnapshots(matching: preview, step: index)
+        }
+    }
+
+    @Test
+    func nitroRoomWidgetsScreen() async throws {
+        for (index, preview) in NitroRoomWidgetsScreen_Previews._allPreviews.enumerated() {
             try await assertSnapshots(matching: preview, step: index)
         }
     }
@@ -896,6 +910,13 @@ extension PreviewTests {
     @Test
     func readReceiptsSummaryView() async throws {
         for (index, preview) in ReadReceiptsSummaryView_Previews._allPreviews.enumerated() {
+            try await assertSnapshots(matching: preview, step: index)
+        }
+    }
+
+    @Test
+    func redactConfirmationView() async throws {
+        for (index, preview) in RedactConfirmationView_Previews._allPreviews.enumerated() {
             try await assertSnapshots(matching: preview, step: index)
         }
     }

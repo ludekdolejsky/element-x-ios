@@ -21,6 +21,7 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         static let detachedTimelineSize: UInt16 = 100
         static let focusTimelineToastIndicatorID = "RoomScreenFocusTimelineToastIndicator"
         static let toastErrorID = "RoomScreenToastError"
+        static let selectionLimitIndicatorID = "RoomScreenSelectionLimitIndicator"
     }
     
     private let roomProxy: JoinedRoomProxyProtocol
@@ -117,6 +118,7 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
                                                        topBannerCompositingDisabled: appSettings.topBannerCompositingDisabled,
                                                        timelineCellReloadRequestID: appSettings.timelineCellReloadRequestID,
                                                        timelineViewRebuildRequestID: appSettings.timelineViewRebuildRequestID,
+                                                       selection: .init(isEnabled: appSettings.messageMultiSelectEnabled),
                                                        hasPredecessor: roomProxy.predecessorRoom != nil,
                                                        pinnedEventIDs: roomProxy.infoPublisher.value.pinnedEventIDs,
                                                        emojiProvider: emojiProvider,
@@ -205,8 +207,20 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
             }
         case .displayTimelineItemMenu(let itemID):
             timelineInteractionHandler.displayTimelineItemActionMenu(for: itemID)
+        case .handleTimelineItemMenuAction(let itemID, .selectMessages):
+            startSelection(itemID: itemID)
         case .handleTimelineItemMenuAction(let itemID, let action):
             timelineInteractionHandler.handleTimelineItemMenuAction(action, itemID: itemID)
+        case .redactConfirmed(let itemID, let reason):
+            state.bindings.redactConfirmationInfo = nil
+            // A blank reason is no reason at all, so don't send one.
+            timelineInteractionHandler.redact(itemID, reason: reason?.isBlank == false ? reason : nil)
+        case .startSelection(let itemID):
+            startSelection(itemID: itemID)
+        case .toggleSelection(let itemID):
+            toggleSelection(itemID: itemID)
+        case .clearSelection:
+            state.selection.selectedEventIDs.removeAll()
         case .tappedOnSenderDetails(let sender):
             handleTappedOnSenderDetails(sender: sender)
         case .displayEmojiPicker(let itemID):
@@ -487,6 +501,7 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
                 switch callback {
                 case .updatedTimelineItems(let updatedItems, let isSwitchingTimelines):
                     buildTimelineViews(timelineItems: updatedItems, isSwitchingTimelines: isSwitchingTimelines)
+                    reconcileSelection(with: updatedItems, isSwitchingTimelines: isSwitchingTimelines)
                     
                     if !updatedItems.isEmpty {
                         analyticsService.signpost.finishTransaction(.openRoom)
@@ -565,6 +580,8 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
             } else {
                 state.bindings.actionMenuInfo = actionMenuInfo
             }
+        case .showRedactConfirmation(let itemID):
+            state.bindings.redactConfirmationInfo = .init(id: itemID)
         case .showDebugInfo(let debugInfo):
             state.bindings.debugInfo = debugInfo
         case .viewInRoomTimeline(let eventID):
@@ -651,6 +668,8 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
         appSettings.timelineViewRebuildRequestIDPublisher
             .weakAssign(to: \.state.timelineViewRebuildRequestID, on: self)
             .store(in: &cancellables)
+        
+        setupSelectionSubscriptions()
         
         userSession.clientProxy.timelineMediaVisibilityPublisher
             .removeDuplicates()
@@ -776,8 +795,15 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
     }
     
     private func handleMediaTapped(with itemID: TimelineItemIdentifier, galleryIndex: Int? = nil) async {
-        state.showLoading = true
+        // Building the media timeline takes ~100ms from the event cache, however its possible that
+        // a focussed timeline may hit /context so we need to show a spinner when it's actually slow.
+        let spinner = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            state.showLoading = true
+        }
         let action = await timelineInteractionHandler.processItemTap(itemID)
+        spinner.cancel()
         
         switch action {
         case .displayMediaPreview(let item, let timelineViewModelKind):
@@ -1212,7 +1238,7 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
                                              verticalButtons: sendHandle.map { sendHandle in
                                                  [.init(title: L10n.actionRetry) { [weak self] in self?.retrySending(sendHandle) },
                                                   .init(title: L10n.actionRemoveMessage, role: .destructive) { [weak self] in
-                                                      self?.timelineInteractionHandler.handleTimelineItemMenuAction(.redact(isMedia: false), itemID: sendHandle.itemID)
+                                                      self?.timelineInteractionHandler.redact(sendHandle.itemID, reason: nil)
                                                   }]
                                              })
         case .encryptionAuthenticity(let message):
@@ -1247,6 +1273,81 @@ class TimelineViewModel: TimelineViewModelType, TimelineViewModelProtocol {
                                                               type: .toast,
                                                               title: title,
                                                               icon: \.close))
+    }
+}
+
+// MARK: - Selection
+
+extension TimelineViewModel {
+    private func setupSelectionSubscriptions() {
+        appSettings.messageMultiSelectEnabledPublisher
+            .sink { [weak self] isEnabled in
+                self?.state.selection.isEnabled = isEnabled
+                if !isEnabled {
+                    self?.state.selection.selectedEventIDs.removeAll()
+                }
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func startSelection(itemID: TimelineItemIdentifier) {
+        guard state.canSelectMessages, let eventID = selectableEventID(for: itemID) else { return }
+        
+        // The composer is collapsed while selecting, so don't leave the microphone open behind it.
+        Task { await timelineInteractionHandler.stopRecordingVoiceMessageIfNeeded() }
+        actionsSubject.send(.composer(action: .removeFocus))
+        
+        guard !state.selection.isAtLimit || state.selection.selectedEventIDs.contains(eventID) else {
+            showSelectionLimitToast()
+            return
+        }
+        
+        state.selection.selectedEventIDs.insert(eventID)
+    }
+    
+    private func toggleSelection(itemID: TimelineItemIdentifier) {
+        guard state.selection.isActive, let eventID = selectableEventID(for: itemID) else { return }
+        
+        if state.selection.selectedEventIDs.contains(eventID) {
+            state.selection.selectedEventIDs.remove(eventID)
+        } else if state.selection.isAtLimit {
+            showSelectionLimitToast()
+        } else {
+            state.selection.selectedEventIDs.insert(eventID)
+        }
+    }
+    
+    /// Drops selected items that are no longer selectable (e.g. redacted), or the whole selection
+    /// when the timeline is swapped, so the selection always refers to items that are on screen.
+    private func reconcileSelection(with timelineItems: [RoomTimelineItemProtocol], isSwitchingTimelines: Bool) {
+        guard state.selection.isActive else { return }
+        
+        if isSwitchingTimelines {
+            state.selection.selectedEventIDs.removeAll()
+            return
+        }
+        
+        let selectableEventIDs = timelineItems.compactMap { item -> String? in
+            guard let item = item as? EventBasedTimelineItemProtocol, item.isBulkSelectable else { return nil }
+            return item.id.eventID
+        }
+        state.selection.selectedEventIDs.formIntersection(selectableEventIDs)
+    }
+    
+    /// The event ID of the item, when it is part of this timeline and can be bulk selected.
+    private func selectableEventID(for itemID: TimelineItemIdentifier) -> String? {
+        guard let item = timelineController.timelineItems.firstUsingStableID(itemID) as? EventBasedTimelineItemProtocol,
+              item.isBulkSelectable else {
+            return nil
+        }
+        return item.id.eventID
+    }
+    
+    private func showSelectionLimitToast() {
+        userIndicatorController.submitIndicator(UserIndicator(id: Constants.selectionLimitIndicatorID,
+                                                              type: .toast,
+                                                              title: L10n.screenRoomMaximumMessagesSelected,
+                                                              icon: \.info))
     }
 }
 
