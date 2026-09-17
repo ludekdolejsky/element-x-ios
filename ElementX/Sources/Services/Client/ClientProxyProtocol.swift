@@ -138,6 +138,9 @@ protocol ClientProxyProtocol: AnyObject {
     
     var pusherNotificationClientIdentifier: String? { get }
     
+    /// The total number of unread notifications across all joined, non-muted rooms, as computed by the SDK.
+    var totalUnreadNotifications: UInt64 { get }
+    
     var mediaLoader: MediaLoaderProtocol { get }
     
     var contentScanner: ContentScannerProxyProtocol? { get }

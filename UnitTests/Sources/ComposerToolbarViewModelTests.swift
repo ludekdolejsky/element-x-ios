@@ -22,6 +22,7 @@ final class ComposerToolbarViewModelTests {
     private var completionSuggestionServiceMock: CompletionSuggestionServiceMock!
     private var draftServiceMock: ComposerDraftServiceMock!
     private var appSettings: AppSettings!
+    private var cancellables = Set<AnyCancellable>()
     
     init() {
         setUpViewModel()
@@ -65,6 +66,7 @@ final class ComposerToolbarViewModelTests {
     
     @Test
     func formattingToolbarIsCollapsedByDefault() {
+        setUpViewModel(formattingEnabled: nil)
         #expect(!viewModel.state.bindings.composerFormattingEnabled)
     }
     
@@ -418,9 +420,10 @@ final class ComposerToolbarViewModelTests {
                                   keywords: [],
                                   shortcodes: ["meatspin"],
                                   customEmoji: customEmoji)
-        setUpViewModel(emojiProvider: ComposerTestEmojiProvider(categories: [.init(id: "custom", emojis: [emojiItem])]))
+        setUpViewModel(emojiProvider: ComposerTestEmojiProvider(categories: [.init(id: "custom", emojis: [emojiItem])]),
+                       formattingEnabled: false)
         let source = "**literal** <tag> :meatspin:\n_next_"
-        wysiwygViewModel.setHtmlContent("**literal** &lt;tag&gt; :meatspin:<br />_next_")
+        viewModel.context.plainComposerText = .init(string: source)
         let image = #"<img data-mx-emoticon src="mxc://example.org/meatspin" alt="Meatspin" title="meatspin" height="32" />"#
         let expectedHTML = "**literal** &lt;tag&gt; \(image)<br />_next_"
         let deferred = deferFulfillment(viewModel.actions) { action in
@@ -573,9 +576,9 @@ final class ComposerToolbarViewModelTests {
                                   shortcodes: ["meatspin"],
                                   customEmoji: customEmoji)
         setUpViewModel(emojiProvider: ComposerTestEmojiProvider(categories: [.init(id: "custom", emojis: [emojiItem])]),
-                       isEncrypted: true)
-        viewModel.context.composerFormattingEnabled = false
-        wysiwygViewModel.setMarkdownContent(":meatspin:")
+                       isEncrypted: true,
+                       formattingEnabled: false)
+        viewModel.context.plainComposerText = .init(string: ":meatspin:")
         let deferred = deferFulfillment(viewModel.actions) { action in
             guard case .sendMessage = action else { return false }
             return true
@@ -805,7 +808,7 @@ final class ComposerToolbarViewModelTests {
             try await deferred.fulfill()
         }
         
-        #expect(!viewModel.context.composerFormattingEnabled)
+        #expect(viewModel.context.composerFormattingEnabled)
         #expect(viewModel.state.composerMode == .default)
         #expect(wysiwygViewModel.content.html == "<strong>Hello</strong> world!")
         #expect(wysiwygViewModel.content.markdown == "__Hello__ world!")
@@ -932,6 +935,108 @@ final class ComposerToolbarViewModelTests {
         }
         #expect(viewModel.context.plainComposerText == NSAttributedString(string: "Hello world"))
     }
+}
+
+extension ComposerToolbarViewModelTests {
+    @Test
+    func sendingUnchangedPlainTextEditCancelsTheEdit() {
+        viewModel.context.composerFormattingEnabled = false
+        let mode: ComposerMode = .edit(originalEventOrTransactionID: .eventID("mock"), type: .default)
+        viewModel.process(timelineAction: .setMode(mode: mode))
+        viewModel.process(timelineAction: .setText(plainText: "Hello world!", htmlText: nil))
+        
+        let sentMessages = collectSentMessages()
+        viewModel.process(viewAction: .sendMessage)
+        
+        #expect(sentMessages.value.isEmpty)
+        #expect(viewModel.state.composerMode == .default)
+        #expect(viewModel.context.plainComposerText.string.isEmpty)
+    }
+    
+    @Test
+    func sendingUnchangedRichTextEditCancelsTheEdit() {
+        viewModel.context.composerFormattingEnabled = true
+        let mode: ComposerMode = .edit(originalEventOrTransactionID: .eventID("mock"), type: .default)
+        viewModel.process(timelineAction: .setMode(mode: mode))
+        viewModel.process(timelineAction: .setText(plainText: "Hello **world**!", htmlText: "Hello <strong>world</strong>!"))
+        viewModel.state.composerEmpty = false
+        
+        let sentMessages = collectSentMessages()
+        viewModel.process(viewAction: .sendMessage)
+        
+        #expect(sentMessages.value.isEmpty)
+        #expect(viewModel.state.composerMode == .default)
+        #expect(wysiwygViewModel.content.markdown.isEmpty)
+    }
+    
+    @Test
+    func sendingUnchangedEditRestoresTheVolatileDraft() {
+        viewModel.context.composerFormattingEnabled = false
+        viewModel.context.plainComposerText = .init(string: "Work in progress")
+        let mode: ComposerMode = .edit(originalEventOrTransactionID: .eventID("mock"), type: .default)
+        viewModel.process(timelineAction: .setMode(mode: mode))
+        viewModel.process(timelineAction: .setText(plainText: "Hello world!", htmlText: nil))
+        draftServiceMock.loadVolatileDraftReturnValue = .init(plainText: "Work in progress", htmlText: nil, draftType: .newMessage)
+        
+        let sentMessages = collectSentMessages()
+        viewModel.process(viewAction: .sendMessage)
+        
+        #expect(sentMessages.value.isEmpty)
+        #expect(viewModel.state.composerMode == .default)
+        #expect(viewModel.context.plainComposerText.string == "Work in progress")
+        #expect(draftServiceMock.clearVolatileDraftCallsCount == 1)
+    }
+    
+    @Test
+    func sendingUnchangedCaptionEditCancelsTheEdit() {
+        viewModel.context.composerFormattingEnabled = false
+        let mode: ComposerMode = .edit(originalEventOrTransactionID: .eventID("mock"), type: .editCaption)
+        viewModel.process(timelineAction: .setMode(mode: mode))
+        viewModel.process(timelineAction: .setText(plainText: "A caption", htmlText: nil))
+        
+        let sentMessages = collectSentMessages()
+        viewModel.process(viewAction: .sendMessage)
+        
+        #expect(sentMessages.value.isEmpty)
+        #expect(viewModel.state.composerMode == .default)
+    }
+    
+    @Test
+    func sendingChangedEditSendsTheEdit() async throws {
+        viewModel.context.composerFormattingEnabled = false
+        let mode: ComposerMode = .edit(originalEventOrTransactionID: .eventID("mock"), type: .default)
+        viewModel.process(timelineAction: .setMode(mode: mode))
+        viewModel.process(timelineAction: .setText(plainText: "Hello world!", htmlText: nil))
+        viewModel.context.plainComposerText = .init(string: "Hello world, edited!")
+        
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(plainText, _, sentMode, _) = action else { return false }
+            return plainText == "Hello world, edited!" && sentMode == mode
+        }
+        viewModel.process(viewAction: .sendMessage)
+        try await deferred.fulfill()
+    }
+    
+    @Test
+    func sendingUnchangedEditAfterCancellingAndEditingAgainSendsTheEdit() async throws {
+        // Editing a different message must reset the remembered original content.
+        viewModel.context.composerFormattingEnabled = false
+        viewModel.process(timelineAction: .setMode(mode: .edit(originalEventOrTransactionID: .eventID("first"), type: .default)))
+        viewModel.process(timelineAction: .setText(plainText: "Hello world!", htmlText: nil))
+        viewModel.process(viewAction: .cancelEdit)
+        
+        let mode: ComposerMode = .edit(originalEventOrTransactionID: .eventID("second"), type: .default)
+        viewModel.process(timelineAction: .setMode(mode: mode))
+        viewModel.process(timelineAction: .setText(plainText: "Something else", htmlText: nil))
+        viewModel.context.plainComposerText = .init(string: "Hello world!")
+        
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(plainText, _, sentMode, _) = action else { return false }
+            return plainText == "Hello world!" && sentMode == mode
+        }
+        viewModel.process(viewAction: .sendMessage)
+        try await deferred.fulfill()
+    }
     
     @Test
     func restoreVolatileDraftWhenClearing() async {
@@ -987,7 +1092,7 @@ final class ComposerToolbarViewModelTests {
         
         viewModel.process(viewAction: .sendMessage)
         guard case let .sendMessage(plainText, _, _, intentionalMentions) = try await deferred.fulfill() else { return }
-        #expect(plainText == "Hello TestName!")
+        #expect(plainText == "Hello [@test:matrix.org](https://matrix.to/#/@test:matrix.org)!")
         #expect(intentionalMentions == IntentionalMentions(userIDs: ["@test:matrix.org"], atRoom: false))
     }
     
@@ -1027,7 +1132,7 @@ final class ComposerToolbarViewModelTests {
         
         viewModel.process(viewAction: .sendMessage)
         guard case let .sendMessage(plainText, _, _, intentionalMentions) = try await deferred.fulfill() else { return }
-        #expect(plainText == "Hello User1, User2 and @room")
+        #expect(plainText == "Hello [@user1:matrix.org](https://matrix.to/#/@user1:matrix.org), [@user2:matrix.org](https://matrix.to/#/@user2:matrix.org) and @room")
         #expect(intentionalMentions == IntentionalMentions(userIDs: ["@user1:matrix.org", "@user2:matrix.org"], atRoom: true))
     }
     
@@ -1047,7 +1152,7 @@ final class ComposerToolbarViewModelTests {
         
         viewModel.process(viewAction: .sendMessage)
         guard case let .sendMessage(plainText, _, _, intentionalMentions) = try await deferred.fulfill() else { return }
-        #expect(plainText == "Hello User1")
+        #expect(plainText == "Hello [@roomuser:matrix.org](https://matrix.to/#/@roomuser:matrix.org)")
         #expect(intentionalMentions == IntentionalMentions(userIDs: ["@roomuser:matrix.org"], atRoom: false))
     }
     
@@ -1186,12 +1291,27 @@ final class ComposerToolbarViewModelTests {
 }
 
 private extension ComposerToolbarViewModelTests {
-    func setUpViewModel(initialText: String? = nil,
-                        loadDraftClosure: (() async -> Result<ComposerDraftProxy?, ComposerDraftServiceError>)? = nil,
-                        emojiProvider: EmojiProviderProtocol? = nil,
-                        isEncrypted: Bool = false,
-                        nitroTasksEnabled: Bool = false,
-                        powerLevelsConfiguration: RoomPowerLevelsProxyMock.Configuration = .init()) {
+    // MARK: - Helpers
+    
+    private func collectSentMessages() -> CurrentValueSubject<[ComposerToolbarViewModelAction], Never> {
+        let subject = CurrentValueSubject<[ComposerToolbarViewModelAction], Never>([])
+        viewModel.actions
+            .filter { action in
+                guard case .sendMessage = action else { return false }
+                return true
+            }
+            .sink { subject.value.append($0) }
+            .store(in: &cancellables)
+        return subject
+    }
+    
+    private func setUpViewModel(initialText: String? = nil,
+                                loadDraftClosure: (() async -> Result<ComposerDraftProxy?, ComposerDraftServiceError>)? = nil,
+                                emojiProvider: EmojiProviderProtocol? = nil,
+                                isEncrypted: Bool = false,
+                                nitroTasksEnabled: Bool = false,
+                                formattingEnabled: Bool? = true,
+                                powerLevelsConfiguration: RoomPowerLevelsProxyMock.Configuration = .init()) {
         wysiwygViewModel = WysiwygComposerViewModel()
         completionSuggestionServiceMock = CompletionSuggestionServiceMock(configuration: .init())
         draftServiceMock = ComposerDraftServiceMock(.init())
@@ -1213,6 +1333,9 @@ private extension ComposerToolbarViewModelTests {
                                              composerDraftService: draftServiceMock,
                                              emojiProvider: emojiProvider,
                                              nitroTasksEnabled: nitroTasksEnabled)
+        if let formattingEnabled {
+            viewModel.context.composerFormattingEnabled = formattingEnabled
+        }
     }
 }
 

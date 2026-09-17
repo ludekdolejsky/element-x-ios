@@ -84,8 +84,16 @@ struct ComposerToolbarViewState: BindableState {
     
     var keyCommands: [WysiwygKeyCommand] = []
     
+    private var composerContentEmpty: Bool {
+        if bindings.composerFormattingEnabled {
+            composerEmpty
+        } else {
+            bindings.plainComposerText.string.isEmpty
+        }
+    }
+    
     var canSendStandaloneEmoji: Bool {
-        canSend && composerEmpty && composerMode.isComposingNewMessage
+        canSend && composerContentEmpty && composerMode.isComposingNewMessage
     }
     
     var bindings: ComposerToolbarViewStateBindings
@@ -106,7 +114,7 @@ struct ComposerToolbarViewState: BindableState {
         case .previewVoiceMessage:
             return true
         default:
-            return !composerEmpty
+            return !composerContentEmpty
         }
     }
     
@@ -127,7 +135,7 @@ struct ComposerToolbarViewState: BindableState {
             return false
         }
         
-        return composerEmpty
+        return composerContentEmpty
     }
     
     var isVoiceMessageModeActivated: Bool {

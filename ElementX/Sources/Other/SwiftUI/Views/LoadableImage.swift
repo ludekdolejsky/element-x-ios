@@ -444,7 +444,7 @@ struct LoadableImage_Previews: PreviewProvider, TestablePreview {
 
 private extension View {
     func layout(title: String, hideTimelineMedia: Bool = false) -> some View {
-        aspectRatio(contentMode: .fit)
+        scaledToFit()
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .overlay(alignment: .bottom) {
                 Text(title)

@@ -109,7 +109,8 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
             let searchCoordinator = SearchScreenCoordinator(parameters: .init(roomSummaryProvider: flowParameters.userSession.clientProxy.alternateRoomSummaryProvider,
                                                                               clientProxy: flowParameters.userSession.clientProxy,
                                                                               mediaProvider: flowParameters.userSession.mediaProvider,
-                                                                              userIndicatorController: flowParameters.userIndicatorController))
+                                                                              userIndicatorController: flowParameters.userIndicatorController,
+                                                                              appSettings: flowParameters.appSettings))
             let searchStackCoordinator = NavigationStackCoordinator()
             searchStackCoordinator.setRootCoordinator(searchCoordinator)
             
@@ -315,6 +316,8 @@ class UserSessionFlowCoordinator: FlowCoordinatorProtocol {
                         handleAppRoute(.room(roomID: roomID, via: []), animated: true)
                     }
                 case .cancel:
+                    // The search screen is also dismissed when leaving the tab, ignore it in that case.
+                    guard navigationTabCoordinator.selectedTab == .search else { return }
                     // Return to the tab the user came from, but never back into search.
                     navigationTabCoordinator.selectedTab = navigationTabCoordinator.previousTab == .search ? .chats : navigationTabCoordinator.previousTab ?? .chats
                 }
