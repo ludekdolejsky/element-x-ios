@@ -39,7 +39,7 @@ if [[ ! -s $maptiler_api_key_file ]]; then
     exit 2
 fi
 
-if [[ ! -d $matrix_rust_sdk_directory/.git ]]; then
+if ! git -C "$matrix_rust_sdk_directory" rev-parse --is-inside-work-tree > /dev/null 2>&1; then
     echo "Matrix Rust SDK checkout not found: $matrix_rust_sdk_directory" >&2
     exit 2
 fi
