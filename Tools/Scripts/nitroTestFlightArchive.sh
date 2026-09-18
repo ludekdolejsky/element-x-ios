@@ -21,6 +21,8 @@ signing_keychain=${NITRO_SIGNING_KEYCHAIN:-"$HOME/Library/Keychains/element-nitr
 signing_password_file=${NITRO_SIGNING_PASSWORD_FILE:-"$HOME/.config/element-nitro-release/signing-keychain-password"}
 maptiler_api_key_file=${NITRO_MAPTILER_API_KEY_FILE:-"$HOME/.config/element-nitro-release/maptiler-api-key"}
 marketing_version=${NITRO_MARKETING_VERSION:-$(sed -n 's/^[[:space:]]*MARKETING_VERSION: //p' "$repository_root/project.yml" | head -1)}
+matrix_rust_sdk_directory="$repository_root/../matrix-rust-sdk"
+expected_matrix_rust_sdk_revision=$(sed -nE 's/.*matrix-rust-sdk-nitro@([0-9a-f]{40}).*/\1/p' "$repository_root/project.yml" | head -1)
 
 if [[ -e $archive_path ]]; then
     echo "Archive already exists: $archive_path" >&2
@@ -34,6 +36,24 @@ fi
 
 if [[ ! -s $maptiler_api_key_file ]]; then
     echo "MapTiler API key not found: $maptiler_api_key_file" >&2
+    exit 2
+fi
+
+if [[ ! -d $matrix_rust_sdk_directory/.git ]]; then
+    echo "Matrix Rust SDK checkout not found: $matrix_rust_sdk_directory" >&2
+    exit 2
+fi
+
+if [[ -z $expected_matrix_rust_sdk_revision ]]; then
+    echo "Pinned Matrix Rust SDK revision not found in project.yml." >&2
+    exit 2
+fi
+
+actual_matrix_rust_sdk_revision=$(git -C "$matrix_rust_sdk_directory" rev-parse HEAD)
+if [[ $actual_matrix_rust_sdk_revision != "$expected_matrix_rust_sdk_revision" ]]; then
+    echo "Matrix Rust SDK revision mismatch." >&2
+    echo "Expected: $expected_matrix_rust_sdk_revision" >&2
+    echo "Actual:   $actual_matrix_rust_sdk_revision" >&2
     exit 2
 fi
 
@@ -60,6 +80,16 @@ if [[ -f $signing_keychain && -f $signing_password_file ]]; then
 fi
 
 mkdir -p "$build_directory" "$derived_data_path"
+
+(
+    cd "$matrix_rust_sdk_directory"
+    unset SDKROOT
+    cargo xtask swift build-framework \
+        --release \
+        --target=aarch64-apple-ios \
+        --ios-deployment-target=18.0
+)
+
 cd "$repository_root"
 
 xcodebuild \

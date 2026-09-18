@@ -91,6 +91,7 @@ CI test commands:
 
 - Build/sign/upload host: `eramac00.local`.
 - Archive with `Tools/Scripts/nitroTestFlightArchive.sh <build-number>` from an isolated release worktree.
+- The archive script validates the pinned Matrix Rust SDK revision and rebuilds it with the iOS release profile. Never substitute a `dev` framework for TestFlight.
 - Release DerivedData is persistent at `~/Library/Developer/Xcode/DerivedData/NitroElementXRelease`.
 - Never delete that directory or SwiftPM caches for routine disk cleanup. Remove old `~/Builds/ElementX-TestFlight/<build-number>` artifacts first.
 - Override paths with `NITRO_TESTFLIGHT_DERIVED_DATA_PATH` and `NITRO_TESTFLIGHT_BUILD_ROOT` when needed.
