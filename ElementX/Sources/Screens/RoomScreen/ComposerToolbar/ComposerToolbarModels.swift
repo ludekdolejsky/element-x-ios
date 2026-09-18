@@ -57,6 +57,10 @@ enum ComposerToolbarViewAction {
     case selectedSuggestion(_ suggestion: SuggestionItem)
     
     case voiceMessage(ComposerToolbarVoiceMessageAction)
+
+    case plainComposerTextChanged
+    case didToggleFormattingOptions
+    case selectedTextChanged
 }
 
 enum ComposerAttachmentType {
@@ -443,6 +447,7 @@ struct ComposerToolbarViewStateBindings {
     var formatItems: [FormatItem] = .init()
     var alertInfo: AlertInfo<UUID>?
     var selectedRange = NSRange(location: 0, length: 0)
+    var presendCallback: (() -> Void)?
 }
 
 /// An item in the toolbar

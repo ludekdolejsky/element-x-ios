@@ -71,6 +71,85 @@ final class ComposerToolbarViewModelTests {
     }
     
     @Test
+    func defaultPlainComposerSendsTypedText() async throws {
+        setUpViewModel(formattingEnabled: nil)
+        viewModel.context.plainComposerText = .init(string: "Hello from the plain composer")
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(plain, html, _, _) = action else { return false }
+            return plain == "Hello from the plain composer" && html == nil
+        }
+
+        #expect(viewModel.context.viewState.showSendButton)
+        #expect(!viewModel.context.viewState.sendButtonDisabled)
+        viewModel.process(viewAction: .sendMessage)
+
+        try await deferred.fulfill()
+    }
+
+    @Test
+    func togglingFormattingTransfersComposerContent() async throws {
+        setUpViewModel(formattingEnabled: false)
+        viewModel.context.plainComposerText = .init(string: "Hello **Nitro**")
+        let richContentLoaded = deferFulfillment(wysiwygViewModel.$attributedContent) { content in
+            content.text.string == "Hello Nitro"
+        }
+
+        viewModel.context.composerFormattingEnabled = true
+        viewModel.process(viewAction: .didToggleFormattingOptions)
+        try await richContentLoaded.fulfill()
+        #expect(wysiwygViewModel.content.markdown == "Hello __Nitro__")
+
+        viewModel.context.composerFormattingEnabled = false
+        viewModel.process(viewAction: .didToggleFormattingOptions)
+        #expect(viewModel.context.plainComposerText.string == "Hello Nitro")
+    }
+
+    @Test
+    func togglingFormattingPreservesPlainComposerMentions() async throws {
+        setUpViewModel(formattingEnabled: false)
+        viewModel.process(timelineAction: .setText(plainText: "Hello [Alice](https://matrix.to/#/@alice:example.org) and @room",
+                                                   htmlText: nil))
+        let richContentLoaded = deferFulfillment(wysiwygViewModel.$attributedContent) { content in
+            content.text.string.contains("@alice:example.org")
+        }
+
+        viewModel.context.composerFormattingEnabled = true
+        viewModel.process(viewAction: .didToggleFormattingOptions)
+        try await richContentLoaded.fulfill()
+
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(_, _, _, intentionalMentions) = action else { return false }
+            return intentionalMentions == .init(userIDs: ["@alice:example.org"], atRoom: true)
+        }
+        viewModel.process(viewAction: .sendMessage)
+        try await deferred.fulfill()
+    }
+
+    @Test
+    func togglingFormattingPreservesRichComposerMentions() async throws {
+        setUpViewModel(formattingEnabled: true)
+        wysiwygViewModel.setHtmlContent("""
+        Hello <a href="https://matrix.to/#/@alice:example.org">Alice</a>, \
+        visit <a href="https://matrix.to/#/%23nitro:example.org">Nitro</a> and notify @room
+        """)
+
+        viewModel.context.composerFormattingEnabled = false
+        viewModel.process(viewAction: .didToggleFormattingOptions)
+
+        let attributes = viewModel.context.plainComposerText
+        #expect(attributes.containsAttribute(.MatrixUserID) { $0 as? String == "@alice:example.org" })
+        #expect(attributes.containsAttribute(.MatrixRoomAlias) { $0 as? String == "#nitro:example.org" })
+        #expect(attributes.containsAttribute(.MatrixAllUsersMention) { $0 as? Bool == true })
+
+        let deferred = deferFulfillment(viewModel.actions) { action in
+            guard case let .sendMessage(_, _, _, intentionalMentions) = action else { return false }
+            return intentionalMentions == .init(userIDs: ["@alice:example.org"], atRoom: true)
+        }
+        viewModel.process(viewAction: .sendMessage)
+        try await deferred.fulfill()
+    }
+
+    @Test
     func enablingFormattingPreservesComposerAndSelection() {
         viewModel.process(viewAction: .composerAppeared)
         wysiwygViewModel.setMarkdownContent("Keep this text")
@@ -270,12 +349,14 @@ final class ComposerToolbarViewModelTests {
         let suggestion = SuggestionItem(suggestionType: .emoji(emojiItem),
                                         range: .init(location: 0, length: 6),
                                         rawSuggestionText: "meats")
-        wysiwygViewModel.setMarkdownContent(":meats")
+        setUpViewModel(formattingEnabled: false)
+        viewModel.context.plainComposerText = .init(string: ":meats")
+        viewModel.context.selectedRange = .init(location: 6, length: 0)
         
         viewModel.context.send(viewAction: .selectedSuggestion(suggestion))
         
-        #expect(wysiwygViewModel.content.markdown == ":meatspin:")
-        #expect(wysiwygViewModel.textView.selectedRange == .init(location: 10, length: 0))
+        #expect(viewModel.context.plainComposerText.string == ":meatspin:")
+        #expect(viewModel.context.selectedRange == .init(location: 10, length: 0))
     }
     
     @Test
@@ -309,12 +390,14 @@ final class ComposerToolbarViewModelTests {
         let suggestion = SuggestionItem(suggestionType: .emoji(emojiItem),
                                         range: .init(location: 4, length: 4),
                                         rawSuggestionText: "gri")
-        wysiwygViewModel.setMarkdownContent("Say :gri now")
+        setUpViewModel(formattingEnabled: false)
+        viewModel.context.plainComposerText = .init(string: "Say :gri now")
+        viewModel.context.selectedRange = .init(location: 8, length: 0)
         
         viewModel.context.send(viewAction: .selectedSuggestion(suggestion))
         
-        #expect(wysiwygViewModel.content.markdown == "Say 😀 now")
-        #expect(wysiwygViewModel.textView.selectedRange == .init(location: 6, length: 0))
+        #expect(viewModel.context.plainComposerText.string == "Say 😀 now")
+        #expect(viewModel.context.selectedRange == .init(location: 6, length: 0))
     }
     
     @Test
@@ -1410,6 +1493,19 @@ extension ComposerToolbarViewModelTests {
     }
     
     @Test
+    func pastesNitroHTMLAsPlainTextWhenFormattingIsDisabled() {
+        setUpViewModel(formattingEnabled: false)
+        viewModel.context.plainComposerText = .init(string: "Hello world")
+        viewModel.context.selectedRange = NSRange(location: 6, length: 5)
+
+        viewModel.process(viewAction: .pasteRichText(.html("<strong>Nitro</strong>", plainText: "Nitro")))
+
+        #expect(viewModel.context.plainComposerText.string == "Hello Nitro")
+        #expect(viewModel.context.selectedRange == NSRange(location: 11, length: 0))
+        #expect(wysiwygViewModel.content.markdown.isEmpty)
+    }
+
+    @Test
     func pastesNitroCustomEmojiAndPreservesOriginalMedia() async throws {
         let html = #"Hello <img data-mx-emoticon src="mxc://example.org/meatspin" alt="Meatspin" title="meatspin" height="32" />"#
         viewModel.process(viewAction: .pasteRichText(.html(html, plainText: "Hello :meatspin:")))
@@ -1607,6 +1703,18 @@ extension ComposerToolbarViewModelTests {
         continuation.finish()
         try await deferred.fulfill()
         #expect(!viewModel.context.viewState.isResolvingCustomEmojis)
+    }
+}
+
+private extension NSAttributedString {
+    func containsAttribute(_ key: Key, matching predicate: (Any) -> Bool) -> Bool {
+        var containsMatch = false
+        enumerateAttribute(key, in: NSRange(location: 0, length: length)) { value, _, stop in
+            guard let value, predicate(value) else { return }
+            containsMatch = true
+            stop.pointee = true
+        }
+        return containsMatch
     }
 }
 

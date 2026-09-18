@@ -314,6 +314,21 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
             handleSuggestion(suggestion)
         case .voiceMessage(let voiceMessageAction):
             processVoiceMessageAction(voiceMessageAction)
+        case .plainComposerTextChanged, .selectedTextChanged:
+            completionSuggestionService.processTextMessage(state.bindings.plainComposerText.string,
+                                                           selectedRange: state.bindings.selectedRange)
+        case .didToggleFormattingOptions:
+            if context.composerFormattingEnabled {
+                guard !context.plainComposerText.string.isEmpty else { return }
+                let markdown = plainComposerContent.text
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, context.composerFormattingEnabled else { return }
+                    self.wysiwygViewModel.textView.flushPills()
+                    self.wysiwygViewModel.setMarkdownContent(markdown)
+                }
+            } else {
+                setPlainComposerTextFromRichComposer()
+            }
         }
     }
     
@@ -347,6 +362,15 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
     }
     
     private func pasteRichText(_ content: NitroMessageCopyFormatter.RichPasteContent) {
+        guard context.composerFormattingEnabled else {
+            if case .html(let html, let plainText) = content {
+                let restoration = CustomEmojiMessageContent.restoringCustomEmojis(in: html, fallbackBody: plainText)
+                preservedCustomEmojis.append(contentsOf: restoration.customEmojis)
+            }
+            pastePlainComposerText(content.plainText)
+            return
+        }
+
         let selection = wysiwygViewModel.attributedContent.selection
         if case .plainText(let plainText) = content {
             replaceRichComposerText(in: selection, with: plainText)
@@ -393,6 +417,17 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
         case .plainText:
             break
         }
+    }
+
+    private func pastePlainComposerText(_ text: String) {
+        let attributedText = NSMutableAttributedString(attributedString: context.plainComposerText)
+        let selection = context.selectedRange
+        let validSelection = selection.location <= attributedText.length && NSMaxRange(selection) <= attributedText.length
+            ? selection
+            : NSRange(location: attributedText.length, length: 0)
+        attributedText.replaceCharacters(in: validSelection, with: text)
+        context.plainComposerText = attributedText
+        context.selectedRange = NSRange(location: validSelection.location + (text as NSString).length, length: 0)
     }
     
     func process(timelineAction: TimelineComposerAction) {
@@ -770,24 +805,67 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
                 MXLog.error("Could not build user permalink")
                 return
             }
-            wysiwygViewModel.setMention(url: url.absoluteString, name: user.id, mentionType: .user)
+            if context.composerFormattingEnabled {
+                wysiwygViewModel.setMention(url: url.absoluteString, name: user.id, mentionType: .user)
+            } else {
+                let attributedString = NSMutableAttributedString(attributedString: state.bindings.plainComposerText)
+                mentionBuilder.handleUserMention(for: attributedString,
+                                                 in: suggestion.range,
+                                                 url: url,
+                                                 userID: user.id,
+                                                 userDisplayName: user.displayName)
+                state.bindings.plainComposerText = attributedString
+                state.bindings.selectedRange = NSRange(location: state.bindings.selectedRange.location - suggestion.rawSuggestionText.count,
+                                                       length: 0)
+            }
         case .allUsers:
-            wysiwygViewModel.setAtRoomMention()
+            if context.composerFormattingEnabled {
+                wysiwygViewModel.setAtRoomMention()
+            } else {
+                let attributedString = NSMutableAttributedString(attributedString: state.bindings.plainComposerText)
+                mentionBuilder.handleAllUsersMention(for: attributedString, in: suggestion.range)
+                state.bindings.plainComposerText = attributedString
+                state.bindings.selectedRange = NSRange(location: state.bindings.selectedRange.location - suggestion.rawSuggestionText.count,
+                                                       length: 0)
+            }
         case let .room(room):
             guard let url = try? URL(string: matrixToRoomAliasPermalink(roomAlias: room.canonicalAlias)) else {
                 MXLog.error("Could not build alias permalink")
                 return
             }
-            wysiwygViewModel.setMention(url: url.absoluteString, name: room.name, mentionType: .room)
+            if context.composerFormattingEnabled {
+                wysiwygViewModel.setMention(url: url.absoluteString, name: room.name, mentionType: .room)
+            } else {
+                let attributedString = NSMutableAttributedString(attributedString: state.bindings.plainComposerText)
+                mentionBuilder.handleRoomAliasMention(for: attributedString,
+                                                      in: suggestion.range,
+                                                      url: url,
+                                                      roomAlias: room.canonicalAlias,
+                                                      roomDisplayName: room.name)
+                state.bindings.plainComposerText = attributedString
+                state.bindings.selectedRange = NSRange(location: state.bindings.selectedRange.location - suggestion.rawSuggestionText.count,
+                                                       length: 0)
+            }
         case let .emoji(emoji):
             let replacement = emoji.customEmoji.map { ":\($0.shortcode):" } ?? emoji.unicode
-            let currentTrigger = wysiwygViewModel.suggestionPattern?.toElementPattern
-            let range = if let currentTrigger, currentTrigger.type == .emoji {
-                currentTrigger.range
+            if context.composerFormattingEnabled {
+                let currentTrigger = wysiwygViewModel.suggestionPattern?.toElementPattern
+                let range = if let currentTrigger, currentTrigger.type == .emoji {
+                    currentTrigger.range
+                } else {
+                    suggestion.range
+                }
+                replaceRichComposerText(in: range, with: replacement)
             } else {
-                suggestion.range
+                let attributedString = NSMutableAttributedString(attributedString: state.bindings.plainComposerText)
+                attributedString.replaceCharacters(in: suggestion.range, with: replacement)
+                state.bindings.plainComposerText = attributedString
+                state.bindings.selectedRange = NSRange(location: suggestion.range.location + (replacement as NSString).length,
+                                                       length: 0)
             }
-            replaceRichComposerText(in: range, with: replacement)
+            if let customEmoji = emoji.customEmoji {
+                preservedCustomEmojis.append(customEmoji)
+            }
             if let emojiProvider {
                 Task {
                     await emojiProvider.markEmojiAsRecentlyUsed(emoji.reactionKey,
@@ -856,19 +934,46 @@ final class ComposerToolbarViewModel: ComposerToolbarViewModelType, ComposerTool
                 wysiwygViewModel.setMarkdownContent(text)
             }
         } else {
-            let attributedString = NSMutableAttributedString(string: text)
-            
-            parseUserMentionsMarkdown(text) { range, url in
-                attributedString.addAttribute(.link, value: url, range: range)
-            }
-            
-            for match in MatrixEntityRegex.allUsersRegex.matches(in: attributedString.string) {
-                attributedString.addAttribute(.MatrixAllUsersMention, value: true, range: match.range)
-            }
-            
-            attributedStringBuilder.addMatrixEntityPermalinkAttributesTo(attributedString)
-            state.bindings.plainComposerText = attributedString
+            setPlainComposerText(text)
         }
+    }
+
+    private func setPlainComposerText(_ text: String) {
+        let attributedString = NSMutableAttributedString(string: text)
+
+        parseUserMentionsMarkdown(text) { range, url in
+            attributedString.addAttribute(.link, value: url, range: range)
+        }
+
+        for match in MatrixEntityRegex.allUsersRegex.matches(in: attributedString.string) {
+            attributedString.addAttribute(.MatrixAllUsersMention, value: true, range: match.range)
+        }
+
+        attributedStringBuilder.addMatrixEntityPermalinkAttributesTo(attributedString)
+        state.bindings.plainComposerText = attributedString
+    }
+
+    private func setPlainComposerTextFromRichComposer() {
+        let attributedString = NSMutableAttributedString(attributedString: wysiwygViewModel.attributedContent.text)
+        let fullRange = NSRange(location: 0, length: attributedString.length)
+
+        attributedString.enumerateAttribute(.MatrixUserID, in: fullRange) { value, range, _ in
+            guard let userID = value as? String,
+                  let url = try? URL(string: matrixToUserPermalink(userId: userID)) else {
+                return
+            }
+            attributedString.addAttribute(.link, value: url, range: range)
+        }
+
+        attributedString.enumerateAttribute(.MatrixRoomAlias, in: fullRange) { value, range, _ in
+            guard let roomAlias = value as? String,
+                  let url = try? URL(string: matrixToRoomAliasPermalink(roomAlias: roomAlias)) else {
+                return
+            }
+            attributedString.addAttribute(.link, value: url, range: range)
+        }
+
+        state.bindings.plainComposerText = attributedString
     }
     
     private func parseUserMentionsMarkdown(_ text: String, callback: (NSRange, URL) -> Void) {

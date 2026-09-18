@@ -185,10 +185,21 @@ struct ComposerToolbar: View {
     }
     
     private var messageComposer: some View {
-        MessageComposer(composerView: composerView,
+        MessageComposer(plainComposerText: $context.plainComposerText,
+                        presendCallback: $context.presendCallback,
+                        selectedRange: $context.selectedRange,
+                        composerView: composerView,
                         mode: context.viewState.composerMode,
+                        placeholder: placeholder,
+                        composerFormattingEnabled: context.composerFormattingEnabled,
                         showResizeGrabber: context.composerFormattingEnabled,
                         isExpanded: $context.composerExpanded) {
+            sendMessage()
+        } editAction: {
+            context.send(viewAction: .editLastMessage)
+        } pasteAction: { providers in
+            handlePaste(providers)
+        } cancellationAction: {
             switch context.viewState.composerMode {
             case .edit:
                 context.send(viewAction: .cancelEdit)
@@ -218,15 +229,40 @@ struct ComposerToolbar: View {
         .onChange(of: composerFocused) { _, newValue in
             context.composerFocused = newValue
         }
+        .onChange(of: context.plainComposerText) {
+            context.send(viewAction: .plainComposerTextChanged)
+        }
+        .onChange(of: context.composerFormattingEnabled) {
+            context.send(viewAction: .didToggleFormattingOptions)
+        }
+        .onChange(of: context.selectedRange) {
+            context.send(viewAction: .selectedTextChanged)
+        }
         .onAppear {
             composerFocused = context.composerFocused
         }
     }
     
     private func sendMessage() {
+        context.presendCallback?()
+
         // Let the editor commit pending autocorrection before reading its content.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             context.send(viewAction: .sendMessage)
+        }
+    }
+
+    private func handlePaste(_ providers: [NSItemProvider]) {
+        var fallbackProviders = [NSItemProvider]()
+        for provider in providers {
+            if NitroMessageCopyFormatter.supportsTextPaste(provider) {
+                context.send(viewAction: .pasteRichTextProvider(provider))
+            } else {
+                fallbackProviders.append(provider)
+            }
+        }
+        if !fallbackProviders.isEmpty {
+            context.send(viewAction: .handlePasteOrDrop(providers: fallbackProviders))
         }
     }
     
